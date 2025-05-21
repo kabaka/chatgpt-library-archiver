@@ -1,5 +1,6 @@
 import os
 
+os.makedirs("gallery", exist_ok=True)
 gallery_root = "gallery"
 versions = sorted(
     [folder for folder in os.listdir(gallery_root)

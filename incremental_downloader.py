@@ -29,6 +29,7 @@ headers = {
 }
 
 # Step 1: Load all existing IDs
+os.makedirs("gallery", exist_ok=True)
 existing_ids = set()
 metadata_files = sorted(glob("gallery/v*/metadata_v*.json"))
 for path in metadata_files:
@@ -46,7 +47,7 @@ os.makedirs(os.path.join(version_folder, "images"), exist_ok=True)
 print(f"Saving new images to: {version_folder}/")
 
 # Step 3: Download new items only
-max_workers = 8
+max_workers = 14
 cursor = None
 new_metadata = []
 consecutive_empty_pages = 0
@@ -118,9 +119,9 @@ while True:
             "height": item.get("height"),
             "url": image_url,
             "conversation_id": item.get("conversation_id"),
-            "message_id": item.get("message_id"),
-            "conversation_link": f"https://chat.openai.com/c/{item.get('conversation_id')}" if item.get("conversation_id") else None,
+            "message_id": item.get("message_id")
         }
+        item["conversation_link"] = f"https://chat.openai.com/c/{item['conversation_id']}#{item['message_id']}"
         metas.append(meta)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -131,7 +132,8 @@ while True:
             unit="img",
             dynamic_ncols=True,
             bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}",
-            disable=False
+            disable=False,
+            mininterval=1
         ))
 
     for result in results:

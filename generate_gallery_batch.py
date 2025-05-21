@@ -3,6 +3,7 @@ import os
 from datetime import datetime
 
 # Detect latest batch version
+os.makedirs("gallery", exist_ok=True)
 gallery_root = "gallery"
 versions = sorted(
     [int(folder[1:]) for folder in os.listdir(gallery_root)
