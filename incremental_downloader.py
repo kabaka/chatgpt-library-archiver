@@ -121,7 +121,7 @@ while True:
             "conversation_id": item.get("conversation_id"),
             "message_id": item.get("message_id")
         }
-        item["conversation_link"] = f"https://chat.openai.com/c/{item['conversation_id']}#{item['message_id']}"
+        meta["conversation_link"] = f"https://chat.openai.com/c/{meta['conversation_id']}#{meta['message_id']}"
         metas.append(meta)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
