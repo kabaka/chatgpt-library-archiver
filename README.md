@@ -30,7 +30,7 @@ auth.txt        ← credentials for API access
 
 ### 🔹 Install Dependencies
 
-None required beyond standard `requests`, `concurrent.futures`, and `json`.
+None required beyond standard `requests`, `concurrent.futures`, `tqdm` and `json`.
 
 ---
 
@@ -46,21 +46,30 @@ referer=https://chat.openai.com/library
 user_agent=Mozilla/5.0 (...)
 oai_client_version=...
 oai_device_id=...
-oai_language=it-IT
+oai_language=...
 ```
 
 ### How to Get These:
 1. Log into [https://chat.openai.com/library](https://chat.openai.com/library)
-2. Open Developer Tools → Network tab
-3. Find any request to `image_gen`
-4. Copy headers from the **Request Headers** section
-5. Paste values into `auth.txt`
+2. Open Developer Tools → Network tab → Fetch/XHR
+3. Scroll down the page to load new images in the library
+4. Find any request to `image_gen`
+5. Copy headers from the **Request Headers** section
+6. Paste values into `auth.txt`
 
 ---
 
 ## 🚀 3. Script Usage
+### 🧭 Full Flow (Recommended):
 
-### 🧭 Full Flow (Recommended Order):
+1. **run main.py**
+
+```bash
+python main.py
+```
+- Downloads **only new images**, creates `gallery/vN/`, `images/`, `metadata_vN.json`, `page_1.html` etc., creates/updates `gallery/index.html` with links to all pages
+
+### 🧭 Single Steps:
 
 1. **Download New Images**
 
