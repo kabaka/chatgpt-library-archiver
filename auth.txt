@@ -1,0 +1,8 @@
+url=https://chatgpt.com/backend-api/my/recent/image_gen?limit=100
+authorization=Bearer <your authorization token here>
+cookie=__Secure-next-auth.session-token=<your session token here>
+referer=https://chatgpt.com/library
+user_agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36
+oai_client_version=<your token here>
+oai_device_id=<your token here>
+oai_language=<your language here>
