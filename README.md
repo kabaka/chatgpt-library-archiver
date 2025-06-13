@@ -51,11 +51,12 @@ oai_language=...
 
 ### How to Get These:
 1. Log into [https://chat.openai.com/library](https://chat.openai.com/library)
-2. Open Developer Tools → Network tab → Fetch/XHR
+2. Open Developer Tools (by pressing F12) → Network tab → Fetch/XHR
 3. Scroll down the page to load new images in the library
-4. Find any request to `image_gen`
-5. Copy headers from the **Request Headers** section
-6. Paste values into `auth.txt`
+4. Find any request to `image_gen` : they should look like `image_gen?limit=6&after...`. Click on one of them
+5. Scroll down the **Headers** section until you find the required Headers, as in the `auth.txt`
+6. Copy the headers exactly as they are; note that for the cookie key, you only need the part starting with `__Secure-next-auth.session-token=...`
+7. Paste values into `auth.txt`
 
 ---
 
