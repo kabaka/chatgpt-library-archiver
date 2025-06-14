@@ -51,7 +51,7 @@ oai_language=...
 
 ### How to Get These:
 1. Log into [https://chat.openai.com/library](https://chat.openai.com/library)
-2. Open Developer Tools (by pressing F12) → Network tab → Fetch/XHR
+2. Open Developer Tools (in Chrome, by pressing F12) → Network tab → Fetch/XHR
 3. Scroll down the page to load new images in the library
 4. Find any request to `image_gen` : they should look like `image_gen?limit=6&after...`. Click on one of them
 5. Scroll down the **Headers** section until you find the required Headers, as in the `auth.txt`
