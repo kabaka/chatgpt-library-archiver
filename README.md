@@ -16,8 +16,7 @@ your images with this version or run a previous release to migrate your data.
 gallery/
 ├── images/
 ├── metadata.json
-├── page_1.html, page_2.html, ...
-├── index.html  ← main entry point
+└── index.html  ← single-page gallery
 auth.txt        ← credentials for API access
 ```
 
@@ -92,14 +91,15 @@ python -m chatgpt_library_archiver bootstrap
 ```bash
 python -m chatgpt_library_archiver
 ```
-- Downloads **only new images**, adds them to `gallery/images`, updates `gallery/metadata.json`, and regenerates gallery pages and `gallery/index.html`
+- Downloads **only new images**, adds them to `gallery/images`, updates `gallery/metadata.json`, and regenerates `gallery/index.html`
 
 3. **Regenerate gallery without downloading**
 
 ```bash
 python -m chatgpt_library_archiver gallery
 ```
-- Rebuilds the HTML gallery from existing files
+- Rebuilds the HTML gallery from existing files (sorts metadata and copies the
+  bundled `index.html`)
 
 Use the `-y/--yes` flag with any command to bypass confirmation prompts.
 
@@ -109,7 +109,8 @@ Use the `-y/--yes` flag with any command to bypass confirmation prompts.
 
 - No old data is overwritten. All images are saved with unique filenames and metadata is appended.
 - The gallery is fully static and self-contained.
-- The `index.html` in `gallery/` links to all gallery pages.
+- The `index.html` viewer is bundled with the tool and reused on each run.
+- `gallery/index.html` loads `metadata.json` via JavaScript and displays all images on one page.
 
 ### Disk Space
 This depends entirely on how many images you have.

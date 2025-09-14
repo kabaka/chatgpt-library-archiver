@@ -94,7 +94,7 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
     img1 = tmp_path / "gallery" / "images" / "1.jpg"
     img2 = tmp_path / "gallery" / "images" / "2.jpg"
     meta_path = tmp_path / "gallery" / "metadata.json"
-    html_path = tmp_path / "gallery" / "page_1.html"
+    html_path = tmp_path / "gallery" / "index.html"
 
     assert img1.exists()
     assert img2.exists()
@@ -106,5 +106,4 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
     assert ids == {"1", "2"}
 
     html = html_path.read_text()
-    assert "images/1.jpg" in html
-    assert "images/2.jpg" in html
+    assert "metadata.json" in html

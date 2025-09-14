@@ -33,4 +33,4 @@ def test_gallery_subcommand(monkeypatch, tmp_path):
     assert Path("gallery/images/a.jpg").exists()
     data = json.loads(Path("gallery/metadata.json").read_text())
     assert data[0]["id"] == "1"
-    assert Path("gallery/page_1.html").exists()
+    assert Path("gallery/index.html").exists()
