@@ -4,11 +4,11 @@ This is a Python-based toolset for downloading, archiving, and browsing images g
 
 ---
 
-## ⚠️ Temporary Note
+## ⚠️ Note
 
-Existing galleries using legacy versioned folders will be migrated into the unified
-`gallery/images` and `gallery/metadata.json` locations on the next run. This is a
-one-time move to ensure all images are displayed and linked correctly.
+Support for legacy versioned gallery folders (`v1`, `v2`, etc.) has been removed.
+If you're upgrading from an older release that used those directories, re-download
+your images with this version or run a previous release to migrate your data.
 
 ## 📦 Folder Structure
 
@@ -99,7 +99,7 @@ python -m chatgpt_library_archiver
 ```bash
 python -m chatgpt_library_archiver gallery
 ```
-- Consolidates any legacy media and rebuilds the HTML gallery from existing files
+- Rebuilds the HTML gallery from existing files
 
 Use the `-y/--yes` flag with any command to bypass confirmation prompts.
 

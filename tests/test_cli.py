@@ -15,11 +15,11 @@ def test_gallery_subcommand(monkeypatch, tmp_path):
 
     monkeypatch.setattr(incremental_downloader, "main", fail)
 
-    # Seed legacy gallery structure
-    legacy = Path("gallery") / "v1"
-    (legacy / "images").mkdir(parents=True)
-    (legacy / "images" / "a.jpg").write_text("img")
-    with open(legacy / "metadata_v1.json", "w", encoding="utf-8") as f:
+    # Seed existing gallery data
+    gallery = Path("gallery")
+    (gallery / "images").mkdir(parents=True)
+    (gallery / "images" / "a.jpg").write_text("img")
+    with open(gallery / "metadata.json", "w", encoding="utf-8") as f:
         json.dump([{"id": "1", "filename": "a.jpg", "created_at": 1}], f)
 
     # Invoke CLI to regenerate gallery
@@ -29,8 +29,7 @@ def test_gallery_subcommand(monkeypatch, tmp_path):
     cli = importlib.import_module("chatgpt_library_archiver.__main__")
     cli.main()
 
-    # Legacy directory removed and unified gallery generated
-    assert not legacy.exists()
+    # Gallery regenerated from existing metadata
     assert Path("gallery/images/a.jpg").exists()
     data = json.loads(Path("gallery/metadata.json").read_text())
     assert data[0]["id"] == "1"

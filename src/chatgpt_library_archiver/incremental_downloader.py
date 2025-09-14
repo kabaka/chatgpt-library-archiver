@@ -8,7 +8,7 @@ from urllib.parse import quote
 import requests
 from tqdm import tqdm
 
-from .gallery import consolidate_legacy_storage, generate_gallery
+from .gallery import generate_gallery
 from .utils import ensure_auth_config, prompt_yes_no
 
 
@@ -36,7 +36,6 @@ def main():
     images_dir = os.path.join("gallery", "images")
     os.makedirs(images_dir, exist_ok=True)
 
-    consolidate_legacy_storage("gallery")
     existing_ids = set()
     existing_metadata = []
     metadata_path = os.path.join("gallery", "metadata.json")
