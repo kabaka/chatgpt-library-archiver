@@ -41,6 +41,13 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
     # Avoid real delays during the test
     monkeypatch.setattr(incremental_downloader.time, "sleep", lambda s: None)
 
+    # Seed legacy data
+    legacy = tmp_path / "gallery" / "v1" / "images"
+    legacy.mkdir(parents=True)
+    (legacy / "1.jpg").write_bytes(b"old")
+    with open(tmp_path / "gallery" / "v1" / "metadata_v1.json", "w", encoding="utf-8") as f:
+        json.dump([{"id": "1", "filename": "1.jpg", "created_at": 1}], f)
+
     # Mock network requests for both metadata and image download
     calls = {"meta": 0}
 
@@ -55,19 +62,27 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
                             {
                                 "id": "1",
                                 "url": "https://img.local/1.jpg",
-                                "title": "test image",
+                                "title": "old image",
                                 "created_at": 1,
-                            }
+                            },
+                            {
+                                "id": "2",
+                                "url": "https://img.local/2.jpg",
+                                "title": "new image",
+                                "created_at": 2,
+                            },
                         ]
                     }
                 )
             else:
                 return FakeResponse(json_data={"items": []})
-        elif url == "https://img.local/1.jpg":
+        elif url == "https://img.local/2.jpg":
             return FakeResponse(
-                content=b"img",
+                content=b"img2",
                 headers={"Content-Type": "image/jpeg"},
             )
+        elif url == "https://img.local/1.jpg":
+            raise AssertionError("Should not re-download existing image")
         raise AssertionError(f"Unexpected URL {url}")
 
     monkeypatch.setattr(incremental_downloader.requests, "get", fake_get)
@@ -75,16 +90,20 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
     # Run the full download + gallery generation flow
     incremental_downloader.main()
 
-    img_path = tmp_path / "gallery" / "images" / "1.jpg"
+    img1 = tmp_path / "gallery" / "images" / "1.jpg"
+    img2 = tmp_path / "gallery" / "images" / "2.jpg"
     meta_path = tmp_path / "gallery" / "metadata.json"
     html_path = tmp_path / "gallery" / "page_1.html"
 
-    assert img_path.exists()
+    assert img1.exists()
+    assert img2.exists()
     assert meta_path.exists()
     assert html_path.exists()
 
     data = json.loads(meta_path.read_text())
-    assert data[0]["id"] == "1"
+    ids = {item["id"] for item in data}
+    assert ids == {"1", "2"}
 
     html = html_path.read_text()
     assert "images/1.jpg" in html
+    assert "images/2.jpg" in html

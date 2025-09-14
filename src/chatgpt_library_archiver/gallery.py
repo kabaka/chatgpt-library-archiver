@@ -1,7 +1,67 @@
 import json
 import os
+import shutil
 from datetime import datetime
 from typing import Dict, List
+
+
+def consolidate_legacy_storage(gallery_root: str) -> bool:
+    """Move legacy versioned data into unified locations.
+
+    Returns True if any legacy data was consolidated.
+    """
+    moved = False
+    if not os.path.isdir(gallery_root):
+        return moved
+
+    images_dir = os.path.join(gallery_root, "images")
+    os.makedirs(images_dir, exist_ok=True)
+
+    # Load existing unified metadata
+    meta_path = os.path.join(gallery_root, "metadata.json")
+    existing = []
+    if os.path.isfile(meta_path):
+        with open(meta_path, encoding="utf-8") as f:
+            existing = json.load(f)
+    existing_ids = {item.get("id") for item in existing}
+
+    versions = [
+        d
+        for d in os.listdir(gallery_root)
+        if d.startswith("v") and os.path.isdir(os.path.join(gallery_root, d))
+    ]
+
+    for version in versions:
+        version_dir = os.path.join(gallery_root, version)
+        legacy_meta_path = os.path.join(version_dir, f"metadata_{version}.json")
+        if not os.path.isfile(legacy_meta_path):
+            continue
+
+        with open(legacy_meta_path, encoding="utf-8") as f:
+            data = json.load(f)
+
+        for item in data:
+            image_name = item.get("filename")
+            if not image_name or item.get("id") in existing_ids:
+                continue
+
+            src_img = os.path.join(version_dir, "images", image_name)
+            dst_img = os.path.join(images_dir, image_name)
+            if os.path.isfile(src_img) and not os.path.exists(dst_img):
+                shutil.move(src_img, dst_img)
+
+            existing.append(item)
+            existing_ids.add(item.get("id"))
+            moved = True
+
+        # Remove the processed legacy directory
+        shutil.rmtree(version_dir, ignore_errors=True)
+
+    if moved:
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(existing, f, indent=2)
+
+    return moved
 
 
 def _load_all_metadata(gallery_root: str) -> List[Dict]:
@@ -10,9 +70,6 @@ def _load_all_metadata(gallery_root: str) -> List[Dict]:
     if not os.path.isdir(gallery_root):
         return items
 
-    seen_ids = set()
-
-    # Load unified metadata.json if present
     meta_path = os.path.join(gallery_root, "metadata.json")
     if os.path.isfile(meta_path):
         with open(meta_path, encoding="utf-8") as f:
@@ -21,27 +78,6 @@ def _load_all_metadata(gallery_root: str) -> List[Dict]:
                 entry = dict(item)
                 entry["image_path"] = f"images/{item['filename']}"
                 items.append(entry)
-                seen_ids.add(item.get("id"))
-
-    # Backward compatibility: also load legacy versioned folders
-    versions = [
-        d
-        for d in os.listdir(gallery_root)
-        if d.startswith("v") and os.path.isdir(os.path.join(gallery_root, d))
-    ]
-    for version in versions:
-        meta_path = os.path.join(gallery_root, version, f"metadata_{version}.json")
-        if not os.path.isfile(meta_path):
-            continue
-        with open(meta_path, encoding="utf-8") as f:
-            data = json.load(f)
-            for item in data:
-                if item.get("id") in seen_ids:
-                    continue
-                entry = dict(item)
-                entry["image_path"] = f"{version}/images/{item['filename']}"
-                items.append(entry)
-                seen_ids.add(item.get("id"))
     return items
 
 
@@ -184,6 +220,7 @@ def _generate_index(num_pages: int) -> str:
 
 def generate_gallery(gallery_root: str = "gallery", images_per_page: int = 500) -> int:
     os.makedirs(gallery_root, exist_ok=True)
+    consolidate_legacy_storage(gallery_root)
     items = _load_all_metadata(gallery_root)
     if not items:
         return 0
