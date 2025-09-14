@@ -1,4 +1,6 @@
 import json
+import subprocess
+import textwrap
 from importlib import resources
 from pathlib import Path
 
@@ -42,3 +44,47 @@ def test_generate_gallery_creates_single_index(tmp_path):
     with open(gallery_root / "metadata.json", encoding="utf-8") as f:
         sorted_data = json.load(f)
     assert [item["id"] for item in sorted_data] == ["2", "1"]
+
+
+def _extract_filter_fn() -> str:
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    start = html.index("function filterGallery")
+    end = html.index("function changeSize")
+    return html[start:end]
+
+
+def test_filter_by_date_range():
+    fn = _extract_filter_fn()
+    script = fn + textwrap.dedent(
+        """
+        const startMs = new Date('1970-01-02').getTime();
+        const inputs = {
+          searchBox: { value: '' },
+          startDate: { value: '1970-01-02' },
+          endDate: { value: '1970-01-02' },
+        };
+        const later = startMs + 86400000;
+        const cards = [
+          {
+            dataset: { title: 'a', created: String(startMs) },
+            style: {},
+          },
+          {
+            dataset: { title: 'b', created: String(later) },
+            style: {},
+          },
+        ];
+        const document = {
+          getElementById: id => inputs[id],
+          querySelectorAll: () => cards,
+        };
+        filterGallery();
+        console.log(cards.map(c => c.style.display).join(','));
+        """
+    )
+    result = subprocess.run(
+        ["node", "-e", script], capture_output=True, text=True, check=True
+    )
+    assert result.stdout.strip() == ",none"
