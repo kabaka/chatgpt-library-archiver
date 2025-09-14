@@ -43,3 +43,6 @@ target-version = "py37"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.setuptools.package-data]
+chatgpt_library_archiver = ["gallery_index.html"]

@@ -11,6 +11,10 @@ def write_metadata(root: Path, items):
         json.dump(items, f)
 
 
+def test_gallery_template_packaged():
+    assert resources.is_resource("chatgpt_library_archiver", "gallery_index.html")
+
+
 def test_generate_gallery_creates_single_index(tmp_path):
     gallery_root = tmp_path / "gallery"
     gallery_root.mkdir()
