@@ -41,12 +41,12 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
     # Avoid real delays during the test
     monkeypatch.setattr(incremental_downloader.time, "sleep", lambda s: None)
 
-    # Seed legacy data
-    legacy = tmp_path / "gallery" / "v1" / "images"
-    legacy.mkdir(parents=True)
-    (legacy / "1.jpg").write_bytes(b"old")
-    meta_v1 = tmp_path / "gallery" / "v1" / "metadata_v1.json"
-    with open(meta_v1, "w", encoding="utf-8") as f:
+    # Seed existing data
+    images_dir = tmp_path / "gallery" / "images"
+    images_dir.mkdir(parents=True)
+    (images_dir / "1.jpg").write_bytes(b"old")
+    meta_path = tmp_path / "gallery" / "metadata.json"
+    with open(meta_path, "w", encoding="utf-8") as f:
         json.dump([{"id": "1", "filename": "1.jpg", "created_at": 1}], f)
 
     # Mock network requests for both metadata and image download

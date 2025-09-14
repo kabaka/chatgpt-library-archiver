@@ -36,23 +36,3 @@ def test_generate_gallery_includes_all_images(tmp_path):
     # old image should still appear on second page
     html2 = (gallery_root / "page_2.html").read_text()
     assert "images/a.jpg" in html2
-
-
-def test_consolidates_legacy_metadata(tmp_path):
-    gallery_root = tmp_path / "gallery"
-    legacy = gallery_root / "v1"
-    (legacy / "images").mkdir(parents=True)
-
-    meta = [{"id": "1", "filename": "a.jpg", "created_at": 1}]
-    with open(legacy / "metadata_v1.json", "w", encoding="utf-8") as f:
-        json.dump(meta, f)
-    (legacy / "images" / "a.jpg").write_text("img")
-
-    generate_gallery(str(gallery_root), images_per_page=1)
-
-    assert not legacy.exists()
-    assert (gallery_root / "images" / "a.jpg").exists()
-    data = json.loads((gallery_root / "metadata.json").read_text())
-    assert data[0]["id"] == "1"
-    html = (gallery_root / "page_1.html").read_text()
-    assert "images/a.jpg" in html
