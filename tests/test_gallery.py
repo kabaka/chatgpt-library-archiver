@@ -36,6 +36,15 @@ def test_gallery_prefers_color_scheme():
     assert "@media (prefers-color-scheme: dark)" in html
 
 
+def test_gallery_uses_css_variables_and_layout():
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    assert '<div class="layout">' in html
+    assert ":root {" in html
+    assert "--thumb-size" in html
+
+
 def test_generate_gallery_creates_single_index(tmp_path):
     gallery_root = tmp_path / "gallery"
     gallery_root.mkdir()
@@ -53,6 +62,7 @@ def test_generate_gallery_creates_single_index(tmp_path):
     assert index.read_text() == expected
     assert 'loading="lazy"' in expected
     assert "data-src" in expected
+    assert '<div class="layout">' in expected
 
     with open(gallery_root / "metadata.json", encoding="utf-8") as f:
         data = json.load(f)
