@@ -32,7 +32,7 @@ def test_tag_missing_only(monkeypatch, tmp_path):
             "prompt": "p",
         },
     )
-    monkeypatch.setattr(tagger, "generate_tags", lambda *a, **k: ["x", "y"])
+    monkeypatch.setattr(tagger, "generate_tags", lambda *a, **k: (["x", "y"], None))
 
     count = tagger.tag_images(gallery_root=str(gallery))
     assert count == 1
@@ -59,7 +59,7 @@ def test_retag_all(monkeypatch, tmp_path):
             "prompt": "p",
         },
     )
-    monkeypatch.setattr(tagger, "generate_tags", lambda *a, **k: ["new"])
+    monkeypatch.setattr(tagger, "generate_tags", lambda *a, **k: (["new"], None))
 
     count = tagger.tag_images(gallery_root=str(gallery), re_tag=True)
     assert count == 2
@@ -86,7 +86,7 @@ def test_tag_specific_ids(monkeypatch, tmp_path):
             "prompt": "p",
         },
     )
-    monkeypatch.setattr(tagger, "generate_tags", lambda *a, **k: ["tagged"])
+    monkeypatch.setattr(tagger, "generate_tags", lambda *a, **k: (["tagged"], None))
 
     count = tagger.tag_images(gallery_root=str(gallery), ids=["2"])
     assert count == 1
@@ -125,3 +125,39 @@ def test_remove_specific_ids(tmp_path):
     data = json.loads((gallery / "metadata.json").read_text())
     assert data[0]["tags"] == []
     assert data[1]["tags"] == ["b"]
+
+
+def test_progress_and_tokens(monkeypatch, capsys, tmp_path):
+    gallery = _write_metadata(
+        tmp_path,
+        [
+            {"id": "1", "filename": "a.jpg", "tags": []},
+            {"id": "2", "filename": "b.jpg", "tags": []},
+        ],
+    )
+
+    monkeypatch.setattr(
+        tagger,
+        "ensure_tagging_config",
+        lambda path="tagging_config.json": {
+            "api_key": "k",
+            "model": "m",
+            "prompt": "p",
+        },
+    )
+    monkeypatch.setattr(
+        tagger,
+        "generate_tags",
+        lambda *a, **k: (["t"], {"total_tokens": 7}),
+    )
+
+    count = tagger.tag_images(gallery_root=str(gallery), re_tag=True, max_workers=2)
+    assert count == 2
+
+    out = capsys.readouterr().out
+    assert "Uploading a.jpg" in out
+    assert "Uploading b.jpg" in out
+    assert "Received tags for 1" in out
+    assert "Received tags for 2" in out
+    assert out.count("tokens: 7") == 2
+    assert "Total tokens used: 14" in out

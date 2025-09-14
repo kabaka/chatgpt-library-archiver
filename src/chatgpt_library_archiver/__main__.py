@@ -75,6 +75,12 @@ def parse_args() -> argparse.Namespace:
         default="tagging_config.json",
         help="Path to OpenAI tagging configuration",
     )
+    tag.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="Number of parallel workers",
+    )
 
     return parser.parse_args()
 

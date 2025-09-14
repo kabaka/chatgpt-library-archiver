@@ -3,7 +3,8 @@ import base64
 import json
 import mimetypes
 import os
-from typing import Iterable, List, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Iterable, List, Optional, Tuple
 
 from openai import OpenAI
 
@@ -49,7 +50,7 @@ def ensure_tagging_config(path: str = "tagging_config.json") -> dict:
 
 def generate_tags(
     image_path: str, client: OpenAI, model: str, prompt: str
-) -> List[str]:
+) -> Tuple[List[str], Optional[dict]]:
     mime = mimetypes.guess_type(image_path)[0] or "image/jpeg"
     with open(image_path, "rb") as f:
         b64 = base64.b64encode(f.read()).decode("ascii")
@@ -68,7 +69,9 @@ def generate_tags(
     )
     text = response.output_text.strip()
     parts = [p.strip() for p in text.replace("\n", ",").split(",")]
-    return [p for p in parts if p]
+    tags = [p for p in parts if p]
+    usage = getattr(response, "usage", None)
+    return tags, usage
 
 
 def tag_images(
@@ -80,6 +83,7 @@ def tag_images(
     config_path: str = "tagging_config.json",
     prompt: Optional[str] = None,
     model: Optional[str] = None,
+    max_workers: int = 4,
 ) -> int:
     meta_path = os.path.join(gallery_root, "metadata.json")
     if not os.path.isfile(meta_path):
@@ -101,14 +105,42 @@ def tag_images(
         client = OpenAI(api_key=cfg["api_key"])
         use_prompt = prompt or cfg.get("prompt", DEFAULT_PROMPT)
         use_model = model or cfg.get("model", "gpt-4.1-mini")
+        to_tag = []
         for item in data:
             if ids_set and item.get("id") not in ids_set:
                 continue
             if not ids_set and not re_tag and item.get("tags"):
                 continue
-            image_path = os.path.join(gallery_root, "images", item["filename"])
-            item["tags"] = generate_tags(image_path, client, use_model, use_prompt)
-            updated += 1
+            to_tag.append(item)
+
+        if to_tag:
+            print(f"Tagging {len(to_tag)} images.", flush=True)
+
+            total_tokens = 0
+
+            def process(item):
+                image_path = os.path.join(gallery_root, "images", item["filename"])
+                print(f"Uploading {item['filename']}...", flush=True)
+                tags, usage = generate_tags(image_path, client, use_model, use_prompt)
+                item["tags"] = tags
+                tokens = usage.get("total_tokens") if usage else None
+                if tokens is not None:
+                    print(
+                        f"Received tags for {item['id']} (tokens: {tokens})",
+                        flush=True,
+                    )
+                else:
+                    print(f"Received tags for {item['id']}", flush=True)
+                return tokens or 0
+
+            with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                futures = [ex.submit(process, item) for item in to_tag]
+                for fut in as_completed(futures):
+                    total_tokens += fut.result()
+                    updated += 1
+
+            if total_tokens:
+                print(f"Total tokens used: {total_tokens}", flush=True)
 
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
@@ -125,6 +157,12 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument("--remove-ids", nargs="+", help="Remove tags for specific IDs")
     parser.add_argument("--prompt", help="Override tagging prompt")
     parser.add_argument("--model", help="Override model ID")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="Number of parallel workers",
+    )
     return parser.parse_args(argv)
 
 
@@ -141,6 +179,7 @@ def main(args: Optional[argparse.Namespace] = None) -> int:
         config_path=args.config,
         prompt=args.prompt,
         model=args.model,
+        max_workers=args.workers,
     )
 
 
