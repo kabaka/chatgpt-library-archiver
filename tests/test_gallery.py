@@ -32,6 +32,8 @@ def test_generate_gallery_creates_single_index(tmp_path):
         "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
     )
     assert index.read_text() == expected
+    assert 'loading="lazy"' in expected
+    assert "data-src" in expected
 
     with open(gallery_root / "metadata.json", encoding="utf-8") as f:
         data = json.load(f)
