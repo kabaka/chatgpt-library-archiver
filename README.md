@@ -128,6 +128,17 @@ python -m chatgpt_library_archiver [--tag-new]
 4. **Generate or manage image tags**
 
 ```bash
+python -m chatgpt_library_archiver tag [--all|--ids <id...>|--remove-all|--remove-ids <id...>]
+```
+- Populates the `tags` field in `metadata.json` using the OpenAI API. By
+  default, only images missing tags are processed. Use `--all` to re-tag every
+  image, `--ids` to tag specific images, `--remove-all` to clear tags from all
+  images, or `--remove-ids` to clear tags for specific images. The prompt and
+  model can be overridden with `--prompt` and `--model`.
+
+4. **Generate or manage image tags**
+
+```bash
 python -m chatgpt_library_archiver tag [--gallery DIR] [--all|--ids <id...>|--remove-all|--remove-ids <id...>]
 ```
 - Populates the `tags` field in `metadata.json` using the OpenAI API. By
