@@ -91,8 +91,11 @@ def _extract_thumb_handler() -> str:
 
 def test_filter_by_date_range():
     fn = _extract_filter_fn()
-    script = "function updateVisibleIndices(){}\n" + fn + textwrap.dedent(
-        """
+    script = (
+        "function updateVisibleIndices(){}\n"
+        + fn
+        + textwrap.dedent(
+            """
         const startMs = new Date('1970-01-02').getTime();
         const inputs = {
           searchBox: { value: '' },
@@ -117,6 +120,7 @@ def test_filter_by_date_range():
         filterGallery();
         console.log(cards.map(c => c.style.display).join(','));
         """
+        )
     )
     result = subprocess.run(
         ["node", "-e", script], capture_output=True, text=True, check=True
