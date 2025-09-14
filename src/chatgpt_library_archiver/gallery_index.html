@@ -97,6 +97,15 @@ async function loadImages() {
   const response = await fetch('metadata.json');
   const data = await response.json();
   const gallery = document.getElementById('gallery');
+  const observer = new IntersectionObserver((entries, obs) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const img = entry.target;
+        img.src = img.dataset.src;
+        obs.unobserve(img);
+      }
+    });
+  });
   data.forEach(item => {
     const card = document.createElement('div');
     card.className = 'image-card';
@@ -114,13 +123,15 @@ async function loadImages() {
     const tags = tagsArr.join(', ') || '—';
     card.innerHTML =
       '<a href="' + imgPath + '" target="_blank">' +
-      '<img src="' + imgPath + '" alt="' + title + '"></a>' +
+      '<img data-src="' + imgPath + '" alt="' + title + '" loading="lazy"></a>' +
       '<div class="meta"><strong>' + (title || item.id) + '</strong><br>' +
       created + '<br>' +
       'Tags: ' + tags + '<br><a href="' +
       (item.conversation_link || '#') +
       '" target="_blank">View conversation</a></div>';
     gallery.appendChild(card);
+    const img = card.querySelector('img');
+    observer.observe(img);
   });
 }
 function toggleDarkMode() {
