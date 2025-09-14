@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 
@@ -47,7 +48,8 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
     calls = {"meta": 0}
 
     def fake_get(url, headers=None, timeout=None):
-        if url.startswith("https://api.example.com"):
+        parsed = urlparse(url)
+        if parsed.scheme == "https" and parsed.netloc == "api.example.com":
             calls["meta"] += 1
             if calls["meta"] == 1:
                 return FakeResponse(

@@ -123,6 +123,8 @@ General estimate:
 
 Tests cover `auth.txt` parsing, gallery generation, and a full end-to-end
 flow with mocked network calls so the suite runs entirely offline.
+Network requests in these tests use strict URL parsing to avoid
+ambiguous domain matches.
 
 ```
 python -m venv .venv
