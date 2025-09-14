@@ -27,7 +27,10 @@ def parse_args() -> argparse.Namespace:
     sub = parser.add_subparsers(dest="command")
     sub.add_parser(
         "bootstrap",
-        help="Create a virtual environment, install requirements, and run the downloader",
+        help=(
+            "Create a virtual environment, install requirements, "
+            "and run the downloader"
+        ),
     )
     sub.add_parser(
         "download",
@@ -50,4 +53,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

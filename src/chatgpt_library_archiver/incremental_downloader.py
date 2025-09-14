@@ -1,15 +1,16 @@
-import requests
-import os
 import json
 import mimetypes
+import os
 import time
-from urllib.parse import quote
-from glob import glob
-from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor
+from glob import glob
+from urllib.parse import quote
 
-from .utils import ensure_auth_config, prompt_yes_no
+import requests
+from tqdm import tqdm
+
 from .gallery import generate_gallery
+from .utils import ensure_auth_config, prompt_yes_no
 
 
 def build_headers(config: dict) -> dict:
@@ -36,7 +37,7 @@ def main():
     existing_ids = set()
     metadata_files = sorted(glob("gallery/v*/metadata_v*.json"))
     for path in metadata_files:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
             existing_ids.update(item["id"] for item in data)
 
@@ -71,7 +72,7 @@ def main():
             filename = f"{meta['id']}{ext}"
             filepath = os.path.join(folder, "images", filename)
 
-            with open(filepath, 'wb') as f:
+            with open(filepath, "wb") as f:
                 f.write(response.content)
 
             meta["filename"] = filename
@@ -87,13 +88,12 @@ def main():
 
         if response.status_code != 200:
             print("Error during fetch:", response.status_code)
-            if response.status_code in (401, 403):
-                if prompt_yes_no(
-                    "Auth seems invalid/expired. Re-enter credentials now?"
-                ):
-                    config = ensure_auth_config("auth.txt")
-                    headers = build_headers(config)
-                    continue
+            if response.status_code in (401, 403) and prompt_yes_no(
+                "Auth seems invalid/expired. Re-enter credentials now?"
+            ):
+                config = ensure_auth_config("auth.txt")
+                headers = build_headers(config)
+                continue
             break
 
         data = response.json()
