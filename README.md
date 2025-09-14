@@ -153,6 +153,18 @@ pre-commit run --all-files
 pytest
 ```
 
+### Git hook
+
+To ensure linting and tests pass before commits are created, configure Git to
+use the provided hooks:
+
+```
+git config core.hooksPath .githooks
+```
+
+The pre-commit hook runs `make lint` and `make test` and will block the commit
+if either step fails.
+
 To build a distributable package:
 
 ```
