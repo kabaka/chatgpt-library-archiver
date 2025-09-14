@@ -16,7 +16,9 @@ def test_generate_gallery_includes_new_versions(tmp_path):
     gallery_root.mkdir()
 
     # initial version with one image
-    write_metadata(gallery_root, "v1", [{"id": "1", "filename": "a.jpg", "created_at": 1}])
+    write_metadata(
+        gallery_root, "v1", [{"id": "1", "filename": "a.jpg", "created_at": 1}]
+    )
     (gallery_root / "v1" / "images" / "a.jpg").write_text("img")
 
     generate_gallery(str(gallery_root), images_per_page=1)
@@ -24,7 +26,9 @@ def test_generate_gallery_includes_new_versions(tmp_path):
     assert "v1/images/a.jpg" in html
 
     # add new version and regenerate
-    write_metadata(gallery_root, "v2", [{"id": "2", "filename": "b.jpg", "created_at": 2}])
+    write_metadata(
+        gallery_root, "v2", [{"id": "2", "filename": "b.jpg", "created_at": 2}]
+    )
     (gallery_root / "v2" / "images" / "b.jpg").write_text("img")
 
     generate_gallery(str(gallery_root), images_per_page=1)

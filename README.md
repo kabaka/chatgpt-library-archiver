@@ -119,7 +119,7 @@ General estimate:
 
 ---
 
-## 🧪 Tests
+## 🧪 Testing and Linting
 
 Tests cover `auth.txt` parsing and gallery generation.
 
@@ -127,6 +127,7 @@ Tests cover `auth.txt` parsing and gallery generation.
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -e .[dev]
+pre-commit run --all-files
 pytest
 ```
 
