@@ -5,11 +5,25 @@ from typing import Dict, List
 
 
 def _load_all_metadata(gallery_root: str) -> List[Dict]:
-    """Load all metadata entries from versioned folders."""
-    items = []
+    """Load all metadata entries from the gallery directory."""
+    items: List[Dict] = []
     if not os.path.isdir(gallery_root):
         return items
 
+    seen_ids = set()
+
+    # Load unified metadata.json if present
+    meta_path = os.path.join(gallery_root, "metadata.json")
+    if os.path.isfile(meta_path):
+        with open(meta_path, encoding="utf-8") as f:
+            data = json.load(f)
+            for item in data:
+                entry = dict(item)
+                entry["image_path"] = f"images/{item['filename']}"
+                items.append(entry)
+                seen_ids.add(item.get("id"))
+
+    # Backward compatibility: also load legacy versioned folders
     versions = [
         d
         for d in os.listdir(gallery_root)
@@ -22,9 +36,12 @@ def _load_all_metadata(gallery_root: str) -> List[Dict]:
         with open(meta_path, encoding="utf-8") as f:
             data = json.load(f)
             for item in data:
+                if item.get("id") in seen_ids:
+                    continue
                 entry = dict(item)
                 entry["image_path"] = f"{version}/images/{item['filename']}"
                 items.append(entry)
+                seen_ids.add(item.get("id"))
     return items
 
 

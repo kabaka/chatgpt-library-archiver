@@ -1,6 +1,6 @@
 # ChatGPT Library Archiver
 
-This is a Python-based toolset for downloading, archiving, and browsing images generated via ChatGPT (4o Image Generator). It stores all images in versioned folders and generates static HTML galleries for easy viewing.
+This is a Python-based toolset for downloading, archiving, and browsing images generated via ChatGPT (4o Image Generator). It stores all images in a single folder and generates static HTML galleries for easy viewing.
 
 ---
 
@@ -8,11 +8,8 @@ This is a Python-based toolset for downloading, archiving, and browsing images g
 
 ```
 gallery/
-├── v1/
-│   ├── images/
-│   └── metadata_v1.json
-├── v2/
-│   └── ...
+├── images/
+├── metadata.json
 ├── page_1.html, page_2.html, ...
 ├── index.html  ← main entry point
 auth.txt        ← credentials for API access
@@ -89,7 +86,7 @@ python -m chatgpt_library_archiver bootstrap
 ```bash
 python -m chatgpt_library_archiver
 ```
-- Downloads **only new images**, creates `gallery/vN/`, `images/`, `metadata_vN.json`, and regenerates gallery pages and `gallery/index.html`
+- Downloads **only new images**, adds them to `gallery/images`, updates `gallery/metadata.json`, and regenerates gallery pages and `gallery/index.html`
 
 Use the `-y/--yes` flag with any command to bypass confirmation prompts.
 
@@ -97,8 +94,8 @@ Use the `-y/--yes` flag with any command to bypass confirmation prompts.
 
 ## 💡 Notes
 
-- No old data is overwritten. Every batch is saved in its own versioned folder (`v1`, `v2`, etc.).
-- Each gallery version is fully static and self-contained.
+- No old data is overwritten. All images are saved with unique filenames and metadata is appended.
+- The gallery is fully static and self-contained.
 - The `index.html` in `gallery/` links to all gallery pages.
 
 ### Disk Space
@@ -115,7 +112,7 @@ General estimate:
 
 - If you get a `403` or `401`, your token or cookie may have expired. Refresh `auth.txt` by copying headers again from your browser.
 - During downloads, if a `401/403` occurs, the downloader now offers to re-enter credentials interactively.
-- If a version is created with no new images, it will be cleaned up automatically.
+- If no new images are found, the downloader simply exits without changes.
 
 ---
 
