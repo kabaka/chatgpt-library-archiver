@@ -2,7 +2,7 @@ import json
 import sys
 from pathlib import Path
 
-from chatgpt_library_archiver import incremental_downloader
+from chatgpt_library_archiver import incremental_downloader, tagger
 
 
 def test_gallery_subcommand(monkeypatch, tmp_path):
@@ -34,3 +34,32 @@ def test_gallery_subcommand(monkeypatch, tmp_path):
     data = json.loads(Path("gallery/metadata.json").read_text())
     assert data[0]["id"] == "1"
     assert Path("gallery/index.html").exists()
+
+
+def test_tag_subcommand(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+
+    # create minimal gallery
+    gallery = Path("gallery")
+    (gallery / "images").mkdir(parents=True)
+    (gallery / "images" / "a.jpg").write_text("img")
+    with open(gallery / "metadata.json", "w", encoding="utf-8") as f:
+        json.dump([{"id": "1", "filename": "a.jpg", "tags": ["old"]}], f)
+
+    called = {}
+
+    def fake_main(args):
+        called["args"] = args
+        return 0
+
+    monkeypatch.setattr(tagger, "main", fake_main)
+    monkeypatch.setattr(
+        sys, "argv", ["chatgpt_library_archiver", "tag", "--remove-all"]
+    )
+    import importlib
+
+    cli = importlib.import_module("chatgpt_library_archiver.__main__")
+    cli.main()
+
+    assert "args" in called
+    assert called["args"].remove_all is True

@@ -12,7 +12,7 @@ interactive prompts.
 import argparse
 import os
 
-from . import bootstrap, gallery, incremental_downloader
+from . import bootstrap, gallery, incremental_downloader, tagger
 
 
 def parse_args() -> argparse.Namespace:
@@ -40,6 +40,25 @@ def parse_args() -> argparse.Namespace:
         "gallery",
         help="Regenerate gallery without downloading new images",
     )
+    tag = sub.add_parser(
+        "tag",
+        help="Generate or remove tags for images using OpenAI",
+    )
+    tag.add_argument("--all", action="store_true", help="Re-tag all images")
+    tag.add_argument("--ids", nargs="+", help="Tag only specific image IDs")
+    tag.add_argument(
+        "--remove-all", action="store_true", help="Remove tags from all images"
+    )
+    tag.add_argument(
+        "--remove-ids", nargs="+", help="Remove tags from specific image IDs"
+    )
+    tag.add_argument("--prompt", help="Override tagging prompt")
+    tag.add_argument("--model", help="Override model ID")
+    tag.add_argument(
+        "--config",
+        default="tagging_config.json",
+        help="Path to OpenAI tagging configuration",
+    )
 
     return parser.parse_args()
 
@@ -57,6 +76,12 @@ def main() -> None:
             print(f"Generated gallery with {total} images.")
         else:
             print("No gallery generated (no images found).")
+    elif args.command == "tag":
+        count = tagger.main(args)
+        if count:
+            print(f"Updated tags for {count} images.")
+        else:
+            print("No images processed.")
     else:
         incremental_downloader.main()
 
