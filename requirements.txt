@@ -1,12 +1,2 @@
-Phyton dependencies (modules):
-requests      # For HTTP requests to ChatGPT API
-tqdm          # For progress bar during downloads
-You can install them with pip install (only few MB of space needed).
-
-Disk Space Requirements:
-This depends entirely on how many images you have.
-General Estimate:
-1 image ≈ 1.8 MB to 3.3 MB
-100 images ≈ 180-330 MB
-1,000 images ≈ 2-3 GB
-5,000 images ≈ 10-12 GB
+requests>=2.31.0
+tqdm>=4.66.0

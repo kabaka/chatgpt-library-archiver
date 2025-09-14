@@ -30,13 +30,27 @@ auth.txt        ← credentials for API access
 
 ### 🔹 Install Dependencies
 
-None required beyond standard `requests`, `concurrent.futures`, `tqdm` and `json`.
+Recommended: use a virtual environment.
+
+Option A — one command bootstrap (creates `.venv`, installs deps, runs):
+
+```
+python bootstrap.py
+```
+
+Option B — manual setup:
+
+```
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
 
 ---
 
 ## 🛠 2. `auth.txt` — Setup Your Authentication
 
-This file is required for authenticated API access. Here's what it must contain:
+This file is required for authenticated API access. You can either let the tool prompt you interactively on first run, or create it manually. Here's what it must contain if creating manually:
 
 ```
 url=https://chat.openai.com/backend-api/my/recent/image_gen?limit=100
@@ -63,12 +77,19 @@ oai_language=...
 ## 🚀 3. Script Usage
 ### 🧭 Full Flow (Recommended):
 
-1. **run main.py**
+1. **Run with venv bootstrap (recommended)**
+
+```bash
+python bootstrap.py
+```
+- Creates `.venv`, installs dependencies, and runs the full flow
+
+2. **Run manually inside venv**
 
 ```bash
 python main.py
 ```
-- Downloads **only new images**, creates `gallery/vN/`, `images/`, `metadata_vN.json`, `page_1.html` etc., creates/updates `gallery/index.html` with links to all pages
+- Downloads **only new images**, creates `gallery/vN/`, `images/`, `metadata_vN.json`, `page_1.html` etc., and updates `gallery/index.html`
 
 ### 🧭 Single Steps:
 
@@ -108,12 +129,34 @@ python generate_index.py
 - Each gallery version is fully static and self-contained.
 - The `index.html` provides a quick navigation hub.
 
+### Disk Space
+This depends entirely on how many images you have.
+General estimate:
+- 1 image ≈ 1.8–3.3 MB
+- 100 images ≈ 180–330 MB
+- 1,000 images ≈ 2–3 GB
+- 5,000 images ≈ 10–12 GB
+
 ---
 
 ## ❓ Troubleshooting
 
 - If you get a `403` or `401`, your token or cookie may have expired. Refresh `auth.txt` by copying headers again from your browser.
+- During downloads, if a `401/403` occurs, the downloader now offers to re-enter credentials interactively.
 - If a version is created with no new images, it will be cleaned up automatically.
+
+---
+
+## 🧪 Tests
+
+Minimal tests cover `auth.txt` parsing.
+
+```
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt -r requirements-dev.txt
+pytest -q
+```
 
 ---
 
