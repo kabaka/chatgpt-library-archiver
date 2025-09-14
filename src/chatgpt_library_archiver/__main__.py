@@ -66,6 +66,11 @@ def parse_args() -> argparse.Namespace:
     tag.add_argument("--prompt", help="Override tagging prompt")
     tag.add_argument("--model", help="Override model ID")
     tag.add_argument(
+        "--gallery",
+        default="gallery",
+        help="Path to gallery directory",
+    )
+    tag.add_argument(
         "--config",
         default="tagging_config.json",
         help="Path to OpenAI tagging configuration",
