@@ -1,7 +1,7 @@
 import os
 import tempfile
 
-from utils import load_auth_config, ensure_auth_config
+from utils import load_auth_config, ensure_auth_config, prompt_yes_no
 
 
 def write_auth(tmpdir, content: str):
@@ -46,4 +46,21 @@ def test_ensure_auth_config_raises_on_missing_when_user_declines(monkeypatch):
         except FileNotFoundError:
             raised = True
         assert raised
+
+
+def test_prompt_yes_no_respects_defaults(monkeypatch):
+    # default True when user presses enter
+    monkeypatch.setattr('builtins.input', lambda _: '')
+    assert prompt_yes_no('continue?') is True
+
+    # default False when user presses enter
+    monkeypatch.setattr('builtins.input', lambda _: '')
+    assert prompt_yes_no('continue?', default=False) is False
+
+
+def test_prompt_yes_no_parses_input(monkeypatch):
+    inputs = iter(['y', 'n'])
+    monkeypatch.setattr('builtins.input', lambda _: next(inputs))
+    assert prompt_yes_no('q?', default=False) is True
+    assert prompt_yes_no('q?', default=True) is False
 

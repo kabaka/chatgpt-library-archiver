@@ -3,6 +3,8 @@ import sys
 import subprocess
 import shutil
 
+from utils import prompt_yes_no
+
 
 def in_venv() -> bool:
     return (
@@ -30,8 +32,7 @@ def main():
     # Create venv if missing
     if not os.path.isdir(venv_dir):
         print('No virtual environment found (.venv).')
-        choice = input('Create one and install requirements now? [Y/n]: ').strip().lower()
-        if choice in ('', 'y', 'yes'):
+        if prompt_yes_no('Create one and install requirements now?'):
             print('Creating virtual environment...')
             subprocess.check_call([sys.executable, '-m', 'venv', venv_dir])
         else:
