@@ -4,33 +4,65 @@
 <meta charset="UTF-8">
 <title>Image Gallery</title>
 <style>
+:root {
+  --space: 20px;
+  --gap: 15px;
+  --max-width: 1200px;
+  --bg: #fff;
+  --text: #000;
+  --card-bg: #fff;
+  --meta-color: #444;
+  --control-bg: #ddd;
+}
 body {
   font-family: sans-serif;
-  margin: 20px;
-  background: white;
-  color: black;
+  margin: var(--space);
+  background: var(--bg);
+  color: var(--text);
   transition: background 0.3s, color 0.3s;
 }
 body.dark {
-  background: #111;
-  color: #eee;
+  --bg: #111;
+  --text: #eee;
+  --card-bg: #222;
+  --meta-color: #ccc;
+  --control-bg: #555;
 }
-.gallery-grid { display: grid; gap: 15px; }
-.gallery-small { grid-template-columns: repeat(6, 1fr); }
-.gallery-medium { grid-template-columns: repeat(4, 1fr); }
-.gallery-large { grid-template-columns: repeat(2, 1fr); }
+.layout {
+  max-width: var(--max-width);
+  margin: 0 auto;
+}
+.gallery-grid {
+  display: grid;
+  gap: var(--gap);
+  grid-template-columns: repeat(auto-fill, minmax(var(--thumb-size, 200px), 1fr));
+}
+.gallery-small { --thumb-size: 150px; }
+.gallery-medium { --thumb-size: 250px; }
+.gallery-large { --thumb-size: 400px; }
 .image-card {
   border: 1px solid #ccc;
   padding: 8px;
   border-radius: 8px;
   font-size: 0.85em;
-  background: white;
+  background: var(--card-bg);
 }
-body.dark .image-card { background: #222; }
 img { width: 100%; border-radius: 4px; display: block; }
-.meta { margin-top: 6px; color: #444; }
-body.dark .meta { color: #ccc; }
+.meta { margin-top: 6px; color: var(--meta-color); }
 h1 { margin-bottom: 10px; }
+.controls {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+.toggle, .size-select {
+  background: var(--control-bg);
+  border-radius: 5px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 0.9em;
+}
 .search-bar {
   margin-bottom: 15px;
   display: flex;
@@ -44,37 +76,14 @@ h1 { margin-bottom: 10px; }
 .search-bar input[type="text"] {
   width: 200px;
 }
-.controls {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-bottom: 15px;
-}
-.toggle {
-  background: #ddd;
-  border-radius: 5px;
-  padding: 6px 10px;
-  cursor: pointer;
-  font-size: 0.9em;
-}
-body.dark .toggle { background: #555; color: white; }
-.size-select {
-  background: #ddd;
-  border-radius: 5px;
-  padding: 6px 10px;
-  cursor: pointer;
-  font-size: 0.9em;
-}
-body.dark .size-select { background: #555; color: white; }
 @media (prefers-color-scheme: dark) {
   body:not(.light) {
-    background: #111;
-    color: #eee;
+    --bg: #111;
+    --text: #eee;
+    --card-bg: #222;
+    --meta-color: #ccc;
+    --control-bg: #555;
   }
-  body:not(.light) .image-card { background: #222; }
-  body:not(.light) .meta { color: #ccc; }
-  body:not(.light) .toggle,
-  body:not(.light) .size-select { background: #555; color: white; }
 }
 #viewer {
   position: fixed;
@@ -103,29 +112,31 @@ body.dark .size-select { background: #555; color: white; }
 </style>
 </head>
 <body>
-<div class="controls">
-  <div class="size-select">
-    <strong>Select Image Size: </strong>
-    <select id="sizeSelector" onchange="changeSize()">
-      <option value="gallery-small">Small</option>
-      <option value="gallery-medium" selected>Medium</option>
-      <option value="gallery-large">Large</option>
-    </select>
+<div class="layout">
+  <div class="controls">
+    <div class="size-select">
+      <strong>Select Image Size: </strong>
+      <select id="sizeSelector" onchange="changeSize()">
+        <option value="gallery-small">Small</option>
+        <option value="gallery-medium" selected>Medium</option>
+        <option value="gallery-large">Large</option>
+      </select>
+    </div>
+    <div class="toggle" onclick="toggleDarkMode()">Toggle Dark Mode</div>
   </div>
-  <div class="toggle" onclick="toggleDarkMode()">Toggle Dark Mode</div>
+  <h1>Image Gallery</h1>
+  <div class="search-bar">
+    <input
+      type="text"
+      id="searchBox"
+      placeholder="Search by title..."
+      oninput="filterGallery()"
+    >
+    <input type="date" id="startDate" onchange="filterGallery()">
+    <input type="date" id="endDate" onchange="filterGallery()">
+  </div>
+  <div class="gallery-grid gallery-medium" id="gallery"></div>
 </div>
-<h1>Image Gallery</h1>
-<div class="search-bar">
-  <input
-    type="text"
-    id="searchBox"
-    placeholder="Search by title..."
-    oninput="filterGallery()"
-  >
-  <input type="date" id="startDate" onchange="filterGallery()">
-  <input type="date" id="endDate" onchange="filterGallery()">
-</div>
-<div class="gallery-grid gallery-medium" id="gallery"></div>
 <div id="viewer">
   <img id="viewerImg" src="" alt="">
   <div class="viewer-meta"><a id="viewerRaw" href="" target="_blank">Raw file</a></div>
