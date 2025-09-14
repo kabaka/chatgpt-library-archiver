@@ -74,6 +74,8 @@ oai_language=...
 6. Copy the headers exactly as they are; note that for the cookie key, you only need the part starting with `__Secure-next-auth.session-token=...`
 7. Paste values into `auth.txt`
 
+The interactive setup saves `auth.txt` with permissions `600` (owner read/write only) to protect your credentials. Never commit this file and store it securely.
+
 ---
 
 ## 🚀 3. Script Usage
