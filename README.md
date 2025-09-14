@@ -121,7 +121,8 @@ General estimate:
 
 ## 🧪 Testing and Linting
 
-Tests cover `auth.txt` parsing and gallery generation.
+Tests cover `auth.txt` parsing, gallery generation, and a full end-to-end
+flow with mocked network calls so the suite runs entirely offline.
 
 ```
 python -m venv .venv
