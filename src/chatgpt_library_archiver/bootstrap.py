@@ -3,7 +3,7 @@ import sys
 import subprocess
 import shutil
 
-from utils import prompt_yes_no
+from .utils import prompt_yes_no
 
 
 def in_venv() -> bool:
@@ -26,7 +26,7 @@ def venv_pip(venv_dir: str) -> str:
 
 
 def main():
-    project_root = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     venv_dir = os.path.join(project_root, '.venv')
 
     # Create venv if missing
@@ -52,10 +52,10 @@ def main():
     else:
         print('requirements.txt not found; skipping dependency installation.')
 
-    # Re-run main.py inside venv
+    # Re-run package CLI inside venv
     py_exe = venv_python(venv_dir)
-    print('Launching main.py inside the virtual environment...')
-    sys.exit(subprocess.call([py_exe, 'main.py']))
+    print('Launching chatgpt_library_archiver inside the virtual environment...')
+    sys.exit(subprocess.call([py_exe, '-m', 'chatgpt_library_archiver']))
 
 
 if __name__ == '__main__':

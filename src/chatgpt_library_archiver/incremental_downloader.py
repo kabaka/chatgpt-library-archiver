@@ -8,8 +8,8 @@ from glob import glob
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor
 
-from utils import ensure_auth_config, prompt_yes_no
-from gallery import generate_gallery
+from .utils import ensure_auth_config, prompt_yes_no
+from .gallery import generate_gallery
 
 
 def build_headers(config: dict) -> dict:

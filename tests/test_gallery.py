@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from gallery import generate_gallery
+from chatgpt_library_archiver.gallery import generate_gallery
 
 
 def write_metadata(root: Path, version: str, items):

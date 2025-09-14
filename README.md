@@ -35,7 +35,7 @@ Recommended: use a virtual environment.
 Option A — one command bootstrap (creates `.venv`, installs deps, runs):
 
 ```
-python main.py bootstrap
+python -m chatgpt_library_archiver bootstrap
 ```
 
 Option B — manual setup:
@@ -43,7 +43,7 @@ Option B — manual setup:
 ```
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -e .[dev]
 ```
 
 ---
@@ -80,14 +80,14 @@ oai_language=...
 1. **Run with venv bootstrap (recommended)**
 
 ```bash
-python main.py bootstrap
+python -m chatgpt_library_archiver bootstrap
 ```
 - Creates `.venv`, installs dependencies, and runs the full flow
 
 2. **Run manually inside venv**
 
 ```bash
-python main.py
+python -m chatgpt_library_archiver
 ```
 - Downloads **only new images**, creates `gallery/vN/`, `images/`, `metadata_vN.json`, and regenerates gallery pages and `gallery/index.html`
 
@@ -126,14 +126,20 @@ Tests cover `auth.txt` parsing and gallery generation.
 ```
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt -r requirements-dev.txt
-python -m pytest -q
+pip install -e .[dev]
+pytest
+```
+
+To build a distributable package:
+
+```
+python -m build
 ```
 
 ---
 
 ## ✅ You're All Set
 
-Once configured, rerun `python main.py` any time you generate new images in ChatGPT.
+Once configured, rerun `python -m chatgpt_library_archiver` any time you generate new images in ChatGPT.
 
 Happy archiving!

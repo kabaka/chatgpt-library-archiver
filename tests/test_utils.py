@@ -1,7 +1,11 @@
 import os
 import tempfile
 
-from utils import load_auth_config, ensure_auth_config, prompt_yes_no
+from chatgpt_library_archiver.utils import (
+    load_auth_config,
+    ensure_auth_config,
+    prompt_yes_no,
+)
 
 
 def write_auth(tmpdir, content: str):
