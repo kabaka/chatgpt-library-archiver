@@ -147,8 +147,8 @@ python -m chatgpt_library_archiver tag [--gallery DIR] [--all|--ids <id...>|--re
   images, `--remove-all` to clear tags from all images, or `--remove-ids` to
   clear tags for specific images. The prompt and model can be overridden with
   `--prompt` and `--model`. The command reports progress as each image is
-  tagged and displays total token usage if provided by the API. It can run in
-  parallel with `--workers`.
+  tagged and displays per-image and total token usage when the API includes a
+  `usage.total_tokens` field. It can run in parallel with `--workers`.
 
 Use the `-y/--yes` flag with any command to bypass confirmation prompts.
 

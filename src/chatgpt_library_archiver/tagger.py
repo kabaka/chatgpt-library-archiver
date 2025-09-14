@@ -4,7 +4,7 @@ import json
 import mimetypes
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Iterable, List, Optional, Tuple
+from typing import Any, Iterable, List, Optional, Tuple
 
 from openai import OpenAI
 
@@ -50,7 +50,7 @@ def ensure_tagging_config(path: str = "tagging_config.json") -> dict:
 
 def generate_tags(
     image_path: str, client: OpenAI, model: str, prompt: str
-) -> Tuple[List[str], Optional[dict]]:
+) -> Tuple[List[str], Optional[Any]]:
     mime = mimetypes.guess_type(image_path)[0] or "image/jpeg"
     with open(image_path, "rb") as f:
         b64 = base64.b64encode(f.read()).decode("ascii")
@@ -123,7 +123,9 @@ def tag_images(
                 print(f"Uploading {item['filename']}...", flush=True)
                 tags, usage = generate_tags(image_path, client, use_model, use_prompt)
                 item["tags"] = tags
-                tokens = usage.get("total_tokens") if usage else None
+                tokens = (
+                    getattr(usage, "total_tokens", None) if usage is not None else None
+                )
                 if tokens is not None:
                     print(
                         f"Received tags for {item['id']} (tokens: {tokens})",

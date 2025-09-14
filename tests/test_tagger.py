@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from chatgpt_library_archiver import tagger
 
@@ -148,7 +149,7 @@ def test_progress_and_tokens(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(
         tagger,
         "generate_tags",
-        lambda *a, **k: (["t"], {"total_tokens": 7}),
+        lambda *a, **k: (["t"], SimpleNamespace(total_tokens=7)),
     )
 
     count = tagger.tag_images(gallery_root=str(gallery), re_tag=True, max_workers=2)
