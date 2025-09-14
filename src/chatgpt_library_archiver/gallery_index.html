@@ -40,7 +40,9 @@ h1 { margin-bottom: 10px; }
 .search-bar input {
   padding: 6px;
   font-size: 1em;
-  width: 300px;
+}
+.search-bar input[type="text"] {
+  width: 200px;
 }
 .controls {
   display: flex;
@@ -86,6 +88,8 @@ body.dark .size-select { background: #555; color: white; }
     placeholder="Search by title..."
     oninput="filterGallery()"
   >
+  <input type="date" id="startDate" onchange="filterGallery()">
+  <input type="date" id="endDate" onchange="filterGallery()">
 </div>
 <div class="gallery-grid gallery-medium" id="gallery"></div>
 <script>
@@ -98,6 +102,8 @@ async function loadImages() {
     card.className = 'image-card';
     const title = item.title || '';
     card.dataset.title = title.toLowerCase();
+    card.dataset.created = item.created_at ? String(item.created_at * 1000) : '';
+    const tagsArr = item.tags || [];
     const imgPath = 'images/' + item.filename;
     const created = item.created_at
       ? new Date(item.created_at * 1000)
@@ -105,7 +111,7 @@ async function loadImages() {
           .replace('T', ' ')
           .split('.')[0]
       : '';
-    const tags = (item.tags || []).join(', ') || '—';
+    const tags = tagsArr.join(', ') || '—';
     card.innerHTML =
       '<a href="' + imgPath + '" target="_blank">' +
       '<img src="' + imgPath + '" alt="' + title + '"></a>' +
@@ -128,11 +134,20 @@ if (localStorage.getItem('theme') === 'dark') {
   document.body.classList.add('dark');
 }
 function filterGallery() {
-  const input = document.getElementById('searchBox').value.toLowerCase();
+  const text = document.getElementById('searchBox').value.toLowerCase();
+  const start = document.getElementById('startDate').value;
+  const end = document.getElementById('endDate').value;
+  const startMs = start ? new Date(start).getTime() : null;
+  const endMs = end ? new Date(end).getTime() : null;
   const cards = document.querySelectorAll('.image-card');
   cards.forEach(card => {
     const title = card.dataset.title;
-    card.style.display = title.includes(input) ? '' : 'none';
+    const created = card.dataset.created ? parseInt(card.dataset.created) : null;
+    const matchesText = title.includes(text);
+    const matchesStart = startMs === null || (created && created >= startMs);
+    const matchesEnd = endMs === null || (created && created <= endMs);
+    card.style.display =
+      matchesText && matchesStart && matchesEnd ? '' : 'none';
   });
 }
 function changeSize() {

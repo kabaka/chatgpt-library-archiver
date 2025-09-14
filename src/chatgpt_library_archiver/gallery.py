@@ -16,7 +16,10 @@ def _load_all_metadata(gallery_root: str) -> List[Dict]:
 
 
 def generate_gallery(gallery_root: str = "gallery") -> int:
-    """Write ``metadata.json`` and copy bundled ``index.html`` for the gallery."""
+    """Write ``metadata.json`` and copy bundled ``index.html`` for the gallery.
+
+    The bundled viewer supports filtering by title and date range.
+    """
     os.makedirs(gallery_root, exist_ok=True)
     items = _load_all_metadata(gallery_root)
     if not items:
