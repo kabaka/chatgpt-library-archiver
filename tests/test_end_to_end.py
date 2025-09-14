@@ -1,8 +1,5 @@
 import json
-from pathlib import Path
 from urllib.parse import urlparse
-
-import pytest
 
 from chatgpt_library_archiver import incremental_downloader
 
@@ -78,8 +75,8 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
     # Run the full download + gallery generation flow
     incremental_downloader.main()
 
-    img_path = tmp_path / "gallery" / "v1" / "images" / "1.jpg"
-    meta_path = tmp_path / "gallery" / "v1" / "metadata_v1.json"
+    img_path = tmp_path / "gallery" / "images" / "1.jpg"
+    meta_path = tmp_path / "gallery" / "metadata.json"
     html_path = tmp_path / "gallery" / "page_1.html"
 
     assert img_path.exists()
@@ -90,4 +87,4 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
     assert data[0]["id"] == "1"
 
     html = html_path.read_text()
-    assert "v1/images/1.jpg" in html
+    assert "images/1.jpg" in html

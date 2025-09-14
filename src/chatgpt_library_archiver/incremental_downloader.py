@@ -34,12 +34,25 @@ def main():
 
     # Step 1: Load all existing IDs
     os.makedirs("gallery", exist_ok=True)
+    images_dir = os.path.join("gallery", "images")
+    os.makedirs(images_dir, exist_ok=True)
+
     existing_ids = set()
-    metadata_files = sorted(glob("gallery/v*/metadata_v*.json"))
-    for path in metadata_files:
+    existing_metadata = []
+    metadata_path = os.path.join("gallery", "metadata.json")
+    if os.path.isfile(metadata_path):
+        with open(metadata_path, encoding="utf-8") as f:
+            existing_metadata = json.load(f)
+            existing_ids.update(item["id"] for item in existing_metadata)
+
+    # Backward compatibility: load legacy versioned metadata
+    for path in sorted(glob("gallery/v*/metadata_v*.json")):
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
-            existing_ids.update(item["id"] for item in data)
+            for item in data:
+                if item["id"] not in existing_ids:
+                    existing_ids.add(item["id"])
+                    existing_metadata.append(item)
 
     print(f"Found {len(existing_ids)} previously downloaded image IDs.")
 
@@ -47,30 +60,19 @@ def main():
         print("Aborted by user.")
         return
 
-    # Step 2: Create next version folder
-    existing_versions = [
-        int(p.split("v")[-1])
-        for p in os.listdir("gallery")
-        if p.startswith("v") and os.path.isdir(os.path.join("gallery", p))
-    ]
-    next_version = max(existing_versions, default=0) + 1
-    version_folder = f"gallery/v{next_version}"
-    os.makedirs(os.path.join(version_folder, "images"), exist_ok=True)
-    print(f"Saving new images to: {version_folder}/")
-
-    # Step 3: Download new items only
+    # Step 2: Download new items only
     max_workers = 14
     cursor = None
     new_metadata = []
     consecutive_empty_pages = 0
 
-    def download_image(meta, folder):
+    def download_image(meta):
         try:
             response = requests.get(meta["url"], headers=headers, timeout=30)
             content_type = response.headers.get("Content-Type", "")
             ext = mimetypes.guess_extension(content_type) or ".jpg"
             filename = f"{meta['id']}{ext}"
-            filepath = os.path.join(folder, "images", filename)
+            filepath = os.path.join(images_dir, filename)
 
             with open(filepath, "wb") as f:
                 f.write(response.content)
@@ -146,7 +148,7 @@ def main():
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             results = list(
                 tqdm(
-                    executor.map(lambda m: download_image(m, version_folder), metas),
+                    executor.map(download_image, metas),
                     total=len(metas),
                     desc="Downloading images",
                     unit="img",
@@ -172,17 +174,12 @@ def main():
 
     # Save metadata
     if new_metadata:
-        meta_path = os.path.join(version_folder, f"metadata_v{next_version}.json")
-        with open(meta_path, "w", encoding="utf-8") as f:
-            json.dump(new_metadata, f, indent=2)
-        print(f"Saved {len(new_metadata)} new images to {version_folder}/")
+        existing_metadata.extend(new_metadata)
+        with open(metadata_path, "w", encoding="utf-8") as f:
+            json.dump(existing_metadata, f, indent=2)
+        print(f"Saved {len(new_metadata)} new images to gallery/")
     else:
-        print("No new images to download. Cleaning up...")
-        try:
-            os.rmdir(os.path.join(version_folder, "images"))
-            os.rmdir(version_folder)
-        except OSError:
-            pass
+        print("No new images to download.")
 
     # Regenerate gallery pages and index after downloads
     generate_gallery()
