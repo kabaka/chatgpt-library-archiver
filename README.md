@@ -35,7 +35,7 @@ Recommended: use a virtual environment.
 Option A — one command bootstrap (creates `.venv`, installs deps, runs):
 
 ```
-python bootstrap.py
+python main.py bootstrap
 ```
 
 Option B — manual setup:
@@ -80,7 +80,7 @@ oai_language=...
 1. **Run with venv bootstrap (recommended)**
 
 ```bash
-python bootstrap.py
+python main.py bootstrap
 ```
 - Creates `.venv`, installs dependencies, and runs the full flow
 
@@ -91,16 +91,7 @@ python main.py
 ```
 - Downloads **only new images**, creates `gallery/vN/`, `images/`, `metadata_vN.json`, and regenerates gallery pages and `gallery/index.html`
 
-### 🧭 Single Step:
-
-```bash
-python incremental_downloader.py
-```
-
-- Scans all existing `v*/metadata_v*.json`
-- Downloads **only new images**
-- Creates `gallery/vN/`, `images/`, `metadata_vN.json`
-- Regenerates gallery pages and `gallery/index.html`
+Use the `-y/--yes` flag with any command to bypass confirmation prompts.
 
 ---
 
@@ -143,6 +134,6 @@ python -m pytest -q
 
 ## ✅ You're All Set
 
-Once configured, rerun `main.py` or `incremental_downloader.py` any time you generate new images in ChatGPT.
+Once configured, rerun `python main.py` any time you generate new images in ChatGPT.
 
 Happy archiving!

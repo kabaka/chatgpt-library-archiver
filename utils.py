@@ -13,8 +13,15 @@ REQUIRED_AUTH_KEYS = [
 ]
 
 
+# Environment variable to automatically answer yes to prompts
+ASSUME_YES_ENV = "ARCHIVER_ASSUME_YES"
+
+
 def prompt_yes_no(message: str, default: bool = True) -> bool:
     """Prompt the user with a yes/no question.
+
+    If ``ARCHIVER_ASSUME_YES`` is set to a truthy value (``1``, ``true``,
+    ``yes``), the prompt is bypassed and ``True`` is returned immediately.
 
     Args:
         message: The question to display to the user.
@@ -23,6 +30,11 @@ def prompt_yes_no(message: str, default: bool = True) -> bool:
     Returns:
         ``True`` for yes and ``False`` for no.
     """
+
+    assume = os.environ.get(ASSUME_YES_ENV, "").lower()
+    if assume in {"1", "true", "yes"}:
+        print(f"{message} [Y/n]: y (auto)")
+        return True
 
     prompt = f"{message} [{'Y/n' if default else 'y/N'}]: "
     while True:

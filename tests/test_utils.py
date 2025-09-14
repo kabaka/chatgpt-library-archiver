@@ -64,3 +64,9 @@ def test_prompt_yes_no_parses_input(monkeypatch):
     assert prompt_yes_no('q?', default=False) is True
     assert prompt_yes_no('q?', default=True) is False
 
+
+def test_prompt_yes_no_autoconfirm(monkeypatch):
+    monkeypatch.setenv('ARCHIVER_ASSUME_YES', '1')
+    # Should return True without prompting
+    assert prompt_yes_no('skip?') is True
+
