@@ -57,6 +57,26 @@ def _extract_filter_fn() -> str:
     return html[start:end]
 
 
+def _extract_viewer_script() -> str:
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    start = html.index("let viewerData")
+    end = html.index("loadImages();")
+    return html[start:end]
+
+
+def _extract_thumb_handler() -> str:
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    start = html.index("const link = card.querySelector('a.thumb');")
+    start = html.index("link.addEventListener", start)
+    end = html.index("const img = card.querySelector('img');", start)
+    snippet = html[start:end]
+    return "function attach(link, openViewer, index) {\n" + snippet + "}\n"
+
+
 def test_filter_by_date_range():
     fn = _extract_filter_fn()
     script = fn + textwrap.dedent(
@@ -90,3 +110,86 @@ def test_filter_by_date_range():
         ["node", "-e", script], capture_output=True, text=True, check=True
     )
     assert result.stdout.strip() == ",none"
+
+
+def test_viewer_keyboard_navigation():
+    script = textwrap.dedent(
+        """
+        const elements = {
+          viewer: { style: { display: 'none' } },
+          viewerImg: { src: '', alt: '' },
+          viewerRaw: { href: '' },
+        };
+        const document = {
+          getElementById: id => elements[id],
+          addEventListener: (type, handler) => { document._handler = handler; },
+        };
+        """
+    )
+    script += _extract_viewer_script()
+    script += textwrap.dedent(
+        """
+        viewerData = [{src: 'a.jpg', title: 'a'}, {src: 'b.jpg', title: 'b'}];
+        openViewer(0);
+        document._handler({ key: 'ArrowRight' });
+        console.log(
+          elements.viewerImg.src + ',' +
+          elements.viewerRaw.href + ',' +
+          elements.viewer.style.display
+        );
+        document._handler({ key: 'ArrowLeft' });
+        console.log(elements.viewerImg.src);
+        document._handler({ key: 'Escape' });
+        console.log(elements.viewer.style.display);
+        """
+    )
+    result = subprocess.run(
+        ["node", "-e", script], capture_output=True, text=True, check=True
+    )
+    assert result.stdout.strip().splitlines() == ["b.jpg,b.jpg,flex", "a.jpg", "none"]
+
+
+def test_ctrl_meta_click_opens_raw():
+    handler = _extract_thumb_handler()
+    script = handler + textwrap.dedent(
+        """
+        let opened = null;
+        function openViewer(i){ opened = i; }
+        const link = { addEventListener: (evt, fn) => { link.handler = fn; } };
+        attach(link, openViewer, 42);
+        const ctrlEvent = {
+          ctrlKey: true,
+          metaKey: false,
+          preventDefault: () => { ctrlEvent.prevented = true; },
+        };
+        link.handler(ctrlEvent);
+        const metaEvent = {
+          ctrlKey: false,
+          metaKey: true,
+          preventDefault: () => { metaEvent.prevented = true; },
+        };
+        link.handler(metaEvent);
+        const normalEvent = {
+          ctrlKey: false,
+          metaKey: false,
+          preventDefault: () => { normalEvent.prevented = true; },
+        };
+        link.handler(normalEvent);
+        console.log(JSON.stringify({
+          ctrlPrevented: ctrlEvent.prevented || false,
+          metaPrevented: metaEvent.prevented || false,
+          normalPrevented: normalEvent.prevented || false,
+          opened
+        }));
+        """
+    )
+    result = subprocess.run(
+        ["node", "-e", script], capture_output=True, text=True, check=True
+    )
+    data = json.loads(result.stdout)
+    assert data == {
+        "ctrlPrevented": False,
+        "metaPrevented": False,
+        "normalPrevented": True,
+        "opened": 42,
+    }

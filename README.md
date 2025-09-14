@@ -113,6 +113,10 @@ Use the `-y/--yes` flag with any command to bypass confirmation prompts.
 - `gallery/index.html` loads `metadata.json` via JavaScript and displays all images on one page.
 - Images are lazy-loaded using the Intersection Observer API so they're fetched only when they enter the viewport.
 - Use the search bar in the gallery to filter by title or a date range.
+ - Click any thumbnail to open a full-screen viewer overlay. Navigate with the left/right
+   arrow keys, press Escape to close, or follow the **Raw file** link to view the
+   underlying image. Ctrl-click (Cmd-click on macOS) a thumbnail to open the raw image
+   directly in a new tab without launching the viewer.
 
 ### Disk Space
 This depends entirely on how many images you have.
