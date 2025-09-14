@@ -9,6 +9,7 @@ from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor
 
 from utils import ensure_auth_config
+from gallery import generate_gallery
 
 
 def build_headers(config: dict) -> dict:
@@ -184,6 +185,9 @@ def main():
             os.rmdir(version_folder)
         except OSError:
             pass
+
+    # Regenerate gallery pages and index after downloads
+    generate_gallery()
 
 
 if __name__ == "__main__":
