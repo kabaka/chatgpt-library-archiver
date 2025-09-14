@@ -12,8 +12,7 @@ interactive prompts.
 import argparse
 import os
 
-import bootstrap
-import incremental_downloader
+from . import bootstrap, incremental_downloader
 
 
 def parse_args() -> argparse.Namespace:

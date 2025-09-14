@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chatgpt-library-archiver"
+version = "0.1.0"
+description = "Toolset for downloading, archiving, and browsing images generated via ChatGPT."
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.7"
+authors = [
+  {name = "bingwt504"}
+]
+dependencies = [
+  "requests>=2.31.0",
+  "tqdm>=4.66.0"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0",
+  "build>=1.0.0"
+]
+
+[project.scripts]
+chatgpt-archiver = "chatgpt_library_archiver.__main__:main"
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]

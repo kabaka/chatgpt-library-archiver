@@ -4,6 +4,9 @@ __pycache__/
 *.pyo
 *.log
 
+# Virtual environments
+.venv/
+
 # OS & Editor junk
 .DS_Store
 Thumbs.db
@@ -13,6 +16,11 @@ Thumbs.db
 gallery/*/images/
 gallery/*/filtered/
 gallery/*/metadata_v*.json
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
 
 # Auth credentials (never commit)
 auth.txt
