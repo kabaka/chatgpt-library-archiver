@@ -91,7 +91,7 @@ def _extract_thumb_handler() -> str:
 
 def test_filter_by_date_range():
     fn = _extract_filter_fn()
-    script = fn + textwrap.dedent(
+    script = "function updateVisibleIndices(){}\n" + fn + textwrap.dedent(
         """
         const startMs = new Date('1970-01-02').getTime();
         const inputs = {
@@ -132,8 +132,13 @@ def test_viewer_keyboard_navigation():
           viewerImg: { src: '', alt: '' },
           viewerRaw: { href: '' },
         };
+        const cards = [
+          { dataset: { index: '0' }, style: { display: '' } },
+          { dataset: { index: '1' }, style: { display: '' } },
+        ];
         const document = {
           getElementById: id => elements[id],
+          querySelectorAll: () => cards,
           addEventListener: (type, handler) => { document._handler = handler; },
         };
         """
@@ -159,6 +164,45 @@ def test_viewer_keyboard_navigation():
         ["node", "-e", script], capture_output=True, text=True, check=True
     )
     assert result.stdout.strip().splitlines() == ["b.jpg,b.jpg,flex", "a.jpg", "none"]
+
+
+def test_viewer_navigation_respects_filters():
+    script = textwrap.dedent(
+        """
+        const elements = {
+          viewer: { style: { display: 'none' } },
+          viewerImg: { src: '', alt: '' },
+          viewerRaw: { href: '' },
+        };
+        const cards = [
+          { dataset: { index: '0' }, style: { display: '' } },
+          { dataset: { index: '1' }, style: { display: 'none' } },
+          { dataset: { index: '2' }, style: { display: '' } },
+        ];
+        const document = {
+          getElementById: id => elements[id],
+          querySelectorAll: () => cards,
+          addEventListener: (type, handler) => { document._handler = handler; },
+        };
+        """
+    )
+    script += _extract_viewer_script()
+    script += textwrap.dedent(
+        """
+        viewerData = [
+          {src: 'a.jpg', title: 'a'},
+          {src: 'b.jpg', title: 'b'},
+          {src: 'c.jpg', title: 'c'},
+        ];
+        openViewer(0);
+        document._handler({ key: 'ArrowRight' });
+        console.log(elements.viewerImg.src);
+        """
+    )
+    result = subprocess.run(
+        ["node", "-e", script], capture_output=True, text=True, check=True
+    )
+    assert result.stdout.strip() == "c.jpg"
 
 
 def test_ctrl_meta_click_opens_raw():

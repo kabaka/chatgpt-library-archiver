@@ -158,6 +158,7 @@ async function loadImages() {
       (item.conversation_link || '#') +
       '" target="_blank">View conversation</a></div>';
     const index = viewerData.push({ src: imgPath, title: title || item.id }) - 1;
+    card.dataset.index = String(index);
     gallery.appendChild(card);
     const link = card.querySelector('a.thumb');
     link.addEventListener('click', e => {
@@ -170,6 +171,7 @@ async function loadImages() {
     const img = card.querySelector('img');
     observer.observe(img);
   });
+  updateVisibleIndices();
 }
 function toggleDarkMode() {
   document.body.classList.toggle('dark');
@@ -197,6 +199,7 @@ function filterGallery() {
     card.style.display =
       matchesText && matchesStart && matchesEnd ? '' : 'none';
   });
+  updateVisibleIndices();
 }
 function changeSize() {
   const gallery = document.getElementById('gallery');
@@ -204,9 +207,19 @@ function changeSize() {
     document.getElementById('sizeSelector').value;
 }
 let viewerData = [];
+let visibleIndices = [];
 let currentIndex = 0;
-function openViewer(index) {
-  currentIndex = index;
+
+function updateVisibleIndices() {
+  const cards = document.querySelectorAll('.image-card');
+  visibleIndices = Array.from(cards)
+    .filter(card => card.style.display !== 'none')
+    .map(card => parseInt(card.dataset.index));
+}
+
+function showViewerAt(pos) {
+  currentIndex = pos;
+  const index = visibleIndices[pos];
   const item = viewerData[index];
   const viewer = document.getElementById('viewer');
   const img = document.getElementById('viewerImg');
@@ -216,14 +229,21 @@ function openViewer(index) {
   img.alt = item.title;
   raw.href = item.src;
 }
+
+function openViewer(index) {
+  updateVisibleIndices();
+  const pos = visibleIndices.indexOf(index);
+  if (pos === -1) return;
+  showViewerAt(pos);
+}
 function closeViewer() {
   document.getElementById('viewer').style.display = 'none';
 }
 function showNext(delta) {
-  const total = viewerData.length;
+  const total = visibleIndices.length;
   if (!total) return;
-  const next = (currentIndex + delta + total) % total;
-  openViewer(next);
+  const nextPos = (currentIndex + delta + total) % total;
+  showViewerAt(nextPos);
 }
 document.addEventListener('keydown', e => {
   const viewer = document.getElementById('viewer');
