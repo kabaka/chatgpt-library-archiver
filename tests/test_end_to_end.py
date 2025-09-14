@@ -45,7 +45,8 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
     legacy = tmp_path / "gallery" / "v1" / "images"
     legacy.mkdir(parents=True)
     (legacy / "1.jpg").write_bytes(b"old")
-    with open(tmp_path / "gallery" / "v1" / "metadata_v1.json", "w", encoding="utf-8") as f:
+    meta_v1 = tmp_path / "gallery" / "v1" / "metadata_v1.json"
+    with open(meta_v1, "w", encoding="utf-8") as f:
         json.dump([{"id": "1", "filename": "1.jpg", "created_at": 1}], f)
 
     # Mock network requests for both metadata and image download
