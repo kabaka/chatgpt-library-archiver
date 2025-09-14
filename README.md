@@ -94,6 +94,13 @@ python -m chatgpt_library_archiver
 ```
 - Downloads **only new images**, adds them to `gallery/images`, updates `gallery/metadata.json`, and regenerates gallery pages and `gallery/index.html`
 
+3. **Regenerate gallery without downloading**
+
+```bash
+python -m chatgpt_library_archiver gallery
+```
+- Consolidates any legacy media and rebuilds the HTML gallery from existing files
+
 Use the `-y/--yes` flag with any command to bypass confirmation prompts.
 
 ---

@@ -12,7 +12,7 @@ interactive prompts.
 import argparse
 import os
 
-from . import bootstrap, incremental_downloader
+from . import bootstrap, gallery, incremental_downloader
 
 
 def parse_args() -> argparse.Namespace:
@@ -36,6 +36,10 @@ def parse_args() -> argparse.Namespace:
         "download",
         help="Download new images and regenerate the gallery (default)",
     )
+    sub.add_parser(
+        "gallery",
+        help="Regenerate gallery without downloading new images",
+    )
 
     return parser.parse_args()
 
@@ -47,6 +51,12 @@ def main() -> None:
 
     if args.command == "bootstrap":
         bootstrap.main()
+    elif args.command == "gallery":
+        total = gallery.generate_gallery()
+        if total:
+            print(f"Generated gallery with {total} images.")
+        else:
+            print("No gallery generated (no images found).")
     else:
         incremental_downloader.main()
 
