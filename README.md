@@ -104,16 +104,18 @@ this file private—never commit it to version control.
 1. **Run with venv bootstrap (recommended)**
 
 ```bash
-python -m chatgpt_library_archiver bootstrap
+python -m chatgpt_library_archiver bootstrap [--tag-new]
 ```
 - Creates `.venv`, installs dependencies, and runs the full flow
+- Use `--tag-new` to tag newly downloaded images after syncing
 
 2. **Run manually inside venv**
 
 ```bash
-python -m chatgpt_library_archiver
+python -m chatgpt_library_archiver [--tag-new]
 ```
 - Downloads **only new images**, adds them to `gallery/images`, updates `gallery/metadata.json`, and regenerates `gallery/index.html`
+- Add `--tag-new` to tag fresh images during the download
 
 3. **Regenerate gallery without downloading**
 

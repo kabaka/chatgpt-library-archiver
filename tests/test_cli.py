@@ -10,7 +10,7 @@ def test_gallery_subcommand(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
 
     # Ensure downloader is not invoked
-    def fail():  # pragma: no cover - should not be called
+    def fail(tag_new=False):  # pragma: no cover - should not be called
         raise AssertionError("incremental downloader should not run")
 
     monkeypatch.setattr(incremental_downloader, "main", fail)
@@ -63,3 +63,23 @@ def test_tag_subcommand(monkeypatch, tmp_path):
 
     assert "args" in called
     assert called["args"].remove_all is True
+
+
+def test_download_tag_new_flag(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+
+    called = {}
+
+    def fake_main(tag_new=False):
+        called["tag_new"] = tag_new
+
+    monkeypatch.setattr(incremental_downloader, "main", fake_main)
+    monkeypatch.setattr(
+        sys, "argv", ["chatgpt_library_archiver", "download", "--tag-new"]
+    )
+    import importlib
+
+    cli = importlib.import_module("chatgpt_library_archiver.__main__")
+    cli.main()
+
+    assert called.get("tag_new") is True

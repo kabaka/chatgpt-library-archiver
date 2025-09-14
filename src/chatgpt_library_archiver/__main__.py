@@ -23,18 +23,29 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Automatically answer yes to confirmation prompts.",
     )
+    parser.add_argument(
+        "--tag-new",
+        action="store_true",
+        help="Tag newly downloaded images using OpenAI",
+    )
 
     sub = parser.add_subparsers(dest="command")
-    sub.add_parser(
+    boot = sub.add_parser(
         "bootstrap",
         help=(
             "Create a virtual environment, install requirements, "
             "and run the downloader"
         ),
     )
-    sub.add_parser(
+    boot.add_argument(
+        "--tag-new", action="store_true", help="Tag newly downloaded images"
+    )
+    dl = sub.add_parser(
         "download",
         help="Download new images and regenerate the gallery (default)",
+    )
+    dl.add_argument(
+        "--tag-new", action="store_true", help="Tag newly downloaded images"
     )
     sub.add_parser(
         "gallery",
@@ -69,7 +80,7 @@ def main() -> None:
         os.environ["ARCHIVER_ASSUME_YES"] = "1"
 
     if args.command == "bootstrap":
-        bootstrap.main()
+        bootstrap.main(tag_new=args.tag_new)
     elif args.command == "gallery":
         total = gallery.generate_gallery()
         if total:
@@ -83,7 +94,7 @@ def main() -> None:
         else:
             print("No images processed.")
     else:
-        incremental_downloader.main()
+        incremental_downloader.main(tag_new=args.tag_new)
 
 
 if __name__ == "__main__":
