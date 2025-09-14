@@ -29,6 +29,13 @@ def test_viewer_image_css_preserves_aspect_ratio():
     assert "height: auto" in block
 
 
+def test_gallery_prefers_color_scheme():
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    assert "@media (prefers-color-scheme: dark)" in html
+
+
 def test_generate_gallery_creates_single_index(tmp_path):
     gallery_root = tmp_path / "gallery"
     gallery_root.mkdir()

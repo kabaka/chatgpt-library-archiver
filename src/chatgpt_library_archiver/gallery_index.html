@@ -66,6 +66,16 @@ body.dark .toggle { background: #555; color: white; }
   font-size: 0.9em;
 }
 body.dark .size-select { background: #555; color: white; }
+@media (prefers-color-scheme: dark) {
+  body:not(.light) {
+    background: #111;
+    color: #eee;
+  }
+  body:not(.light) .image-card { background: #222; }
+  body:not(.light) .meta { color: #ccc; }
+  body:not(.light) .toggle,
+  body:not(.light) .size-select { background: #555; color: white; }
+}
 #viewer {
   position: fixed;
   top: 0;
@@ -174,14 +184,25 @@ async function loadImages() {
   updateVisibleIndices();
 }
 function toggleDarkMode() {
-  document.body.classList.toggle('dark');
-  localStorage.setItem(
-    'theme',
-    document.body.classList.contains('dark') ? 'dark' : 'light'
-  );
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const isDark =
+    document.body.classList.contains('dark') ||
+    (!document.body.classList.contains('light') && prefersDark);
+  if (isDark) {
+    document.body.classList.remove('dark');
+    document.body.classList.add('light');
+    localStorage.setItem('theme', 'light');
+  } else {
+    document.body.classList.remove('light');
+    document.body.classList.add('dark');
+    localStorage.setItem('theme', 'dark');
+  }
 }
-if (localStorage.getItem('theme') === 'dark') {
+const savedTheme = localStorage.getItem('theme');
+if (savedTheme === 'dark') {
   document.body.classList.add('dark');
+} else if (savedTheme === 'light') {
+  document.body.classList.add('light');
 }
 function filterGallery() {
   const text = document.getElementById('searchBox').value.toLowerCase();
