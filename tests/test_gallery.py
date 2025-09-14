@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 import textwrap
 from importlib import resources
@@ -15,6 +16,17 @@ def write_metadata(root: Path, items):
 
 def test_gallery_template_packaged():
     assert resources.is_resource("chatgpt_library_archiver", "gallery_index.html")
+
+
+def test_viewer_image_css_preserves_aspect_ratio():
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    match = re.search(r"#viewer img \{[^}]*\}", html)
+    assert match, "viewer img block not found"
+    block = match.group(0)
+    assert "width: auto" in block
+    assert "height: auto" in block
 
 
 def test_generate_gallery_creates_single_index(tmp_path):
