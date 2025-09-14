@@ -79,7 +79,8 @@ def prompt_and_write_auth(path: str = "auth.txt") -> dict:
             else:
                 print("This field is required. Please enter a value.")
 
-    with open(path, "w", encoding="utf-8") as f:
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         for k in REQUIRED_AUTH_KEYS:
             f.write(f"{k}={cfg[k]}\n")
 
@@ -99,10 +100,10 @@ def ensure_auth_config(path: str = "auth.txt") -> dict:
     # Basic validation
     missing = [k for k in REQUIRED_AUTH_KEYS if not cfg.get(k)]
     if missing:
-        print(f"auth.txt is missing keys: {', '.join(missing)}")
-        if prompt_yes_no("Re-enter credentials now?"):
+        msg = "auth.txt is missing required keys. Re-enter credentials now?"
+        if prompt_yes_no(msg):
             cfg = prompt_and_write_auth(path)
         else:
-            raise ValueError(f"Missing required keys: {missing}")
+            raise ValueError("auth.txt is missing required keys")
 
     return cfg

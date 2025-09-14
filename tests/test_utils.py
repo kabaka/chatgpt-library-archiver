@@ -1,9 +1,14 @@
 import os
+import stat
 import tempfile
 
+import pytest
+
 from chatgpt_library_archiver.utils import (
+    REQUIRED_AUTH_KEYS,
     ensure_auth_config,
     load_auth_config,
+    prompt_and_write_auth,
     prompt_yes_no,
 )
 
@@ -50,6 +55,29 @@ def test_ensure_auth_config_raises_on_missing_when_user_declines(monkeypatch):
         except FileNotFoundError:
             raised = True
         assert raised
+
+
+def test_ensure_auth_config_rejects_partial_config(monkeypatch):
+    inputs = iter(["n"])
+    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+
+    with tempfile.TemporaryDirectory() as d:
+        path = write_auth(d, "url=https://example.com\n")
+        with pytest.raises(ValueError) as exc:
+            ensure_auth_config(path)
+        assert "required keys" in str(exc.value)
+
+
+def test_prompt_and_write_auth_sets_strict_permissions(monkeypatch):
+    values = iter([f"val_{k}" for k in REQUIRED_AUTH_KEYS])
+    monkeypatch.setattr("builtins.input", lambda _: next(values))
+
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "auth.txt")
+        cfg = prompt_and_write_auth(path)
+        mode = stat.S_IMODE(os.stat(path).st_mode)
+        assert mode == 0o600
+        assert cfg["url"] == "val_url"
 
 
 def test_prompt_yes_no_respects_defaults(monkeypatch):
