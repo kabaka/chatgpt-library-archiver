@@ -145,6 +145,38 @@ def test_filter_by_date_range():
     assert result.stdout.strip() == ",none"
 
 
+def test_filter_by_tags_boolean():
+    fn = _extract_filter_fn()
+    script = (
+        "function updateVisibleIndices(){}\n"
+        + fn
+        + textwrap.dedent(
+            """
+        const inputs = {
+          searchBox: { value: 'cat AND (black OR white)' },
+          startDate: { value: '' },
+          endDate: { value: '' },
+        };
+        const cards = [
+          { dataset: { title: 'img1', tags: 'blackcat\\npet' }, style: {} },
+          { dataset: { title: 'img2', tags: 'whitecat\\npet' }, style: {} },
+          { dataset: { title: 'img3', tags: 'graycat\\npet' }, style: {} },
+        ];
+        const document = {
+          getElementById: id => inputs[id],
+          querySelectorAll: () => cards,
+        };
+        filterGallery();
+        console.log(cards.map(c => c.style.display).join(','));
+        """
+        )
+    )
+    result = subprocess.run(
+        ["node", "-e", script], capture_output=True, text=True, check=True
+    )
+    assert result.stdout.strip() == ",,none"
+
+
 def test_viewer_keyboard_navigation():
     script = textwrap.dedent(
         """

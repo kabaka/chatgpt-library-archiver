@@ -129,7 +129,8 @@ h1 { margin-bottom: 10px; }
     <input
       type="text"
       id="searchBox"
-      placeholder="Search by title..."
+      placeholder="Search title or tags (use AND/OR)"
+      title="Supports AND, OR, NOT and parentheses"
       oninput="filterGallery()"
     >
     <input type="date" id="startDate" onchange="filterGallery()">
@@ -162,6 +163,7 @@ async function loadImages() {
     card.dataset.title = title.toLowerCase();
     card.dataset.created = item.created_at ? String(item.created_at * 1000) : '';
     const tagsArr = item.tags || [];
+    card.dataset.tags = tagsArr.map(t => t.toLowerCase()).join('\n');
     const imgPath = 'images/' + item.filename;
     const created = item.created_at
       ? new Date(item.created_at * 1000)
@@ -222,16 +224,70 @@ function filterGallery() {
   const startMs = start ? new Date(start).getTime() : null;
   const endMs = end ? new Date(end).getTime() : null;
   const cards = document.querySelectorAll('.image-card');
+  const searchFn = text ? makeSearchFn(text) : () => true;
   cards.forEach(card => {
-    const title = card.dataset.title;
     const created = card.dataset.created ? parseInt(card.dataset.created) : null;
-    const matchesText = title.includes(text);
+    const matchesText = searchFn(card);
     const matchesStart = startMs === null || (created && created >= startMs);
     const matchesEnd = endMs === null || (created && created <= endMs);
     card.style.display =
       matchesText && matchesStart && matchesEnd ? '' : 'none';
   });
   updateVisibleIndices();
+}
+
+function tokenize(expr) {
+  const tokens = [];
+  const re = /\s*(\(|\)|AND|OR|NOT|[^()\s]+)\s*/gi;
+  let m;
+  while ((m = re.exec(expr)) !== null) {
+    tokens.push(m[1].toLowerCase());
+  }
+  return tokens;
+}
+
+function makeSearchFn(expr) {
+  const tokens = tokenize(expr);
+  let i = 0;
+  function parseExpr() {
+    let node = parseTerm();
+    while (tokens[i] === 'or') {
+      i++;
+      const rhs = parseTerm();
+      const lhs = node;
+      node = card => lhs(card) || rhs(card);
+    }
+    return node;
+  }
+  function parseTerm() {
+    let node = parseFactor();
+    while (tokens[i] === 'and') {
+      i++;
+      const rhs = parseFactor();
+      const lhs = node;
+      node = card => lhs(card) && rhs(card);
+    }
+    return node;
+  }
+  function parseFactor() {
+    const token = tokens[i++];
+    if (token === 'not') {
+      const fn = parseFactor();
+      return card => !fn(card);
+    }
+    if (token === '(') {
+      const fn = parseExpr();
+      if (tokens[i] === ')') i++;
+      return fn;
+    }
+    if (token && token !== ')' && token !== 'and' && token !== 'or') {
+      return card =>
+        (card.dataset.title && card.dataset.title.includes(token)) ||
+        (card.dataset.tags && card.dataset.tags.includes(token));
+    }
+    return () => true;
+  }
+  return parseExpr();
 }
 function changeSize() {
   const gallery = document.getElementById('gallery');
