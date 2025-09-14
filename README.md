@@ -4,6 +4,12 @@ This is a Python-based toolset for downloading, archiving, and browsing images g
 
 ---
 
+## ⚠️ Temporary Note
+
+Existing galleries using legacy versioned folders will be migrated into the unified
+`gallery/images` and `gallery/metadata.json` locations on the next run. This is a
+one-time move to ensure all images are displayed and linked correctly.
+
 ## 📦 Folder Structure
 
 ```

@@ -3,13 +3,12 @@ import mimetypes
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
-from glob import glob
 from urllib.parse import quote
 
 import requests
 from tqdm import tqdm
 
-from .gallery import generate_gallery
+from .gallery import consolidate_legacy_storage, generate_gallery
 from .utils import ensure_auth_config, prompt_yes_no
 
 
@@ -37,6 +36,7 @@ def main():
     images_dir = os.path.join("gallery", "images")
     os.makedirs(images_dir, exist_ok=True)
 
+    consolidate_legacy_storage("gallery")
     existing_ids = set()
     existing_metadata = []
     metadata_path = os.path.join("gallery", "metadata.json")
@@ -44,15 +44,6 @@ def main():
         with open(metadata_path, encoding="utf-8") as f:
             existing_metadata = json.load(f)
             existing_ids.update(item["id"] for item in existing_metadata)
-
-    # Backward compatibility: load legacy versioned metadata
-    for path in sorted(glob("gallery/v*/metadata_v*.json")):
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-            for item in data:
-                if item["id"] not in existing_ids:
-                    existing_ids.add(item["id"])
-                    existing_metadata.append(item)
 
     print(f"Found {len(existing_ids)} previously downloaded image IDs.")
 
