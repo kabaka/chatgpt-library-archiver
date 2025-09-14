@@ -23,7 +23,7 @@ def venv_pip(venv_dir: str) -> str:
     return os.path.join(venv_dir, "bin", "pip")
 
 
-def main():
+def main(tag_new: bool = False):
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     venv_dir = os.path.join(project_root, ".venv")
 
@@ -55,7 +55,10 @@ def main():
     # Re-run package CLI inside venv
     py_exe = venv_python(venv_dir)
     print("Launching chatgpt_library_archiver inside the virtual environment...")
-    sys.exit(subprocess.call([py_exe, "-m", "chatgpt_library_archiver"]))
+    cmd = [py_exe, "-m", "chatgpt_library_archiver"]
+    if tag_new:
+        cmd.append("--tag-new")
+    sys.exit(subprocess.call(cmd))
 
 
 if __name__ == "__main__":

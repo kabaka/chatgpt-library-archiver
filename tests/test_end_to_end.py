@@ -41,6 +41,20 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
     # Avoid real delays during the test
     monkeypatch.setattr(incremental_downloader.time, "sleep", lambda s: None)
 
+    tagged = {}
+
+    def fake_tag_images(gallery_root="gallery", ids=None, **kwargs):
+        tagged["ids"] = list(ids or [])
+        meta = tmp_path / gallery_root / "metadata.json"
+        data = json.loads(meta.read_text())
+        for item in data:
+            if not ids or item["id"] in ids:
+                item["tags"] = ["t"]
+        meta.write_text(json.dumps(data))
+        return len(tagged["ids"])
+
+    monkeypatch.setattr(incremental_downloader.tagger, "tag_images", fake_tag_images)
+
     # Seed existing data
     images_dir = tmp_path / "gallery" / "images"
     images_dir.mkdir(parents=True)
@@ -89,7 +103,7 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
     monkeypatch.setattr(incremental_downloader.requests, "get", fake_get)
 
     # Run the full download + gallery generation flow
-    incremental_downloader.main()
+    incremental_downloader.main(tag_new=True)
 
     img1 = tmp_path / "gallery" / "images" / "1.jpg"
     img2 = tmp_path / "gallery" / "images" / "2.jpg"
@@ -104,6 +118,10 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
     data = json.loads(meta_path.read_text())
     ids = {item["id"] for item in data}
     assert ids == {"1", "2"}
+    assert tagged["ids"] == ["2"]
+    for item in data:
+        if item["id"] == "2":
+            assert item.get("tags") == ["t"]
 
     html = html_path.read_text()
     assert "metadata.json" in html

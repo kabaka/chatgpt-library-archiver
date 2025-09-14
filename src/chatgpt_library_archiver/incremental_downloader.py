@@ -8,6 +8,7 @@ from urllib.parse import quote
 import requests
 from tqdm import tqdm
 
+from . import tagger
 from .gallery import generate_gallery
 from .utils import ensure_auth_config, prompt_yes_no
 
@@ -25,7 +26,7 @@ def build_headers(config: dict) -> dict:
     }
 
 
-def main():
+def main(tag_new: bool = False) -> None:
     # Load auth (prompt if missing)
     config = ensure_auth_config("auth.txt")
     base_url = config["url"]
@@ -168,10 +169,14 @@ def main():
         with open(metadata_path, "w", encoding="utf-8") as f:
             json.dump(existing_metadata, f, indent=2)
         print(f"Saved {len(new_metadata)} new images to gallery/")
+        if tag_new:
+            ids = [m["id"] for m in new_metadata]
+            print("Tagging new images...")
+            tagger.tag_images(ids=ids)
     else:
         print("No new images to download.")
 
-    # Regenerate gallery pages and index after downloads
+    # Regenerate gallery pages and index after downloads (including tags)
     generate_gallery()
 
 

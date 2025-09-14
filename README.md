@@ -18,6 +18,7 @@ gallery/
 ├── metadata.json
 └── index.html  ← single-page gallery
 auth.txt        ← credentials for API access
+tagging_config.json ← OpenAI API key, model, and prompt for tagging
 ```
 
 ---
@@ -78,30 +79,63 @@ The interactive setup saves `auth.txt` with permissions `600` (owner read/write 
 
 ---
 
+## 🧩 `tagging_config.json` — OpenAI Tagging Setup
+
+This file supplies the OpenAI API key and options used when generating tags for
+images. It is created automatically on first run of the tagging command, or you
+can create it manually with contents like:
+
+```
+{
+  "api_key": "sk-...",
+  "model": "gpt-4.1-mini",
+  "prompt": "Generate concise, comma-separated tags describing this image."
+}
+```
+
+Only `api_key` is required; `model` and `prompt` have sensible defaults. Keep
+this file private—never commit it to version control.
+
+---
+
 ## 🚀 3. Script Usage
 ### 🧭 Full Flow (Recommended):
 
 1. **Run with venv bootstrap (recommended)**
 
 ```bash
-python -m chatgpt_library_archiver bootstrap
+python -m chatgpt_library_archiver bootstrap [--tag-new]
 ```
 - Creates `.venv`, installs dependencies, and runs the full flow
+- Use `--tag-new` to tag newly downloaded images after syncing
 
 2. **Run manually inside venv**
 
 ```bash
-python -m chatgpt_library_archiver
+python -m chatgpt_library_archiver [--tag-new]
 ```
 - Downloads **only new images**, adds them to `gallery/images`, updates `gallery/metadata.json`, and regenerates `gallery/index.html`
+- Add `--tag-new` to tag fresh images during the download
 
 3. **Regenerate gallery without downloading**
 
-```bash
-python -m chatgpt_library_archiver gallery
-```
-- Rebuilds the HTML gallery from existing files (sorts metadata and copies the
+ ```bash
+ python -m chatgpt_library_archiver gallery
+ ```
+ - Rebuilds the HTML gallery from existing files (sorts metadata and copies the
   bundled `index.html`)
+
+4. **Generate or manage image tags**
+
+```bash
+python -m chatgpt_library_archiver tag [--gallery DIR] [--all|--ids <id...>|--remove-all|--remove-ids <id...>]
+```
+- Populates the `tags` field in `metadata.json` using the OpenAI API. By
+  default, only images missing tags are processed. Override the gallery location
+  with `--gallery`. Use `--all` to re-tag every image, `--ids` to tag specific
+  images, `--remove-all` to clear tags from all images, or `--remove-ids` to
+  clear tags for specific images. The prompt and model can be overridden with
+  `--prompt` and `--model`.
 
 Use the `-y/--yes` flag with any command to bypass confirmation prompts.
 
