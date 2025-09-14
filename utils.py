@@ -13,6 +13,29 @@ REQUIRED_AUTH_KEYS = [
 ]
 
 
+def prompt_yes_no(message: str, default: bool = True) -> bool:
+    """Prompt the user with a yes/no question.
+
+    Args:
+        message: The question to display to the user.
+        default: The return value if the user just hits enter.
+
+    Returns:
+        ``True`` for yes and ``False`` for no.
+    """
+
+    prompt = f"{message} [{'Y/n' if default else 'y/N'}]: "
+    while True:
+        choice = input(prompt).strip().lower()
+        if not choice:
+            return default
+        if choice in ('y', 'yes'):
+            return True
+        if choice in ('n', 'no'):
+            return False
+        print("Please enter 'y' or 'n'.")
+
+
 def load_auth_config(path: str = 'auth.txt') -> dict:
     """Load key=value lines from auth.txt into a dict.
     Ignores lines without '=' and whitespace-only lines.
@@ -57,8 +80,7 @@ def ensure_auth_config(path: str = 'auth.txt') -> dict:
     try:
         cfg = load_auth_config(path)
     except FileNotFoundError:
-        choice = input('auth.txt not found. Create it now? [Y/n]: ').strip().lower()
-        if choice in ('', 'y', 'yes'):
+        if prompt_yes_no('auth.txt not found. Create it now?'):
             cfg = prompt_and_write_auth(path)
         else:
             raise
@@ -67,8 +89,7 @@ def ensure_auth_config(path: str = 'auth.txt') -> dict:
     missing = [k for k in REQUIRED_AUTH_KEYS if not cfg.get(k)]
     if missing:
         print(f"auth.txt is missing keys: {', '.join(missing)}")
-        choice = input('Re-enter credentials now? [Y/n]: ').strip().lower()
-        if choice in ('', 'y', 'yes'):
+        if prompt_yes_no('Re-enter credentials now?'):
             cfg = prompt_and_write_auth(path)
         else:
             raise ValueError(f"Missing required keys: {missing}")

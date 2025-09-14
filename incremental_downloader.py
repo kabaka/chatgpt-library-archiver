@@ -8,7 +8,7 @@ from glob import glob
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor
 
-from utils import ensure_auth_config
+from utils import ensure_auth_config, prompt_yes_no
 from gallery import generate_gallery
 
 
@@ -42,8 +42,7 @@ def main():
 
     print(f"Found {len(existing_ids)} previously downloaded image IDs.")
 
-    proceed = input("Proceed to download all new images from your account? [Y/n]: ").strip().lower()
-    if proceed not in ("", "y", "yes"):
+    if not prompt_yes_no("Proceed to download all new images from your account?"):
         print("Aborted by user.")
         return
 
@@ -89,10 +88,9 @@ def main():
         if response.status_code != 200:
             print("Error during fetch:", response.status_code)
             if response.status_code in (401, 403):
-                choice = input(
-                    "Auth seems invalid/expired. Re-enter credentials now? [Y/n]: "
-                ).strip().lower()
-                if choice in ("", "y", "yes"):
+                if prompt_yes_no(
+                    "Auth seems invalid/expired. Re-enter credentials now?"
+                ):
                     config = ensure_auth_config("auth.txt")
                     headers = build_headers(config)
                     continue

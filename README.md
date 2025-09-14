@@ -136,7 +136,7 @@ Tests cover `auth.txt` parsing and gallery generation.
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt -r requirements-dev.txt
-pytest -q
+python -m pytest -q
 ```
 
 ---
