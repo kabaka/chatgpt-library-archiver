@@ -269,23 +269,46 @@ function toggleDarkMode() {
   if (isDark) {
     document.body.classList.remove('dark');
     document.body.classList.add('light');
-    localStorage.setItem('theme', 'light');
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem('theme', 'light');
+    }
   } else {
     document.body.classList.remove('light');
     document.body.classList.add('dark');
-    localStorage.setItem('theme', 'dark');
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem('theme', 'dark');
+    }
   }
 }
-const savedTheme = localStorage.getItem('theme');
+const savedTheme = sessionStorage.getItem('theme');
 if (savedTheme === 'dark') {
   document.body.classList.add('dark');
 } else if (savedTheme === 'light') {
   document.body.classList.add('light');
 }
+const savedSize = sessionStorage.getItem('size');
+if (savedSize) {
+  document.getElementById('sizeSelector').value = savedSize;
+  document.getElementById('gallery').className = 'gallery-grid ' + savedSize;
+}
+const savedText = sessionStorage.getItem('filter-text') || '';
+const savedStart = sessionStorage.getItem('filter-start') || '';
+const savedEnd = sessionStorage.getItem('filter-end') || '';
+document.getElementById('searchBox').value = savedText;
+document.getElementById('startDate').value = savedStart;
+document.getElementById('endDate').value = savedEnd;
 function filterGallery() {
-  const text = document.getElementById('searchBox').value.toLowerCase();
-  const start = document.getElementById('startDate').value;
-  const end = document.getElementById('endDate').value;
+  const textEl = document.getElementById('searchBox');
+  const startEl = document.getElementById('startDate');
+  const endEl = document.getElementById('endDate');
+  const text = textEl.value.toLowerCase();
+  const start = startEl.value;
+  const end = endEl.value;
+  if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.setItem('filter-text', textEl.value);
+    sessionStorage.setItem('filter-start', start);
+    sessionStorage.setItem('filter-end', end);
+  }
   const startMs = start ? new Date(start).getTime() : null;
   const endMs = end ? new Date(end).getTime() : null;
   const cards = document.querySelectorAll('.image-card');
@@ -356,8 +379,11 @@ function makeSearchFn(expr) {
 }
 function changeSize() {
   const gallery = document.getElementById('gallery');
-  gallery.className = 'gallery-grid ' +
-    document.getElementById('sizeSelector').value;
+  const size = document.getElementById('sizeSelector').value;
+  gallery.className = 'gallery-grid ' + size;
+  if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.setItem('size', size);
+  }
 }
 let viewerData = [];
 let visibleIndices = [];
@@ -409,6 +435,6 @@ document.addEventListener('keydown', e => {
     showNext(-1);
   }
 });
-loadImages();
+loadImages().then(filterGallery);
 </script>
 </body></html>

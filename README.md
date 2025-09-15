@@ -159,6 +159,7 @@ Use the `-y/--yes` flag with any command to bypass confirmation prompts.
 - Hover over a thumbnail to reveal its title, timestamp, tags, and conversation link;
   the grid hides these details by default to keep the focus on the images.
 - The gallery respects your system's light or dark preference, and the **Toggle Dark Mode** button lets you override it.
+- Your selected theme, image size, and filter values are remembered for the current browser session.
 - Click any thumbnail to open a full-screen viewer overlay. Navigate with the left/right
   arrow keys, press Escape to close, or follow the **Raw file** link to view the
   underlying image. Ctrl-click (Cmd-click on macOS) a thumbnail to open the raw image
