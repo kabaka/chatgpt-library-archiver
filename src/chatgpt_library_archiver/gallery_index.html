@@ -241,6 +241,10 @@ async function loadImages() {
       created + tagsHtml + '<br><a href="' +
       (item.conversation_link || '#') +
       '" target="_blank">View conversation</a></div>';
+    const tagsSpan = card.querySelector('.tags');
+    if (tagsSpan) {
+      tagsSpan.title = tagsArr.join(', ');
+    }
     const index = viewerData.push({ src: imgPath, title: title || item.id }) - 1;
     card.dataset.index = String(index);
     gallery.appendChild(card);
