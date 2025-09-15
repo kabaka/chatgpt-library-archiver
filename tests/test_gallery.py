@@ -44,6 +44,18 @@ def test_gallery_hides_metadata_until_hover():
     assert ".image-card:hover .meta" in html
 
 
+def test_gallery_limits_metadata_height_and_truncates_tags():
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    meta_block = re.search(r"\.meta \{[^}]*\}", html)
+    assert meta_block and "max-height: 50%" in meta_block.group(0)
+    tags_block = re.search(r"\.meta \.tags \{[^}]*\}", html)
+    assert tags_block and "font-size: 0.7em" in tags_block.group(0)
+    assert "text-overflow: ellipsis" in tags_block.group(0)
+    assert "tagsArr.slice(0, 5)" in html
+
+
 def test_gallery_uses_css_variables_and_layout():
     html = resources.read_text(
         "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"

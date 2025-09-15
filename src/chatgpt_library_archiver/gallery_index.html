@@ -68,14 +68,22 @@ body.dark {
   bottom: 0;
   left: 0;
   width: 100%;
+  max-height: 50%;
   background: rgba(0, 0, 0, 0.6);
   color: #fff;
   font-size: 0.85em;
   padding: 6px;
   box-sizing: border-box;
+  overflow: hidden;
 }
 .image-card:hover .meta { display: block; }
 .meta a { color: #fff; text-decoration: underline; }
+.meta .tags {
+  font-size: 0.7em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 header.top-bar {
   position: sticky;
   top: 0;
@@ -217,13 +225,17 @@ async function loadImages() {
           .replace('T', ' ')
           .split('.')[0]
       : '';
-    const tags = tagsArr.join(', ') || '—';
+    const tagsSnippet = tagsArr.slice(0, 5).join(', ');
+    const extra = tagsArr.length > 5 ? '…' : '';
+    const tagsHtml =
+      tagsSnippet
+        ? '<br><span class="tags">' + tagsSnippet + extra + '</span>'
+        : '';
     card.innerHTML =
       '<a href="' + imgPath + '" class="thumb">' +
       '<img data-src="' + imgPath + '" alt="' + title + '" loading="lazy"></a>' +
       '<div class="meta"><strong>' + (title || item.id) + '</strong><br>' +
-      created + '<br>' +
-      'Tags: ' + tags + '<br><a href="' +
+      created + tagsHtml + '<br><a href="' +
       (item.conversation_link || '#') +
       '" target="_blank">View conversation</a></div>';
     const index = viewerData.push({ src: imgPath, title: title || item.id }) - 1;
