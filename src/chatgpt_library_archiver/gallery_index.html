@@ -16,7 +16,7 @@
 }
 body {
   font-family: sans-serif;
-  margin: var(--space);
+  margin: 0;
   background: var(--bg);
   color: var(--text);
   transition: background 0.3s, color 0.3s;
@@ -31,6 +31,7 @@ body.dark {
 .layout {
   max-width: var(--max-width);
   margin: 0 auto;
+  padding: 0 var(--space) var(--space);
 }
 .gallery-grid {
   display: grid;
@@ -61,12 +62,26 @@ body.dark {
 }
 .image-card:hover .meta { display: block; }
 .meta a { color: #fff; text-decoration: underline; }
-h1 { margin-bottom: 10px; }
+header.top-bar {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 100;
+  padding: 10px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+header.top-bar h1 {
+  margin: 0;
+  font-size: 1.2em;
+}
 .controls {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  margin-bottom: 15px;
+  margin: 0 0 0 auto;
 }
 .toggle, .size-select {
   background: var(--control-bg);
@@ -76,10 +91,13 @@ h1 { margin-bottom: 10px; }
   font-size: 0.9em;
 }
 .search-bar {
-  margin-bottom: 15px;
   display: flex;
   gap: 10px;
   align-items: center;
+}
+header.top-bar .search-bar {
+  flex: 1;
+  margin: 0;
 }
 .search-bar input {
   padding: 6px;
@@ -124,32 +142,34 @@ h1 { margin-bottom: 10px; }
 </style>
 </head>
 <body>
-<div class="layout">
-  <div class="controls">
-    <div class="size-select">
-      <strong>Select Image Size: </strong>
-      <select id="sizeSelector" onchange="changeSize()">
-        <option value="gallery-small">Small</option>
-        <option value="gallery-medium" selected>Medium</option>
-        <option value="gallery-large">Large</option>
-      </select>
-    </div>
-    <div class="toggle" onclick="toggleDarkMode()">Toggle Dark Mode</div>
+  <div class="layout">
+    <header class="top-bar">
+      <h1>Image Gallery</h1>
+      <div class="search-bar">
+        <input
+          type="text"
+          id="searchBox"
+          placeholder="Search title or tags (use AND/OR)"
+          title="Supports AND, OR, NOT and parentheses"
+          oninput="filterGallery()"
+        >
+        <input type="date" id="startDate" onchange="filterGallery()">
+        <input type="date" id="endDate" onchange="filterGallery()">
+      </div>
+      <div class="controls">
+        <div class="size-select">
+          <strong>Select Image Size: </strong>
+          <select id="sizeSelector" onchange="changeSize()">
+            <option value="gallery-small">Small</option>
+            <option value="gallery-medium" selected>Medium</option>
+            <option value="gallery-large">Large</option>
+          </select>
+        </div>
+        <div class="toggle" onclick="toggleDarkMode()">Toggle Dark Mode</div>
+      </div>
+    </header>
+    <div class="gallery-grid gallery-medium" id="gallery"></div>
   </div>
-  <h1>Image Gallery</h1>
-  <div class="search-bar">
-    <input
-      type="text"
-      id="searchBox"
-      placeholder="Search title or tags (use AND/OR)"
-      title="Supports AND, OR, NOT and parentheses"
-      oninput="filterGallery()"
-    >
-    <input type="date" id="startDate" onchange="filterGallery()">
-    <input type="date" id="endDate" onchange="filterGallery()">
-  </div>
-  <div class="gallery-grid gallery-medium" id="gallery"></div>
-</div>
 <div id="viewer">
   <img id="viewerImg" src="" alt="">
   <div class="viewer-meta"><a id="viewerRaw" href="" target="_blank">Raw file</a></div>
