@@ -162,6 +162,7 @@ Use the `-y/--yes` flag with any command to bypass confirmation prompts.
 - `gallery/index.html` loads `metadata.json` via JavaScript and displays all images on one page.
 - Images are lazy-loaded using the Intersection Observer API so they're fetched only when they enter the viewport.
 - A sticky header keeps the page title, search filters, and settings visible while you browse.
+- The header and image grid span the full width of the viewport, and thumbnails are centered within their square cells.
 - Use the header's search filters to filter by title or tags with fuzzy matching
   and Boolean expressions (AND/OR/NOT) or by a date range.
 - Hover over a thumbnail to reveal its title, timestamp, tags, and conversation link;
