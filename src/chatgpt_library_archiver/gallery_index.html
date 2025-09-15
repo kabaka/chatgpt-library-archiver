@@ -42,6 +42,8 @@ body.dark {
 .gallery-small { --thumb-size: 150px; }
 .gallery-medium { --thumb-size: 250px; }
 .gallery-large { --thumb-size: 400px; }
+.gallery-small .meta .created,
+.gallery-small .meta .tags { display: none; }
 .image-card {
   position: relative;
   border-radius: 8px;
@@ -232,13 +234,14 @@ async function loadImages() {
     const extra = tagsArr.length > 5 ? '…' : '';
     const tagsHtml =
       tagsSnippet
-        ? '<br><span class="tags">' + tagsSnippet + extra + '</span>'
+        ? '<span class="tags"><br>' + tagsSnippet + extra + '</span>'
         : '';
     card.innerHTML =
       '<a href="' + imgPath + '" class="thumb">' +
       '<img data-src="' + imgPath + '" alt="' + title + '" loading="lazy"></a>' +
-      '<div class="meta"><strong>' + (title || item.id) + '</strong><br>' +
-      created + tagsHtml + '<br><a href="' +
+      '<div class="meta"><strong>' + (title || item.id) + '</strong>' +
+      '<span class="created"><br>' + created + '</span>' +
+      tagsHtml + '<br><a href="' +
       (item.conversation_link || '#') +
       '" target="_blank">View conversation</a></div>';
     const tagsSpan = card.querySelector('.tags');
