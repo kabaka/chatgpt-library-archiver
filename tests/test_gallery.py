@@ -92,6 +92,18 @@ def test_gallery_uses_border_box_sizing():
     assert "box-sizing: border-box" in html
 
 
+def test_gallery_persists_theme_size_and_filter():
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    assert "sessionStorage.setItem('size'" in html
+    assert "sessionStorage.getItem('size')" in html
+    assert "sessionStorage.setItem('theme'" in html
+    assert "sessionStorage.getItem('theme')" in html
+    assert "sessionStorage.setItem('filter-text'" in html
+    assert "sessionStorage.getItem('filter-text')" in html
+
+
 def test_generate_gallery_creates_single_index(tmp_path):
     gallery_root = tmp_path / "gallery"
     gallery_root.mkdir()
@@ -138,7 +150,7 @@ def _extract_viewer_script() -> str:
         "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
     )
     start = html.index("let viewerData")
-    end = html.index("loadImages();")
+    end = html.index("loadImages().then(filterGallery);")
     return html[start:end]
 
 
