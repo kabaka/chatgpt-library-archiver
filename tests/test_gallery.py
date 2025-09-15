@@ -84,6 +84,14 @@ def test_gallery_grid_centers_images_and_is_full_width():
     assert header_block and "width: 100%" in header_block.group(0)
 
 
+def test_gallery_uses_border_box_sizing():
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    assert "*, *::before, *::after {" in html
+    assert "box-sizing: border-box" in html
+
+
 def test_generate_gallery_creates_single_index(tmp_path):
     gallery_root = tmp_path / "gallery"
     gallery_root.mkdir()
