@@ -36,6 +36,14 @@ def test_gallery_prefers_color_scheme():
     assert "@media (prefers-color-scheme: dark)" in html
 
 
+def test_gallery_hides_metadata_until_hover():
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    assert ".meta {" in html and "display: none" in html
+    assert ".image-card:hover .meta" in html
+
+
 def test_gallery_uses_css_variables_and_layout():
     html = resources.read_text(
         "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
