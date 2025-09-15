@@ -161,7 +161,8 @@ Use the `-y/--yes` flag with any command to bypass confirmation prompts.
 - The `index.html` viewer is bundled with the tool and reused on each run.
 - `gallery/index.html` loads `metadata.json` via JavaScript and displays all images on one page.
 - Images are lazy-loaded using the Intersection Observer API so they're fetched only when they enter the viewport.
-- Use the search bar in the gallery to filter by title or tags with fuzzy matching
+- A sticky header keeps the page title, search filters, and settings visible while you browse.
+- Use the header's search filters to filter by title or tags with fuzzy matching
   and Boolean expressions (AND/OR/NOT) or by a date range.
 - Hover over a thumbnail to reveal its title, timestamp, tags, and conversation link;
   the grid hides these details by default to keep the focus on the images.

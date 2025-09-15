@@ -53,6 +53,14 @@ def test_gallery_uses_css_variables_and_layout():
     assert "--thumb-size" in html
 
 
+def test_gallery_has_sticky_header():
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    assert '<header class="top-bar">' in html
+    assert "position: sticky" in html
+
+
 def test_generate_gallery_creates_single_index(tmp_path):
     gallery_root = tmp_path / "gallery"
     gallery_root.mkdir()
