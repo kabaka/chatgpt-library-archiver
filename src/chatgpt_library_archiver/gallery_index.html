@@ -7,10 +7,8 @@
 :root {
   --space: 20px;
   --gap: 15px;
-  --max-width: 1200px;
   --bg: #fff;
   --text: #000;
-  --card-bg: #fff;
   --meta-color: #444;
   --control-bg: #ddd;
 }
@@ -24,19 +22,19 @@ body {
 body.dark {
   --bg: #111;
   --text: #eee;
-  --card-bg: #222;
   --meta-color: #ccc;
   --control-bg: #555;
 }
 .layout {
-  max-width: var(--max-width);
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
   padding: 0 var(--space) var(--space);
 }
 .gallery-grid {
   display: grid;
   gap: var(--gap);
   grid-template-columns: repeat(auto-fill, minmax(var(--thumb-size, 200px), 1fr));
+  grid-auto-rows: var(--thumb-size, 200px);
 }
 .gallery-small { --thumb-size: 150px; }
 .gallery-medium { --thumb-size: 250px; }
@@ -45,9 +43,25 @@ body.dark {
   position: relative;
   border-radius: 8px;
   overflow: hidden;
-  background: var(--card-bg);
+  background: var(--bg);
+  height: 100%;
 }
-.image-card img { width: 100%; display: block; }
+.image-card a.thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+.image-card img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  object-position: center;
+  display: block;
+}
 .meta {
   display: none;
   position: absolute;
@@ -67,7 +81,8 @@ header.top-bar {
   top: 0;
   background: var(--bg);
   z-index: 100;
-  padding: 10px 0;
+  padding: 10px var(--space);
+  width: 100%;
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -110,7 +125,6 @@ header.top-bar .search-bar {
   body:not(.light) {
     --bg: #111;
     --text: #eee;
-    --card-bg: #222;
     --meta-color: #ccc;
     --control-bg: #555;
   }
@@ -142,8 +156,7 @@ header.top-bar .search-bar {
 </style>
 </head>
 <body>
-  <div class="layout">
-    <header class="top-bar">
+  <header class="top-bar">
       <h1>Image Gallery</h1>
       <div class="search-bar">
         <input
@@ -167,7 +180,8 @@ header.top-bar .search-bar {
         </div>
         <div class="toggle" onclick="toggleDarkMode()">Toggle Dark Mode</div>
       </div>
-    </header>
+  </header>
+  <div class="layout">
     <div class="gallery-grid gallery-medium" id="gallery"></div>
   </div>
 <div id="viewer">

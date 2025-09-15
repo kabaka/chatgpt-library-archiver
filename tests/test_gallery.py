@@ -61,6 +61,17 @@ def test_gallery_has_sticky_header():
     assert "position: sticky" in html
 
 
+def test_gallery_grid_centers_images_and_is_full_width():
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    assert "grid-auto-rows" in html
+    img_block = re.search(r"\.image-card img \{[^}]*\}", html)
+    assert img_block and "object-fit: contain" in img_block.group(0)
+    header_block = re.search(r"header.top-bar \{[^}]*\}", html)
+    assert header_block and "width: 100%" in header_block.group(0)
+
+
 def test_generate_gallery_creates_single_index(tmp_path):
     gallery_root = tmp_path / "gallery"
     gallery_root.mkdir()
