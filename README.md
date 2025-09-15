@@ -157,7 +157,8 @@ Use the `-y/--yes` flag with any command to bypass confirmation prompts.
 - Use the header's search filters to filter by title or tags with fuzzy matching
   and Boolean expressions (AND/OR/NOT) or by a date range.
 - Hover over a thumbnail to reveal its title, timestamp, tags, and conversation link;
-  the grid hides these details by default to keep the focus on the images.
+  the grid hides these details by default to keep the focus on the images. Small
+  thumbnails omit the timestamp and tags to keep overlays compact.
 - The gallery respects your system's light or dark preference, and the **Toggle Dark Mode** button lets you override it.
 - Your selected theme, image size, and filter values are remembered for the current browser session.
 - Click any thumbnail to open a full-screen viewer overlay. Navigate with the left/right

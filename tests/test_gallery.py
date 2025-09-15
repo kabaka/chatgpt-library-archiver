@@ -44,15 +44,30 @@ def test_gallery_hides_metadata_until_hover():
     assert ".image-card:hover .meta" in html
 
 
+def test_small_gallery_hides_date_and_tags():
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    assert '<span class="created"><br>' in html
+    assert '<span class="tags"><br>' in html
+    css = re.search(
+        r"\.gallery-small \.meta \.created,\s*\.gallery-small \.meta \.tags \{[^}]*\}",
+        html,
+    )
+    assert css and "display: none" in css.group(0)
+
+
 def test_gallery_limits_metadata_height_and_truncates_tags():
     html = resources.read_text(
         "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
     )
     meta_block = re.search(r"\.meta \{[^}]*\}", html)
     assert meta_block and "max-height: 50%" in meta_block.group(0)
-    tags_block = re.search(r"\.meta \.tags \{[^}]*\}", html)
-    assert tags_block and "font-size: 0.7em" in tags_block.group(0)
-    assert "text-overflow: ellipsis" in tags_block.group(0)
+    tags_blocks = re.findall(r"\.meta \.tags \{[^}]*\}", html)
+    assert any(
+        "font-size: 0.7em" in block and "text-overflow: ellipsis" in block
+        for block in tags_blocks
+    )
     assert "tagsArr.slice(0, 5)" in html
 
 
