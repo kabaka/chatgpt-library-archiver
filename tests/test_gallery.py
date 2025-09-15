@@ -97,6 +97,15 @@ def test_gallery_has_reset_and_github_link():
     assert 'href="https://github.com/kabaka/chatgpt-library-archiver"' in html
 
 
+def test_gallery_has_search_help_tooltip():
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    assert 'placeholder="Search images"' in html
+    assert 'id="searchHelp"' in html
+    assert "Use AND, OR, NOT, and parentheses to refine search" in html
+
+
 def test_gallery_grid_centers_images_and_is_full_width():
     html = resources.read_text(
         "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"

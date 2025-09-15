@@ -141,6 +141,18 @@ header.top-bar .search-bar {
   padding: 6px;
   cursor: pointer;
 }
+.search-bar .help-icon {
+  background: var(--control-bg);
+  border-radius: 50%;
+  cursor: help;
+  display: inline-block;
+  font-size: 0.8em;
+  font-weight: bold;
+  height: 20px;
+  line-height: 20px;
+  text-align: center;
+  width: 20px;
+}
 .date-range {
   display: flex;
   gap: 5px;
@@ -208,10 +220,16 @@ header.top-bar .search-bar {
         <input
           type="text"
           id="searchBox"
-          placeholder="Search title or tags (use AND/OR)"
-          title="Supports AND, OR, NOT and parentheses"
+          placeholder="Search images"
+          aria-describedby="searchHelp"
           oninput="filterGallery()"
         >
+        <span
+          id="searchHelp"
+          class="help-icon"
+          tabindex="0"
+          title="Use AND, OR, NOT, and parentheses to refine search."
+        >?</span>
         <div class="date-range">
           <span>Date range:</span>
           <input type="date" id="startDate" aria-label="Start date" onchange="filterGallery()">
