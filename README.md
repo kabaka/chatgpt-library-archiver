@@ -163,6 +163,8 @@ Use the `-y/--yes` flag with any command to bypass confirmation prompts.
 - Images are lazy-loaded using the Intersection Observer API so they're fetched only when they enter the viewport.
 - Use the search bar in the gallery to filter by title or tags with fuzzy matching
   and Boolean expressions (AND/OR/NOT) or by a date range.
+- Hover over a thumbnail to reveal its title, timestamp, tags, and conversation link;
+  the grid hides these details by default to keep the focus on the images.
 - The gallery respects your system's light or dark preference, and the **Toggle Dark Mode** button lets you override it.
 - Click any thumbnail to open a full-screen viewer overlay. Navigate with the left/right
   arrow keys, press Escape to close, or follow the **Raw file** link to view the

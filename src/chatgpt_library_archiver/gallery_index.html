@@ -41,14 +41,26 @@ body.dark {
 .gallery-medium { --thumb-size: 250px; }
 .gallery-large { --thumb-size: 400px; }
 .image-card {
-  border: 1px solid #ccc;
-  padding: 8px;
+  position: relative;
   border-radius: 8px;
-  font-size: 0.85em;
+  overflow: hidden;
   background: var(--card-bg);
 }
-img { width: 100%; border-radius: 4px; display: block; }
-.meta { margin-top: 6px; color: var(--meta-color); }
+.image-card img { width: 100%; display: block; }
+.meta {
+  display: none;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 0.85em;
+  padding: 6px;
+  box-sizing: border-box;
+}
+.image-card:hover .meta { display: block; }
+.meta a { color: #fff; text-decoration: underline; }
 h1 { margin-bottom: 10px; }
 .controls {
   display: flex;
