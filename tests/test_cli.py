@@ -2,7 +2,7 @@ import json
 import sys
 from pathlib import Path
 
-from chatgpt_library_archiver import incremental_downloader, tagger
+from chatgpt_library_archiver import importer, incremental_downloader, tagger
 
 
 def test_gallery_subcommand(monkeypatch, tmp_path):
@@ -84,3 +84,36 @@ def test_download_tag_new_flag(monkeypatch, tmp_path):
     cli.main()
 
     assert called.get("tag_new") is True
+
+
+def test_import_subcommand(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+
+    called = {}
+
+    def fake_import_images(**kwargs):
+        called.update(kwargs)
+        return [{"id": "abc"}]
+
+    monkeypatch.setattr(importer, "import_images", fake_import_images)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "chatgpt_library_archiver",
+            "import",
+            "example.png",
+            "--copy",
+            "--tag",
+            "demo",
+        ],
+    )
+
+    import importlib
+
+    cli = importlib.import_module("chatgpt_library_archiver.__main__")
+    cli.main()
+
+    assert called["inputs"] == ["example.png"]
+    assert called["copy_files"] is True
+    assert called["tags"] == ["demo"]
