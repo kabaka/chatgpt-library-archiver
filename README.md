@@ -91,7 +91,8 @@ can create it manually with contents like:
 {
   "api_key": "sk-...",
   "model": "gpt-4.1-mini",
-  "prompt": "Generate concise, comma-separated tags describing this image."
+  "prompt": "Generate concise, comma-separated tags describing this image.",
+  "rename_prompt": "Create a short, descriptive filename slug (kebab-case) for this image."
 }
 ```
 
@@ -140,6 +141,21 @@ python -m chatgpt_library_archiver tag [--gallery DIR] [--all|--ids <id...>|--re
   `--prompt` and `--model`. The command reports progress as each image is
   tagged and displays per-image and total token usage when the API includes a
   `usage.total_tokens` field. It can run in parallel with `--workers`.
+
+5. **Import local images into your gallery**
+
+```bash
+python -m chatgpt_library_archiver import <files_or_directories...> [options]
+```
+
+- Move local files into `gallery/images` and append metadata records.
+- Provide `--copy` to copy instead of move (default is move).
+- Use `--recursive` when passing directories to automatically traverse and import nested images.
+- Apply one or more tags to all imported items with repeated `--tag` flags.
+- Supply `--conversation-link` to attach a ChatGPT conversation URL for each file listed explicitly on the command line (directory imports skip this as they may expand to many files).
+- Pass `--tag-new` to immediately tag imports using the existing OpenAI tagging workflow (honors `--tag-model`, `--tag-prompt`, and `--tag-workers`).
+- Enable `--ai-rename` to request a descriptive filename from OpenAI. The `tagging_config.json` file supplies the API key and optionally a `rename_prompt` value for this feature. Provide `--rename-model` or `--rename-prompt` to override the defaults ad hoc.
+- Set a shared `--title` for all imported files or allow the tool to derive one from the filename/AI slug.
 
 Use the `-y/--yes` flag with any command to bypass confirmation prompts.
 
