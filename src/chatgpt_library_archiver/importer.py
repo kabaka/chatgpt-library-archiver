@@ -10,16 +10,15 @@ import re
 import shutil
 import unicodedata
 import uuid
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence, Tuple
 
 from openai import OpenAI
 
 from . import gallery, tagger
 from .utils import prompt_yes_no
-
 
 IMAGE_EXTENSIONS = {
     ".jpg",
@@ -42,7 +41,7 @@ class ImportItem:
     """Represents a single image scheduled for import."""
 
     source: Path
-    conversation_link: Optional[str] = None
+    conversation_link: str | None = None
 
 
 def _is_image_file(path: Path) -> bool:
@@ -73,23 +72,23 @@ def _unique_filename(base: str, ext: str, existing: set[str]) -> str:
     return candidate
 
 
-def _load_metadata(path: Path) -> List[dict]:
+def _load_metadata(path: Path) -> list[dict]:
     if path.is_file():
         with open(path, encoding="utf-8") as fh:
             return json.load(fh)
     return []
 
 
-def _write_metadata(path: Path, data: List[dict]) -> None:
+def _write_metadata(path: Path, data: list[dict]) -> None:
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2)
 
 
 def _collect_inputs(
     inputs: Sequence[str], recursive: bool
-) -> Tuple[List[ImportItem], List[Path]]:
-    items: List[ImportItem] = []
-    original_files: List[Path] = []
+) -> tuple[list[ImportItem], list[Path]]:
+    items: list[ImportItem] = []
+    original_files: list[Path] = []
     for raw in inputs:
         path = Path(raw)
         if not path.exists():
@@ -109,8 +108,8 @@ def _collect_inputs(
 
 
 def _prepare_ai_client(
-    *, config_path: str, model: Optional[str]
-) -> Tuple[OpenAI, str, str]:
+    *, config_path: str, model: str | None
+) -> tuple[OpenAI, str, str]:
     cfg = tagger.ensure_tagging_config(config_path)
     client = OpenAI(api_key=cfg["api_key"])
     use_model = model or cfg.get("model", "gpt-4.1-mini")
@@ -120,7 +119,7 @@ def _prepare_ai_client(
 
 def _generate_ai_slug(
     client: OpenAI, model: str, prompt: str, image_path: Path
-) -> Optional[str]:
+) -> str | None:
     mime = mimetypes.guess_type(str(image_path))[0] or "image/jpeg"
     with open(image_path, "rb") as fh:
         payload = base64.b64encode(fh.read()).decode("ascii")
@@ -148,18 +147,18 @@ def import_images(
     gallery_root: str = "gallery",
     copy_files: bool = False,
     recursive: bool = False,
-    tags: Optional[Iterable[str]] = None,
-    title: Optional[str] = None,
-    conversation_links: Optional[Sequence[str]] = None,
+    tags: Iterable[str] | None = None,
+    title: str | None = None,
+    conversation_links: Sequence[str] | None = None,
     tag_new: bool = False,
     config_path: str = "tagging_config.json",
     ai_rename: bool = False,
-    rename_model: Optional[str] = None,
-    rename_prompt: Optional[str] = None,
-    tag_prompt: Optional[str] = None,
-    tag_model: Optional[str] = None,
+    rename_model: str | None = None,
+    rename_prompt: str | None = None,
+    tag_prompt: str | None = None,
+    tag_model: str | None = None,
     tag_workers: int = 4,
-) -> List[dict]:
+) -> list[dict]:
     if not inputs:
         raise ValueError("No inputs supplied for import.")
 
@@ -187,7 +186,7 @@ def import_images(
     existing_files = {entry.get("filename", "") for entry in data}
     existing_files.discard("")
 
-    tags_list: List[str] = []
+    tags_list: list[str] = []
     if tags:
         for tag in tags:
             parts = [p.strip() for p in tag.split(",")]
@@ -198,26 +197,31 @@ def import_images(
     ):
         return []
 
-    ai_client: Optional[OpenAI] = None
-    ai_model: Optional[str] = None
-    ai_prompt: Optional[str] = None
+    ai_client: OpenAI | None = None
+    ai_model: str | None = None
+    ai_prompt: str | None = None
     if ai_rename:
         ai_client, ai_model, cfg_prompt = _prepare_ai_client(
             config_path=config_path, model=rename_model
         )
         ai_prompt = rename_prompt or cfg_prompt
 
-    imported: List[dict] = []
+    imported: list[dict] = []
 
     for item in items:
         source_path = item.source
         if not _is_image_file(source_path):
             continue
 
-        slug: Optional[str] = None
-        if ai_client is not None:
+        slug: str | None = None
+        if ai_client is not None and ai_model is not None:
             try:
-                slug = _generate_ai_slug(ai_client, ai_model, ai_prompt or DEFAULT_RENAME_PROMPT, source_path)
+                slug = _generate_ai_slug(
+                    ai_client,
+                    ai_model,
+                    ai_prompt or DEFAULT_RENAME_PROMPT,
+                    source_path,
+                )
             except Exception:
                 slug = None
 
@@ -270,7 +274,7 @@ def import_images(
     return imported
 
 
-def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Import images into the gallery")
     parser.add_argument("inputs", nargs="+", help="Files or directories to import")
     parser.add_argument("--gallery", default="gallery", help="Gallery root path")
@@ -315,8 +319,14 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument("--rename-model", help="Model to use for AI renaming")
     parser.add_argument("--rename-prompt", help="Prompt override for AI renaming")
-    parser.add_argument("--tag-prompt", help="Prompt override for tagging imported images")
-    parser.add_argument("--tag-model", help="Model override for tagging imported images")
+    parser.add_argument(
+        "--tag-prompt",
+        help="Prompt override for tagging imported images",
+    )
+    parser.add_argument(
+        "--tag-model",
+        help="Model override for tagging imported images",
+    )
     parser.add_argument(
         "--tag-workers",
         type=int,
@@ -326,7 +336,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(args: Optional[argparse.Namespace] = None) -> int:
+def main(args: argparse.Namespace | None = None) -> int:
     if args is None:
         args = parse_args()
     imported = import_images(
