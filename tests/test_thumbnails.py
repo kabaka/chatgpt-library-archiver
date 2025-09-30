@@ -59,8 +59,7 @@ def test_regenerate_thumbnails_parallel_uses_executor(monkeypatch, tmp_path):
             return DummyFuture(fn, *args)
 
     def fake_as_completed(futures):  # noqa: ANN001
-        for future in list(futures):
-            yield future
+        yield from list(futures)
 
     monkeypatch.setattr(thumbnails, "ProcessPoolExecutor", DummyExecutor)
     monkeypatch.setattr(thumbnails, "as_completed", fake_as_completed)
