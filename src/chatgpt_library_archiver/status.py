@@ -5,7 +5,6 @@ from __future__ import annotations
 import sys
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from typing import Optional
 
 from tqdm import tqdm
 
@@ -26,11 +25,11 @@ def format_status(action: str, detail: str) -> str:
 class StatusReporter(AbstractContextManager["StatusReporter"]):
     """Helper for logging messages while keeping a progress bar at the bottom."""
 
-    total: Optional[int] = None
+    total: int | None = None
     description: str = ""
     unit: str = "item"
     position: int = 0
-    disable: Optional[bool] = None
+    disable: bool | None = None
 
     def __post_init__(self) -> None:
         self._bar = None

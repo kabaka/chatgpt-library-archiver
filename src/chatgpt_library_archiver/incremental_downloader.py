@@ -50,13 +50,9 @@ def main(tag_new: bool = False) -> None:
     with StatusReporter(
         total=0, description="Overall progress", unit="img", position=1
     ) as progress:
-        progress.log(
-            f"Found {len(existing_ids)} previously downloaded image IDs."
-        )
+        progress.log(f"Found {len(existing_ids)} previously downloaded image IDs.")
 
-        if not prompt_yes_no(
-            "Proceed to download all new images from your account?"
-        ):
+        if not prompt_yes_no("Proceed to download all new images from your account?"):
             progress.log("Aborted by user.")
             return
 
@@ -80,9 +76,7 @@ def main(tag_new: bool = False) -> None:
                 meta["filename"] = filename
                 thumb_rel = thumbnails.thumbnail_relative_path(filename)
                 thumb_path = gallery_root / thumb_rel
-                thumbnails.create_thumbnail(
-                    filepath, thumb_path, reporter=progress
-                )
+                thumbnails.create_thumbnail(filepath, thumb_path, reporter=progress)
                 meta["thumbnail"] = thumb_rel
                 return (True, meta)
             except Exception as e:
@@ -161,7 +155,9 @@ def main(tag_new: bool = False) -> None:
                         desc="Downloading images",
                         unit="img",
                         dynamic_ncols=True,
-                        bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}",
+                        bar_format=(
+                            "{desc}: {percentage:3.0f}%|{bar}| " "{n_fmt}/{total_fmt}"
+                        ),
                         disable=progress.disable,
                         mininterval=1,
                         position=0,

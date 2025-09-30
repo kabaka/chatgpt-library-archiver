@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 import argparse
 import base64
 import json
 import mimetypes
 import os
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Iterable, List, Optional, Tuple
+from typing import Any
 
 from openai import OpenAI
 
@@ -51,7 +54,7 @@ def ensure_tagging_config(path: str = "tagging_config.json") -> dict:
 
 def generate_tags(
     image_path: str, client: OpenAI, model: str, prompt: str
-) -> Tuple[List[str], Optional[Any]]:
+) -> tuple[list[str], Any | None]:
     mime = mimetypes.guess_type(image_path)[0] or "image/jpeg"
     with open(image_path, "rb") as f:
         b64 = base64.b64encode(f.read()).decode("ascii")
@@ -77,13 +80,13 @@ def generate_tags(
 
 def tag_images(
     gallery_root: str = "gallery",
-    ids: Optional[Iterable[str]] = None,
+    ids: Iterable[str] | None = None,
     re_tag: bool = False,
     remove: bool = False,
-    remove_ids: Optional[Iterable[str]] = None,
+    remove_ids: Iterable[str] | None = None,
     config_path: str = "tagging_config.json",
-    prompt: Optional[str] = None,
-    model: Optional[str] = None,
+    prompt: str | None = None,
+    model: str | None = None,
     max_workers: int = 4,
 ) -> int:
     meta_path = os.path.join(gallery_root, "metadata.json")
@@ -130,7 +133,9 @@ def tag_images(
                     )
                     item["tags"] = tags
                     tokens = (
-                        getattr(usage, "total_tokens", None) if usage is not None else None
+                        getattr(usage, "total_tokens", None)
+                        if usage is not None
+                        else None
                     )
                     if tokens is not None:
                         reporter.log_status(
@@ -156,7 +161,7 @@ def tag_images(
     return updated
 
 
-def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Tag images with OpenAI")
     parser.add_argument("--gallery", default="gallery")
     parser.add_argument("--config", default="tagging_config.json")
@@ -175,7 +180,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(args: Optional[argparse.Namespace] = None) -> int:
+def main(args: argparse.Namespace | None = None) -> int:
     if args is None:
         args = parse_args()
     re_tag = args.all or bool(args.ids)

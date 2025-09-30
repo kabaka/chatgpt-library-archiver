@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, Optional
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
@@ -43,7 +43,7 @@ def _infer_format(dest: Path, image: Image.Image) -> str:
 
 
 def create_thumbnail(
-    source: Path, dest: Path, *, reporter: Optional[StatusReporter] = None
+    source: Path, dest: Path, *, reporter: StatusReporter | None = None
 ) -> None:
     """Create a thumbnail for ``source`` at ``dest``."""
 
@@ -75,7 +75,7 @@ def regenerate_thumbnails(
     metadata: Iterable[dict],
     *,
     force: bool = False,
-    reporter: Optional[StatusReporter] = None,
+    reporter: StatusReporter | None = None,
 ) -> tuple[list[str], bool]:
     """Ensure thumbnails exist for each metadata entry.
 
@@ -109,7 +109,7 @@ def regenerate_thumbnails(
     if reporter is not None and pending:
         reporter.add_total(len(pending))
 
-    for filename, source, thumb_path in pending:
+    for _filename, source, thumb_path in pending:
         create_thumbnail(source, thumb_path, reporter=reporter)
         if reporter is not None:
             reporter.advance()
