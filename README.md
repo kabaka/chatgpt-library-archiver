@@ -113,6 +113,10 @@ python -m chatgpt_library_archiver bootstrap [--tag-new]
 - Creates `.venv`, installs dependencies, and runs the full flow
 - Use `--tag-new` to tag newly downloaded images after syncing
 
+All high-level commands display a unified progress bar at the bottom of the
+terminal while streaming status messages (including thumbnail generation) above
+it so you can monitor each stage of the workflow without losing context.
+
 2. **Run manually inside venv**
 
 ```bash

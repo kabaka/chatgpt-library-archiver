@@ -18,6 +18,7 @@ from pathlib import Path
 from openai import OpenAI
 
 from . import gallery, tagger, thumbnails
+from .status import StatusReporter
 from .utils import prompt_yes_no
 
 IMAGE_EXTENSIONS = {
@@ -208,58 +209,65 @@ def import_images(
 
     imported: list[dict] = []
 
-    for item in items:
-        source_path = item.source
-        if not _is_image_file(source_path):
-            continue
+    with StatusReporter(
+        total=len(items), description="Importing images", unit="img"
+    ) as reporter:
+        for item in items:
+            source_path = item.source
+            if not _is_image_file(source_path):
+                reporter.advance()
+                continue
 
-        slug: str | None = None
-        if ai_client is not None and ai_model is not None:
-            try:
-                slug = _generate_ai_slug(
-                    ai_client,
-                    ai_model,
-                    ai_prompt or DEFAULT_RENAME_PROMPT,
-                    source_path,
-                )
-            except Exception:
-                slug = None
+            reporter.log_status("Importing", source_path.name)
 
-        if not slug:
-            slug = _slugify(source_path.stem)
+            slug: str | None = None
+            if ai_client is not None and ai_model is not None:
+                try:
+                    slug = _generate_ai_slug(
+                        ai_client,
+                        ai_model,
+                        ai_prompt or DEFAULT_RENAME_PROMPT,
+                        source_path,
+                    )
+                except Exception:
+                    slug = None
 
-        ext = source_path.suffix.lower() or ".jpg"
-        filename = _unique_filename(slug, ext, existing_files)
-        dest = images_dir / filename
+            if not slug:
+                slug = _slugify(source_path.stem)
 
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        if copy_files:
-            shutil.copy2(source_path, dest)
-        else:
-            shutil.move(source_path, dest)
+            ext = source_path.suffix.lower() or ".jpg"
+            filename = _unique_filename(slug, ext, existing_files)
+            dest = images_dir / filename
 
-        created_at = datetime.now(timezone.utc).timestamp()
-        thumb_rel = thumbnails.thumbnail_relative_path(filename)
-        thumb_path = gallery_path / thumb_rel
-        thumbnails.create_thumbnail(dest, thumb_path)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            if copy_files:
+                shutil.copy2(source_path, dest)
+            else:
+                shutil.move(source_path, dest)
 
-        record = {
-            "id": uuid.uuid4().hex,
-            "filename": filename,
-            "title": title or slug.replace("-", " ").title(),
-            "prompt": None,
-            "tags": list(tags_list),
-            "created_at": created_at,
-            "width": None,
-            "height": None,
-            "url": None,
-            "conversation_id": None,
-            "message_id": None,
-            "conversation_link": item.conversation_link,
-            "thumbnail": thumb_rel,
-        }
-        data.append(record)
-        imported.append(record)
+            created_at = datetime.now(timezone.utc).timestamp()
+            thumb_rel = thumbnails.thumbnail_relative_path(filename)
+            thumb_path = gallery_path / thumb_rel
+            thumbnails.create_thumbnail(dest, thumb_path, reporter=reporter)
+
+            record = {
+                "id": uuid.uuid4().hex,
+                "filename": filename,
+                "title": title or slug.replace("-", " ").title(),
+                "prompt": None,
+                "tags": list(tags_list),
+                "created_at": created_at,
+                "width": None,
+                "height": None,
+                "url": None,
+                "conversation_id": None,
+                "message_id": None,
+                "conversation_link": item.conversation_link,
+                "thumbnail": thumb_rel,
+            }
+            data.append(record)
+            imported.append(record)
+            reporter.advance()
 
     thumbnails.regenerate_thumbnails(gallery_path, data)
     _write_metadata(metadata_path, data)
@@ -392,9 +400,12 @@ def regenerate_thumbnails(*, gallery_root: str, force: bool = False) -> list[str
     data = _load_metadata(metadata_path)
     if not data:
         return []
-    processed, updated = thumbnails.regenerate_thumbnails(
-        gallery_path, data, force=force
-    )
+    with StatusReporter(
+        description="Regenerating thumbnails", unit="thumb"
+    ) as reporter:
+        processed, updated = thumbnails.regenerate_thumbnails(
+            gallery_path, data, force=force, reporter=reporter
+        )
     if updated:
         _write_metadata(metadata_path, data)
     return processed

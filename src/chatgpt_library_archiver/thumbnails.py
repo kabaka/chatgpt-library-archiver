@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Optional
 
 from PIL import Image, ImageOps, UnidentifiedImageError
+
+from .status import StatusReporter
 
 THUMBNAIL_DIR_NAME = "thumbs"
 THUMBNAIL_SIZE: tuple[int, int] = (512, 512)
@@ -40,9 +42,13 @@ def _infer_format(dest: Path, image: Image.Image) -> str:
     return "PNG"
 
 
-def create_thumbnail(source: Path, dest: Path) -> None:
+def create_thumbnail(
+    source: Path, dest: Path, *, reporter: Optional[StatusReporter] = None
+) -> None:
     """Create a thumbnail for ``source`` at ``dest``."""
 
+    if reporter is not None:
+        reporter.log_status("Generating thumbnail for", source.name)
     dest.parent.mkdir(parents=True, exist_ok=True)
     try:
         with Image.open(source) as img:
@@ -69,6 +75,7 @@ def regenerate_thumbnails(
     metadata: Iterable[dict],
     *,
     force: bool = False,
+    reporter: Optional[StatusReporter] = None,
 ) -> tuple[list[str], bool]:
     """Ensure thumbnails exist for each metadata entry.
 
@@ -79,7 +86,10 @@ def regenerate_thumbnails(
     updated = False
     images_dir = gallery_root / "images"
 
-    for entry in metadata:
+    entries = list(metadata)
+    pending: list[tuple[str, Path, Path]] = []
+
+    for entry in entries:
         filename = entry.get("filename")
         if not filename:
             continue
@@ -89,10 +99,19 @@ def regenerate_thumbnails(
         processed.append(filename)
         thumb_rel = thumbnail_relative_path(filename)
         thumb_path = gallery_root / thumb_rel
-        if force or not thumb_path.exists():
-            create_thumbnail(source, thumb_path)
+        need_create = force or not thumb_path.exists()
+        if need_create:
+            pending.append((filename, source, thumb_path))
         if entry.get("thumbnail") != thumb_rel:
             entry["thumbnail"] = thumb_rel
             updated = True
+
+    if reporter is not None and pending:
+        reporter.add_total(len(pending))
+
+    for filename, source, thumb_path in pending:
+        create_thumbnail(source, thumb_path, reporter=reporter)
+        if reporter is not None:
+            reporter.advance()
 
     return processed, updated
