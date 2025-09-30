@@ -17,7 +17,7 @@ from pathlib import Path
 
 from openai import OpenAI
 
-from . import gallery, tagger
+from . import gallery, tagger, thumbnails
 from .utils import prompt_yes_no
 
 IMAGE_EXTENSIONS = {
@@ -239,6 +239,10 @@ def import_images(
             shutil.move(source_path, dest)
 
         created_at = datetime.now(timezone.utc).timestamp()
+        thumb_rel = thumbnails.thumbnail_relative_path(filename)
+        thumb_path = gallery_path / thumb_rel
+        thumbnails.create_thumbnail(dest, thumb_path)
+
         record = {
             "id": uuid.uuid4().hex,
             "filename": filename,
@@ -252,10 +256,12 @@ def import_images(
             "conversation_id": None,
             "message_id": None,
             "conversation_link": item.conversation_link,
+            "thumbnail": thumb_rel,
         }
         data.append(record)
         imported.append(record)
 
+    thumbnails.regenerate_thumbnails(gallery_path, data)
     _write_metadata(metadata_path, data)
 
     if imported:
@@ -276,7 +282,7 @@ def import_images(
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Import images into the gallery")
-    parser.add_argument("inputs", nargs="+", help="Files or directories to import")
+    parser.add_argument("inputs", nargs="*", help="Files or directories to import")
     parser.add_argument("--gallery", default="gallery", help="Gallery root path")
     parser.add_argument(
         "--copy",
@@ -333,12 +339,31 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=4,
         help="Parallel workers when tagging imported images",
     )
+    parser.add_argument(
+        "--regenerate-thumbnails",
+        action="store_true",
+        help="Regenerate thumbnails for the entire gallery and exit",
+    )
+    parser.add_argument(
+        "--force-thumbnails",
+        action="store_true",
+        help="When regenerating thumbnails, overwrite existing files",
+    )
     return parser.parse_args(argv)
 
 
 def main(args: argparse.Namespace | None = None) -> int:
     if args is None:
         args = parse_args()
+    if args.regenerate_thumbnails and not args.inputs:
+        regenerated = regenerate_thumbnails(
+            gallery_root=args.gallery, force=args.force_thumbnails
+        )
+        return len(regenerated)
+
+    if not args.inputs:
+        raise ValueError("No inputs supplied for import.")
+
     imported = import_images(
         inputs=args.inputs,
         gallery_root=args.gallery,
@@ -356,7 +381,25 @@ def main(args: argparse.Namespace | None = None) -> int:
         tag_model=args.tag_model,
         tag_workers=args.tag_workers,
     )
+    if args.regenerate_thumbnails:
+        regenerate_thumbnails(
+            gallery_root=args.gallery, force=args.force_thumbnails
+        )
     return len(imported)
+
+
+def regenerate_thumbnails(*, gallery_root: str, force: bool = False) -> list[str]:
+    gallery_path = Path(gallery_root)
+    metadata_path = gallery_path / "metadata.json"
+    data = _load_metadata(metadata_path)
+    if not data:
+        return []
+    processed, updated = thumbnails.regenerate_thumbnails(
+        gallery_path, data, force=force
+    )
+    if updated:
+        _write_metadata(metadata_path, data)
+    return processed
 
 
 if __name__ == "__main__":

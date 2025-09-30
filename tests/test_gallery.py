@@ -154,6 +154,7 @@ def test_generate_gallery_creates_single_index(tmp_path):
     assert index.read_text() == expected
     assert 'loading="lazy"' in expected
     assert "data-src" in expected
+    assert "data-full" in expected
     assert '<div class="layout">' in expected
 
     with open(gallery_root / "metadata.json", encoding="utf-8") as f:

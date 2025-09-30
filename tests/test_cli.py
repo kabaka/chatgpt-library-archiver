@@ -36,6 +36,45 @@ def test_gallery_subcommand(monkeypatch, tmp_path):
     assert Path("gallery/index.html").exists()
 
 
+def test_gallery_subcommand_with_thumbnails(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+
+    calls = {}
+
+    def fake_regen(gallery_root="gallery", force=False):
+        calls["gallery_root"] = gallery_root
+        calls["force"] = force
+        return ["a.jpg"]
+
+    monkeypatch.setattr(importer, "regenerate_thumbnails", fake_regen)
+
+    gallery = Path("gallery")
+    (gallery / "images").mkdir(parents=True)
+    (gallery / "images" / "a.jpg").write_text("img")
+    with open(gallery / "metadata.json", "w", encoding="utf-8") as f:
+        json.dump([{"id": "1", "filename": "a.jpg", "created_at": 1}], f)
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "chatgpt_library_archiver",
+            "gallery",
+            "--gallery",
+            "gallery",
+            "--regenerate-thumbnails",
+            "--force-thumbnails",
+        ],
+    )
+    import importlib
+
+    cli = importlib.import_module("chatgpt_library_archiver.__main__")
+    cli.main()
+
+    assert calls["gallery_root"] == "gallery"
+    assert calls["force"] is True
+
+
 def test_tag_subcommand(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
 
@@ -96,6 +135,7 @@ def test_import_subcommand(monkeypatch, tmp_path):
         return [{"id": "abc"}]
 
     monkeypatch.setattr(importer, "import_images", fake_import_images)
+    monkeypatch.setattr(importer, "regenerate_thumbnails", lambda **kwargs: [])
     monkeypatch.setattr(
         sys,
         "argv",

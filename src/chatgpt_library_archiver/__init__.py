@@ -7,6 +7,7 @@ __all__ = [
     "tagger",
     "utils",
     "importer",
+    "thumbnails",
 ]
 
 __version__ = "0.1.0"

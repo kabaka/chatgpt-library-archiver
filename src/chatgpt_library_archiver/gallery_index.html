@@ -283,6 +283,7 @@ async function loadImages() {
     const tagsArr = item.tags || [];
     card.dataset.tags = tagsArr.map(t => t.toLowerCase()).join('\n');
     const imgPath = 'images/' + item.filename;
+    const thumbPath = item.thumbnail ? item.thumbnail : imgPath;
     const created = item.created_at
       ? new Date(item.created_at * 1000)
           .toISOString()
@@ -297,7 +298,7 @@ async function loadImages() {
         : '';
     card.innerHTML =
       '<a href="' + imgPath + '" class="thumb">' +
-      '<img data-src="' + imgPath + '" alt="' + title + '" loading="lazy"></a>' +
+      '<img data-src="' + thumbPath + '" data-full="' + imgPath + '" alt="' + title + '" loading="lazy"></a>' +
       '<div class="meta"><strong>' + (title || item.id) + '</strong>' +
       '<span class="created"><br>' + created + '</span>' +
       tagsHtml + '<br><a href="' +
@@ -307,7 +308,7 @@ async function loadImages() {
     if (tagsSpan) {
       tagsSpan.title = tagsArr.join(', ');
     }
-    const index = viewerData.push({ src: imgPath, title: title || item.id }) - 1;
+    const index = viewerData.push({ src: imgPath, thumb: thumbPath, title: title || item.id }) - 1;
     card.dataset.index = String(index);
     gallery.appendChild(card);
     const link = card.querySelector('a.thumb');

@@ -1,7 +1,19 @@
+import io
 import json
 from urllib.parse import urlparse
 
+from PIL import Image
+
 from chatgpt_library_archiver import incremental_downloader
+
+
+def _sample_png() -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", (6, 6), color=(50, 120, 200)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+PNG_BYTES = _sample_png()
 
 
 class FakeResponse:
@@ -58,10 +70,10 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
     # Seed existing data
     images_dir = tmp_path / "gallery" / "images"
     images_dir.mkdir(parents=True)
-    (images_dir / "1.jpg").write_bytes(b"old")
+    (images_dir / "1.png").write_bytes(PNG_BYTES)
     meta_path = tmp_path / "gallery" / "metadata.json"
     with open(meta_path, "w", encoding="utf-8") as f:
-        json.dump([{"id": "1", "filename": "1.jpg", "created_at": 1}], f)
+        json.dump([{"id": "1", "filename": "1.png", "created_at": 1}], f)
 
     # Mock network requests for both metadata and image download
     calls = {"meta": 0}
@@ -76,13 +88,13 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
                         "items": [
                             {
                                 "id": "1",
-                                "url": "https://img.local/1.jpg",
+                                "url": "https://img.local/1.png",
                                 "title": "old image",
                                 "created_at": 1,
                             },
                             {
                                 "id": "2",
-                                "url": "https://img.local/2.jpg",
+                                "url": "https://img.local/2.png",
                                 "title": "new image",
                                 "created_at": 2,
                             },
@@ -91,12 +103,12 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
                 )
             else:
                 return FakeResponse(json_data={"items": []})
-        elif url == "https://img.local/2.jpg":
+        elif url == "https://img.local/2.png":
             return FakeResponse(
-                content=b"img2",
-                headers={"Content-Type": "image/jpeg"},
+                content=PNG_BYTES,
+                headers={"Content-Type": "image/png"},
             )
-        elif url == "https://img.local/1.jpg":
+        elif url == "https://img.local/1.png":
             raise AssertionError("Should not re-download existing image")
         raise AssertionError(f"Unexpected URL {url}")
 
@@ -105,8 +117,8 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
     # Run the full download + gallery generation flow
     incremental_downloader.main(tag_new=True)
 
-    img1 = tmp_path / "gallery" / "images" / "1.jpg"
-    img2 = tmp_path / "gallery" / "images" / "2.jpg"
+    img1 = tmp_path / "gallery" / "images" / "1.png"
+    img2 = tmp_path / "gallery" / "images" / "2.png"
     meta_path = tmp_path / "gallery" / "metadata.json"
     html_path = tmp_path / "gallery" / "index.html"
 
@@ -122,6 +134,7 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
     for item in data:
         if item["id"] == "2":
             assert item.get("tags") == ["t"]
+        assert item["thumbnail"].startswith("thumbs/")
 
     html = html_path.read_text()
     assert "metadata.json" in html
