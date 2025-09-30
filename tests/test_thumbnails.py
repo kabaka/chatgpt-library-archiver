@@ -1,4 +1,5 @@
 import io
+import multiprocessing
 import queue
 from concurrent.futures import Future
 
@@ -155,15 +156,30 @@ def test_regenerate_thumbnails_parallel_reports_start_and_finish(monkeypatch, tm
         def submit(self, fn, *args):  # noqa: ANN001
             return DummyFuture(fn, *args)
 
-    class DummyContext:
+    class DummyManager:
+        def __init__(self) -> None:
+            self.queue = queue.Queue()
+            self.shutdown_called = False
+
         def Queue(self):  # noqa: D401, ANN001
-            return queue.Queue()
+            return self.queue
+
+        def shutdown(self) -> None:
+            self.shutdown_called = True
+
+    class DummyContext:
+        def __init__(self) -> None:
+            self.manager = DummyManager()
+
+        def Manager(self) -> DummyManager:  # noqa: D401, ANN001
+            return self.manager
 
     reporter = RecordingReporter()
 
     monkeypatch.setattr(thumbnails, "ProcessPoolExecutor", DummyExecutor)
+    dummy_context = DummyContext()
     monkeypatch.setattr(
-        thumbnails.multiprocessing, "get_context", lambda: DummyContext()
+        thumbnails.multiprocessing, "get_context", lambda: dummy_context
     )
 
     processed, updated = thumbnails.regenerate_thumbnails(
@@ -182,6 +198,8 @@ def test_regenerate_thumbnails_parallel_reports_start_and_finish(monkeypatch, tm
     assert updated
     assert reporter.total == len(filenames)
     assert reporter.advanced == len(filenames)
+
+    assert dummy_context.manager.shutdown_called
 
     starts = {
         detail
@@ -205,3 +223,45 @@ def test_regenerate_thumbnails_parallel_reports_start_and_finish(monkeypatch, tm
 def test_regenerate_thumbnails_rejects_invalid_worker_count(tmp_path):
     with pytest.raises(ValueError):
         thumbnails.regenerate_thumbnails(tmp_path, [], max_workers=0)
+
+
+def test_regenerate_thumbnails_parallel_with_spawn_queue(tmp_path, monkeypatch):
+    try:
+        spawn_context = multiprocessing.get_context("spawn")
+    except ValueError:  # pragma: no cover - safety for unusual platforms
+        pytest.skip("spawn start method not available")
+
+    monkeypatch.setattr(thumbnails.multiprocessing, "get_context", lambda: spawn_context)
+
+    gallery_root = tmp_path
+    images_dir = gallery_root / "images"
+    images_dir.mkdir()
+
+    filenames = ["alpha.png", "beta.png", "gamma.png"]
+    for name in filenames:
+        (images_dir / name).write_bytes(PNG_BYTES)
+
+    metadata = [{"filename": name} for name in filenames]
+    reporter = RecordingReporter()
+
+    processed, updated = thumbnails.regenerate_thumbnails(
+        gallery_root,
+        metadata,
+        force=True,
+        reporter=reporter,
+        max_workers=2,
+    )
+
+    assert sorted(processed) == sorted(filenames)
+    assert updated
+    assert reporter.total == len(filenames)
+    assert reporter.advanced == len(filenames)
+
+    for entry, name in zip(metadata, filenames, strict=True):
+        assert entry["thumbnail"] == f"thumbs/medium/{name}"
+        for size in thumbnails.THUMBNAIL_SIZES:
+            rel_path = entry["thumbnails"][size]
+            expected_rel = f"thumbs/{size}/{name}"
+            assert rel_path == expected_rel
+            dest_path = gallery_root / rel_path
+            assert dest_path.is_file()

@@ -6,12 +6,25 @@ import concurrent.futures
 import multiprocessing
 import threading
 from collections.abc import Iterable
+from multiprocessing.context import BaseContext
+from multiprocessing.managers import SyncManager
+from typing import Protocol
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from .status import StatusReporter
+
+
+class _StatusQueueProtocol(Protocol):
+    """Minimal protocol for status queue objects used by workers."""
+
+    def put(self, message: object, block: bool = True, timeout: float | None = None) -> None:  # noqa: D401
+        """Send ``message`` to the queue."""
+
+    def get(self) -> object:  # noqa: D401
+        """Retrieve a message from the queue."""
 
 THUMBNAIL_DIR_NAME = "thumbs"
 THUMBNAIL_SIZES: dict[str, tuple[int, int]] = {
@@ -138,7 +151,7 @@ def create_thumbnails(
 def _create_thumbnails_worker(
     source: Path,
     dest_map: dict[str, Path],
-    status_queue: multiprocessing.queues.Queue | None = None,
+    status_queue: _StatusQueueProtocol | None = None,
 ) -> str:
     """Create thumbnails for ``source`` without side-channel reporting."""
 
@@ -157,7 +170,7 @@ def _create_thumbnails_worker(
 
 
 def _consume_status_messages(
-    status_queue: multiprocessing.queues.Queue,
+    status_queue: _StatusQueueProtocol,
     reporter: StatusReporter,
 ) -> None:
     """Forward worker status updates to ``reporter``."""
@@ -242,11 +255,14 @@ def regenerate_thumbnails(
     if max_workers is not None:
         executor_kwargs["max_workers"] = max_workers
 
-    status_queue: multiprocessing.queues.Queue | None = None
+    status_queue: _StatusQueueProtocol | None = None
     status_thread: threading.Thread | None = None
+    status_manager: SyncManager | None = None
+    mp_context: BaseContext | None = None
     if reporter is not None:
         mp_context = multiprocessing.get_context()
-        status_queue = mp_context.Queue()
+        status_manager = mp_context.Manager()
+        status_queue = status_manager.Queue()
         status_thread = threading.Thread(
             target=_consume_status_messages,
             args=(status_queue, reporter),
@@ -290,7 +306,11 @@ def regenerate_thumbnails(
                 submit_next()
     finally:
         if status_queue is not None and status_thread is not None:
-            status_queue.put(None)
-            status_thread.join()
+            try:
+                status_queue.put(None)
+            finally:
+                status_thread.join()
+        if status_manager is not None:
+            status_manager.shutdown()
 
     return processed, updated
