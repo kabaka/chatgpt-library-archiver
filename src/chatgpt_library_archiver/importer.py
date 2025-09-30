@@ -173,7 +173,10 @@ def import_images(
             raise ValueError(
                 "Number of --conversation-link values must match direct file inputs."
             )
-        link_map = {path: link for path, link in zip(direct_files, conversation_links)}
+        link_map = {
+            path: link
+            for path, link in zip(direct_files, conversation_links, strict=False)
+        }
         for item in items:
             if item.source in link_map:
                 item.conversation_link = link_map[item.source]

@@ -3,12 +3,11 @@ import os
 import shutil
 from datetime import datetime
 from importlib import resources
-from typing import Dict, List
 
 
-def _load_all_metadata(gallery_root: str) -> List[Dict]:
+def _load_all_metadata(gallery_root: str) -> list[dict]:
     """Return a list of metadata entries from ``metadata.json``."""
-    items: List[Dict] = []
+    items: list[dict] = []
     meta_path = os.path.join(gallery_root, "metadata.json")
     if os.path.isfile(meta_path):
         with open(meta_path, encoding="utf-8") as f:

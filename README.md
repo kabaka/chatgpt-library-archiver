@@ -30,7 +30,7 @@ tagging_config.json ← OpenAI API key, model, and prompt for tagging
 
 ### 🔹 Requirements
 
-- Python 3.7+
+- Python 3.10+
 - Internet connection
 - Your browser access to [chat.openai.com](https://chat.openai.com)
 
@@ -50,7 +50,11 @@ Option B — manual setup:
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -e .[dev]
+pre-commit install --install-hooks
 ```
+
+The `Makefile` target `make install` performs the same steps and installs the
+pre-commit git hooks automatically so linting runs before each commit.
 
 ---
 
