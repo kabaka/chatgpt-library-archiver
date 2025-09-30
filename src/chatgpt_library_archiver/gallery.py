@@ -16,25 +16,34 @@ def _load_all_metadata(gallery_root: str) -> List[Dict]:
     return items
 
 
-def _created_at_key(value) -> float:
-    """Return a sortable timestamp for ``created_at`` values."""
+def _normalize_created_at(value) -> float | None:
+    """Convert assorted ``created_at`` values into a float timestamp."""
 
     if value is None:
-        return 0.0
+        return None
     if isinstance(value, (int, float)):
         return float(value)
     if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
         try:
-            return float(value)
+            return float(text)
         except ValueError:
-            text = value.strip()
             if text.endswith("Z"):
                 text = text[:-1] + "+00:00"
             try:
                 return datetime.fromisoformat(text).timestamp()
             except ValueError:
-                return 0.0
-    return 0.0
+                return None
+    return None
+
+
+def _created_at_key(value) -> float:
+    """Return a sortable timestamp for ``created_at`` values."""
+
+    normalized = _normalize_created_at(value)
+    return normalized if normalized is not None else 0.0
 
 
 def generate_gallery(gallery_root: str = "gallery") -> int:
@@ -46,6 +55,11 @@ def generate_gallery(gallery_root: str = "gallery") -> int:
     items = _load_all_metadata(gallery_root)
     if not items:
         return 0
+
+    for item in items:
+        if "created_at" in item:
+            normalized = _normalize_created_at(item.get("created_at"))
+            item["created_at"] = normalized if normalized is not None else 0.0
 
     items.sort(
         key=lambda x: (_created_at_key(x.get("created_at")), x.get("id", "")),

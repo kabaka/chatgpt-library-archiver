@@ -198,6 +198,7 @@ def test_generate_gallery_handles_mixed_created_at_types(tmp_path):
         sorted_data = json.load(f)
 
     assert [item["id"] for item in sorted_data] == ["recent", "old", "invalid"]
+    assert all(isinstance(item["created_at"], float) for item in sorted_data)
 
 
 def _extract_filter_fn() -> str:
