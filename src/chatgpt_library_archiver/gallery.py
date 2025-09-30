@@ -1,6 +1,7 @@
 import json
 import os
 import shutil
+from datetime import datetime
 from importlib import resources
 from typing import Dict, List
 
@@ -15,6 +16,27 @@ def _load_all_metadata(gallery_root: str) -> List[Dict]:
     return items
 
 
+def _created_at_key(value) -> float:
+    """Return a sortable timestamp for ``created_at`` values."""
+
+    if value is None:
+        return 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            text = value.strip()
+            if text.endswith("Z"):
+                text = text[:-1] + "+00:00"
+            try:
+                return datetime.fromisoformat(text).timestamp()
+            except ValueError:
+                return 0.0
+    return 0.0
+
+
 def generate_gallery(gallery_root: str = "gallery") -> int:
     """Write ``metadata.json`` and copy bundled ``index.html`` for the gallery.
 
@@ -25,7 +47,10 @@ def generate_gallery(gallery_root: str = "gallery") -> int:
     if not items:
         return 0
 
-    items.sort(key=lambda x: x.get("created_at", 0), reverse=True)
+    items.sort(
+        key=lambda x: (_created_at_key(x.get("created_at")), x.get("id", "")),
+        reverse=True,
+    )
     meta_path = os.path.join(gallery_root, "metadata.json")
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(items, f, indent=2)

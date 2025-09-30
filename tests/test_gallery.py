@@ -169,6 +169,37 @@ def test_generate_gallery_creates_single_index(tmp_path):
     assert [item["id"] for item in sorted_data] == ["2", "1"]
 
 
+def test_generate_gallery_handles_mixed_created_at_types(tmp_path):
+    gallery_root = tmp_path / "gallery"
+    gallery_root.mkdir()
+
+    write_metadata(
+        gallery_root,
+        [
+            {
+                "id": "invalid",
+                "filename": "c.jpg",
+                "created_at": "not-a-date",
+            },
+            {"id": "old", "filename": "b.jpg", "created_at": 1},
+            {
+                "id": "recent",
+                "filename": "a.jpg",
+                "created_at": "2024-01-02T00:00:00Z",
+            },
+        ],
+    )
+    for name in ("a.jpg", "b.jpg", "c.jpg"):
+        (gallery_root / "images" / name).write_text("img")
+
+    generate_gallery(str(gallery_root))
+
+    with open(gallery_root / "metadata.json", encoding="utf-8") as f:
+        sorted_data = json.load(f)
+
+    assert [item["id"] for item in sorted_data] == ["recent", "old", "invalid"]
+
+
 def _extract_filter_fn() -> str:
     html = resources.read_text(
         "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"

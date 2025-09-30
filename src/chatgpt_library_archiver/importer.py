@@ -238,7 +238,7 @@ def import_images(
         else:
             shutil.move(source_path, dest)
 
-        created_at = datetime.now(timezone.utc).isoformat()
+        created_at = datetime.now(timezone.utc).timestamp()
         record = {
             "id": uuid.uuid4().hex,
             "filename": filename,
