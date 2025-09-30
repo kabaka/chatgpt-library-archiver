@@ -8,6 +8,7 @@ from typing import Any, Iterable, List, Optional, Tuple
 
 from openai import OpenAI
 
+from .status import StatusReporter
 from .utils import prompt_yes_no
 
 DEFAULT_PROMPT = (
@@ -114,35 +115,41 @@ def tag_images(
             to_tag.append(item)
 
         if to_tag:
-            print(f"Tagging {len(to_tag)} images.", flush=True)
+            with StatusReporter(
+                total=len(to_tag), description="Tagging images", unit="img"
+            ) as reporter:
+                reporter.log_status("Tagging", f"{len(to_tag)} images.")
 
-            total_tokens = 0
+                total_tokens = 0
 
-            def process(item):
-                image_path = os.path.join(gallery_root, "images", item["filename"])
-                print(f"Uploading {item['filename']}...", flush=True)
-                tags, usage = generate_tags(image_path, client, use_model, use_prompt)
-                item["tags"] = tags
-                tokens = (
-                    getattr(usage, "total_tokens", None) if usage is not None else None
-                )
-                if tokens is not None:
-                    print(
-                        f"Received tags for {item['id']} (tokens: {tokens})",
-                        flush=True,
+                def process(item):
+                    image_path = os.path.join(gallery_root, "images", item["filename"])
+                    reporter.log_status("Uploading", item["filename"])
+                    tags, usage = generate_tags(
+                        image_path, client, use_model, use_prompt
                     )
-                else:
-                    print(f"Received tags for {item['id']}", flush=True)
-                return tokens or 0
+                    item["tags"] = tags
+                    tokens = (
+                        getattr(usage, "total_tokens", None) if usage is not None else None
+                    )
+                    if tokens is not None:
+                        reporter.log_status(
+                            "Received tags for",
+                            f"{item['id']} (tokens: {tokens})",
+                        )
+                    else:
+                        reporter.log_status("Received tags for", item["id"])
+                    return tokens or 0
 
-            with ThreadPoolExecutor(max_workers=max_workers) as ex:
-                futures = [ex.submit(process, item) for item in to_tag]
-                for fut in as_completed(futures):
-                    total_tokens += fut.result()
-                    updated += 1
+                with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                    futures = [ex.submit(process, item) for item in to_tag]
+                    for fut in as_completed(futures):
+                        total_tokens += fut.result()
+                        updated += 1
+                        reporter.advance()
 
-            if total_tokens:
-                print(f"Total tokens used: {total_tokens}", flush=True)
+                if total_tokens:
+                    reporter.log(f"Total tokens used: {total_tokens}")
 
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
