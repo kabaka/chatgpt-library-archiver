@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -129,12 +130,20 @@ def create_thumbnails(
         raise RuntimeError(f"Failed to create thumbnail for {source}: {exc}") from exc
 
 
+def _create_thumbnails_worker(source: Path, dest_map: dict[str, Path]) -> str:
+    """Create thumbnails for ``source`` without side-channel reporting."""
+
+    create_thumbnails(source, dest_map, reporter=None)
+    return source.name
+
+
 def regenerate_thumbnails(
     gallery_root: Path,
     metadata: Iterable[dict],
     *,
     force: bool = False,
     reporter: StatusReporter | None = None,
+    max_workers: int | None = None,
 ) -> tuple[list[str], bool]:
     """Ensure thumbnails exist for each metadata entry.
 
@@ -144,6 +153,9 @@ def regenerate_thumbnails(
     processed: list[str] = []
     updated = False
     images_dir = gallery_root / "images"
+
+    if max_workers is not None and max_workers < 1:
+        raise ValueError("max_workers must be at least 1")
 
     entries = list(metadata)
     pending: list[tuple[str, Path, dict[str, Path]]] = []
@@ -176,9 +188,30 @@ def regenerate_thumbnails(
     if reporter is not None and pending:
         reporter.add_total(len(pending))
 
-    for _filename, source, thumb_paths in pending:
-        create_thumbnails(source, thumb_paths, reporter=reporter)
-        if reporter is not None:
-            reporter.advance()
+    if not pending:
+        return processed, updated
+
+    if max_workers == 1 or len(pending) == 1:
+        for _filename, source, thumb_paths in pending:
+            create_thumbnails(source, thumb_paths, reporter=reporter)
+            if reporter is not None:
+                reporter.advance()
+        return processed, updated
+
+    executor_kwargs: dict[str, object] = {}
+    if max_workers is not None:
+        executor_kwargs["max_workers"] = max_workers
+
+    with ProcessPoolExecutor(**executor_kwargs) as executor:
+        future_to_filename = {}
+        for filename, source, thumb_paths in pending:
+            if reporter is not None:
+                reporter.log_status("Generating thumbnails for", source.name)
+            future = executor.submit(_create_thumbnails_worker, source, thumb_paths)
+            future_to_filename[future] = filename
+        for future in as_completed(future_to_filename):
+            future.result()
+            if reporter is not None:
+                reporter.advance()
 
     return processed, updated
