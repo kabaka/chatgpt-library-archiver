@@ -62,7 +62,9 @@ def _infer_format(dest: Path, image: Image.Image) -> str:
     return "PNG"
 
 
-def _prepare_for_format(img: Image.Image, fmt: str) -> tuple[Image.Image, dict[str, object]]:
+def _prepare_for_format(
+    img: Image.Image, fmt: str
+) -> tuple[Image.Image, dict[str, object]]:
     """Return an image and keyword arguments tuned for the target format."""
 
     save_kwargs: dict[str, object] = {}
@@ -70,26 +72,32 @@ def _prepare_for_format(img: Image.Image, fmt: str) -> tuple[Image.Image, dict[s
     if fmt == "JPEG":
         if img.mode not in ("RGB", "L"):
             img = img.convert("RGB")
-        save_kwargs.update({
-            "quality": 80,
-            "optimize": True,
-            "progressive": True,
-            "subsampling": 2,
-        })
+        save_kwargs.update(
+            {
+                "quality": 80,
+                "optimize": True,
+                "progressive": True,
+                "subsampling": 2,
+            }
+        )
     elif fmt == "PNG":
         if img.mode not in ("RGB", "RGBA", "L"):
             img = img.convert("RGBA")
-        save_kwargs.update({
-            "optimize": True,
-            "compress_level": 9,
-        })
+        save_kwargs.update(
+            {
+                "optimize": True,
+                "compress_level": 9,
+            }
+        )
     elif fmt == "WEBP":
         if img.mode not in ("RGB", "RGBA", "L"):
             img = img.convert("RGBA")
-        save_kwargs.update({
-            "quality": 80,
-            "method": 6,
-        })
+        save_kwargs.update(
+            {
+                "quality": 80,
+                "method": 6,
+            }
+        )
     elif fmt == "GIF":
         if img.mode not in ("P", "L"):
             img = img.convert("P", palette=Image.ADAPTIVE)
@@ -149,8 +157,12 @@ def regenerate_thumbnails(
             continue
         processed.append(filename)
         thumb_rel_map = thumbnail_relative_paths(filename)
-        thumb_path_map = {size: gallery_root / rel for size, rel in thumb_rel_map.items()}
-        need_create = force or any(not path.exists() for path in thumb_path_map.values())
+        thumb_path_map = {
+            size: gallery_root / rel for size, rel in thumb_rel_map.items()
+        }
+        need_create = force or any(
+            not path.exists() for path in thumb_path_map.values()
+        )
         if need_create:
             pending.append((filename, source, thumb_path_map))
         if entry.get("thumbnails") != thumb_rel_map:
