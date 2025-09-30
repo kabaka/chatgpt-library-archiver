@@ -10,7 +10,26 @@ readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.10"
 authors = [
-  {name = "bingwt504"}
+  {name = "bingwt504", email = "bingwt504@users.noreply.github.com"}
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: End Users/Desktop",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Topic :: Utilities"
+]
+keywords = [
+  "chatgpt",
+  "openai",
+  "image",
+  "archiver",
+  "gallery",
+  "download"
 ]
 dependencies = [
   "requests>=2.31.0",
@@ -32,6 +51,11 @@ dev = [
 [project.scripts]
 chatgpt-archiver = "chatgpt_library_archiver.__main__:main"
 
+[project.urls]
+Homepage = "https://github.com/bingwt504/chatgpt-library-archiver"
+Repository = "https://github.com/bingwt504/chatgpt-library-archiver"
+Issues = "https://github.com/bingwt504/chatgpt-library-archiver/issues"
+
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
@@ -49,3 +73,10 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 
 [tool.setuptools.package-data]
 chatgpt_library_archiver = ["gallery_index.html"]
+
+[tool.setuptools]
+include-package-data = true
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
