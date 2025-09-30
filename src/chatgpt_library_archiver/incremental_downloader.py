@@ -171,9 +171,7 @@ def main(tag_new: bool = False) -> None:
     # Save metadata
     if new_metadata:
         existing_metadata.extend(new_metadata)
-        _, updated = thumbnails.regenerate_thumbnails(
-            gallery_root, existing_metadata
-        )
+        _, updated = thumbnails.regenerate_thumbnails(gallery_root, existing_metadata)
         with open(metadata_path, "w", encoding="utf-8") as f:
             json.dump(existing_metadata, f, indent=2)
         print(f"Saved {len(new_metadata)} new images to gallery/")

@@ -96,4 +96,3 @@ def regenerate_thumbnails(
             updated = True
 
     return processed, updated
-

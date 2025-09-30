@@ -382,9 +382,7 @@ def main(args: argparse.Namespace | None = None) -> int:
         tag_workers=args.tag_workers,
     )
     if args.regenerate_thumbnails:
-        regenerate_thumbnails(
-            gallery_root=args.gallery, force=args.force_thumbnails
-        )
+        regenerate_thumbnails(gallery_root=args.gallery, force=args.force_thumbnails)
     return len(imported)
 
 
