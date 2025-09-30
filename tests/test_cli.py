@@ -9,6 +9,7 @@ import venv
 from pathlib import Path
 
 import pytest
+
 from chatgpt_library_archiver import importer, incremental_downloader, tagger
 
 
@@ -196,30 +197,38 @@ def test_console_script_help_via_built_wheel(tmp_path):
             ],
             cwd=project_root,
             check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
         )
 
         wheels = list(wheel_dir.glob("chatgpt_library_archiver-*.whl"))
         assert wheels, "Wheel build did not produce any artifacts"
         wheel_path = wheels[0]
 
-        venv.EnvBuilder(with_pip=True).create(venv_dir)
+        venv.EnvBuilder(with_pip=True, upgrade_deps=True).create(venv_dir)
         python_bin = bin_dir / python_name
 
-        subprocess.run(
+        isolated_env = os.environ.copy()
+        isolated_env.pop("PYTHONPATH", None)
+        install_result = subprocess.run(
             [str(python_bin), "-m", "pip", "install", str(wheel_path)],
             check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
+            text=True,
+            env=isolated_env,
         )
 
         script_path = bin_dir / script_name
+        failure_message = (
+            "console script not installed:\n"
+            f"{install_result.stdout}\n{install_result.stderr}"
+        )
+        assert script_path.exists(), failure_message
         result = subprocess.run(
             [str(script_path), "--help"],
             check=True,
             capture_output=True,
             text=True,
+            env=isolated_env,
         )
     finally:
         if build_dir.exists():
