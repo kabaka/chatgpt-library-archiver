@@ -1,14 +1,14 @@
 import json
 import mimetypes
-import os
 import time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from urllib.parse import quote
 
 import requests
 from tqdm import tqdm
 
-from . import tagger
+from . import tagger, thumbnails
 from .gallery import generate_gallery
 from .utils import ensure_auth_config, prompt_yes_no
 
@@ -33,14 +33,15 @@ def main(tag_new: bool = False) -> None:
     headers = build_headers(config)
 
     # Step 1: Load all existing IDs
-    os.makedirs("gallery", exist_ok=True)
-    images_dir = os.path.join("gallery", "images")
-    os.makedirs(images_dir, exist_ok=True)
+    gallery_root = Path("gallery")
+    gallery_root.mkdir(exist_ok=True)
+    images_dir = gallery_root / "images"
+    images_dir.mkdir(exist_ok=True)
 
     existing_ids = set()
     existing_metadata = []
-    metadata_path = os.path.join("gallery", "metadata.json")
-    if os.path.isfile(metadata_path):
+    metadata_path = gallery_root / "metadata.json"
+    if metadata_path.is_file():
         with open(metadata_path, encoding="utf-8") as f:
             existing_metadata = json.load(f)
             existing_ids.update(item["id"] for item in existing_metadata)
@@ -63,12 +64,16 @@ def main(tag_new: bool = False) -> None:
             content_type = response.headers.get("Content-Type", "")
             ext = mimetypes.guess_extension(content_type) or ".jpg"
             filename = f"{meta['id']}{ext}"
-            filepath = os.path.join(images_dir, filename)
+            filepath = images_dir / filename
 
             with open(filepath, "wb") as f:
                 f.write(response.content)
 
             meta["filename"] = filename
+            thumb_rel = thumbnails.thumbnail_relative_path(filename)
+            thumb_path = gallery_root / thumb_rel
+            thumbnails.create_thumbnail(filepath, thumb_path)
+            meta["thumbnail"] = thumb_rel
             return (True, meta)
         except Exception as e:
             return (False, meta["id"], str(e))
@@ -166,6 +171,9 @@ def main(tag_new: bool = False) -> None:
     # Save metadata
     if new_metadata:
         existing_metadata.extend(new_metadata)
+        _, updated = thumbnails.regenerate_thumbnails(
+            gallery_root, existing_metadata
+        )
         with open(metadata_path, "w", encoding="utf-8") as f:
             json.dump(existing_metadata, f, indent=2)
         print(f"Saved {len(new_metadata)} new images to gallery/")

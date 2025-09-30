@@ -51,7 +51,7 @@ def parse_args() -> argparse.Namespace:
         "import",
         help="Import local images into the gallery",
     )
-    imp.add_argument("inputs", nargs="+", help="Image files or directories to import")
+    imp.add_argument("inputs", nargs="*", help="Image files or directories to import")
     imp.add_argument("--gallery", default="gallery", help="Gallery root path")
     imp.add_argument(
         "--copy",
@@ -102,9 +102,30 @@ def parse_args() -> argparse.Namespace:
         default=4,
         help="Worker count when tagging imports",
     )
-    sub.add_parser(
+    imp.add_argument(
+        "--regenerate-thumbnails",
+        action="store_true",
+        help="Regenerate thumbnails after import or when run without inputs",
+    )
+    imp.add_argument(
+        "--force-thumbnails",
+        action="store_true",
+        help="Overwrite thumbnails when regenerating",
+    )
+    gal = sub.add_parser(
         "gallery",
         help="Regenerate gallery without downloading new images",
+    )
+    gal.add_argument("--gallery", default="gallery", help="Gallery root path")
+    gal.add_argument(
+        "--regenerate-thumbnails",
+        action="store_true",
+        help="Ensure thumbnails exist before writing the gallery",
+    )
+    gal.add_argument(
+        "--force-thumbnails",
+        action="store_true",
+        help="Overwrite thumbnails when regenerating",
     )
     tag = sub.add_parser(
         "tag",
@@ -148,7 +169,15 @@ def main() -> None:
     if args.command == "bootstrap":
         bootstrap.main(tag_new=args.tag_new)
     elif args.command == "gallery":
-        total = gallery.generate_gallery()
+        if args.regenerate_thumbnails:
+            regenerated = importer.regenerate_thumbnails(
+                gallery_root=args.gallery, force=args.force_thumbnails
+            )
+            if regenerated:
+                print(f"Generated thumbnails for {len(regenerated)} images.")
+            else:
+                print("No thumbnails regenerated (no images found).")
+        total = gallery.generate_gallery(gallery_root=args.gallery)
         if total:
             print(f"Generated gallery with {total} images.")
         else:
@@ -160,11 +189,26 @@ def main() -> None:
         else:
             print("No images processed.")
     elif args.command == "import":
-        imported = importer.import_images(
-            inputs=args.inputs,
-            gallery_root=args.gallery,
-            copy_files=args.copy,
-            recursive=args.recursive,
+        if not args.inputs and args.regenerate_thumbnails:
+            regenerated = importer.regenerate_thumbnails(
+                gallery_root=args.gallery, force=args.force_thumbnails
+            )
+            if regenerated:
+                print(f"Regenerated thumbnails for {len(regenerated)} images.")
+            else:
+                print("No thumbnails regenerated (no images found).")
+            return
+
+        if not args.inputs:
+            print("No inputs supplied for import.")
+            return
+
+        try:
+            imported = importer.import_images(
+                inputs=args.inputs,
+                gallery_root=args.gallery,
+                copy_files=args.copy,
+                recursive=args.recursive,
             tags=args.tags,
             title=args.title,
             conversation_links=args.conversation_links,
@@ -177,6 +221,15 @@ def main() -> None:
             tag_model=args.tag_model,
             tag_workers=args.tag_workers,
         )
+        except ValueError as exc:
+            print(str(exc))
+            return
+        if args.regenerate_thumbnails:
+            regenerated = importer.regenerate_thumbnails(
+                gallery_root=args.gallery, force=args.force_thumbnails
+            )
+            if regenerated:
+                print(f"Regenerated thumbnails for {len(regenerated)} images.")
         if imported:
             print(f"Imported {len(imported)} images.")
         else:

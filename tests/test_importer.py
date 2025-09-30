@@ -1,8 +1,19 @@
+import io
 import json
 
 import pytest
+from PIL import Image
 
 from chatgpt_library_archiver import importer
+
+
+def _sample_png() -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", (8, 8), color=(200, 100, 50)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+PNG_BYTES = _sample_png()
 
 
 def always_yes(*_args, **_kwargs):
@@ -13,7 +24,7 @@ def test_import_single_file_move(monkeypatch, tmp_path):
     monkeypatch.setattr(importer, "prompt_yes_no", always_yes)
 
     src = tmp_path / "sample.png"
-    src.write_bytes(b"image-bytes")
+    src.write_bytes(PNG_BYTES)
 
     gallery_root = tmp_path / "gallery"
 
@@ -29,7 +40,16 @@ def test_import_single_file_move(monkeypatch, tmp_path):
 
     dest = gallery_root / "images" / imported[0]["filename"]
     assert dest.exists()
-    assert dest.read_bytes() == b"image-bytes"
+    assert dest.read_bytes() == PNG_BYTES
+
+    thumb = gallery_root / "thumbs" / imported[0]["filename"]
+    assert thumb.exists()
+
+    metadata = json.loads((gallery_root / "metadata.json").read_text())
+    assert metadata[0]["tags"] == ["tag1", "tag2"]
+    assert metadata[0]["conversation_link"] == "https://chat.openai.com/c/abc#def"
+    assert isinstance(metadata[0]["created_at"], float)
+    assert metadata[0]["thumbnail"] == f"thumbs/{imported[0]['filename']}"
 
     metadata = json.loads((gallery_root / "metadata.json").read_text())
     assert metadata[0]["tags"] == ["tag1", "tag2"]
@@ -41,7 +61,7 @@ def test_import_copy_keeps_source(monkeypatch, tmp_path):
     monkeypatch.setattr(importer, "prompt_yes_no", always_yes)
 
     src = tmp_path / "copyme.jpg"
-    src.write_bytes(b"data")
+    src.write_bytes(PNG_BYTES)
 
     gallery_root = tmp_path / "gallery"
 
@@ -54,6 +74,8 @@ def test_import_copy_keeps_source(monkeypatch, tmp_path):
     assert src.exists()
     metadata = json.loads((gallery_root / "metadata.json").read_text())
     assert len(metadata) == 1
+    thumb = gallery_root / "thumbs" / metadata[0]["filename"]
+    assert thumb.exists()
 
 
 def test_recursive_directory_import(monkeypatch, tmp_path):
@@ -72,8 +94,8 @@ def test_recursive_directory_import(monkeypatch, tmp_path):
 
     folder = tmp_path / "folder"
     (folder / "nested").mkdir(parents=True)
-    (folder / "nested" / "one.png").write_bytes(b"1")
-    (folder / "nested" / "two.PNG").write_bytes(b"2")
+    (folder / "nested" / "one.png").write_bytes(PNG_BYTES)
+    (folder / "nested" / "two.PNG").write_bytes(PNG_BYTES)
     (folder / "nested" / "notes.txt").write_text("ignore")
 
     imported = importer.import_images(
@@ -92,6 +114,7 @@ def test_recursive_directory_import(monkeypatch, tmp_path):
     for entry in metadata:
         if entry["id"] in imported_ids:
             assert entry["tags"] == ["folder"]
+            assert entry["thumbnail"].startswith("thumbs/")
     filenames = {entry["filename"] for entry in metadata}
     assert any(name.endswith(".png") for name in filenames if name != "existing.png")
 
@@ -110,3 +133,30 @@ def test_conversation_link_count_mismatch(monkeypatch, tmp_path):
             gallery_root=str(tmp_path / "gallery"),
             conversation_links=["only-one"],
         )
+
+
+def test_regenerate_thumbnails_recreates_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(importer, "prompt_yes_no", always_yes)
+
+    src = tmp_path / "sample.png"
+    src.write_bytes(PNG_BYTES)
+
+    gallery_root = tmp_path / "gallery"
+    imported = importer.import_images(inputs=[str(src)], gallery_root=str(gallery_root))
+    filename = imported[0]["filename"]
+    thumb = gallery_root / "thumbs" / filename
+    thumb.unlink()
+
+    metadata_path = gallery_root / "metadata.json"
+    data = json.loads(metadata_path.read_text())
+    data[0].pop("thumbnail", None)
+    metadata_path.write_text(json.dumps(data))
+
+    regenerated = importer.regenerate_thumbnails(
+        gallery_root=str(gallery_root), force=False
+    )
+
+    assert regenerated == [filename]
+    new_data = json.loads(metadata_path.read_text())
+    assert new_data[0]["thumbnail"] == f"thumbs/{filename}"
+    assert thumb.exists()
