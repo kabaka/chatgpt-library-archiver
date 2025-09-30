@@ -51,8 +51,12 @@ def test_import_single_file_move(monkeypatch, tmp_path):
     assert metadata[0]["conversation_link"] == "https://chat.openai.com/c/abc#def"
     assert isinstance(metadata[0]["created_at"], float)
     assert metadata[0]["thumbnail"] == f"thumbs/medium/{imported[0]['filename']}"
-    assert metadata[0]["thumbnails"]["small"] == f"thumbs/small/{imported[0]['filename']}"
-    assert metadata[0]["thumbnails"]["large"] == f"thumbs/large/{imported[0]['filename']}"
+    assert (
+        metadata[0]["thumbnails"]["small"] == f"thumbs/small/{imported[0]['filename']}"
+    )
+    assert (
+        metadata[0]["thumbnails"]["large"] == f"thumbs/large/{imported[0]['filename']}"
+    )
 
     metadata = json.loads((gallery_root / "metadata.json").read_text())
     assert metadata[0]["tags"] == ["tag1", "tag2"]

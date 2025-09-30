@@ -250,9 +250,7 @@ def import_images(
 
             created_at = datetime.now(timezone.utc).timestamp()
             thumb_rels = thumbnails.thumbnail_relative_paths(filename)
-            thumb_paths = {
-                size: gallery_path / rel for size, rel in thumb_rels.items()
-            }
+            thumb_paths = {size: gallery_path / rel for size, rel in thumb_rels.items()}
             thumbnails.create_thumbnails(dest, thumb_paths, reporter=reporter)
 
             record = {

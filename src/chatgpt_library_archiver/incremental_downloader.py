@@ -78,9 +78,7 @@ def main(tag_new: bool = False) -> None:
                 thumb_paths = {
                     size: gallery_root / rel for size, rel in thumb_rels.items()
                 }
-                thumbnails.create_thumbnails(
-                    filepath, thumb_paths, reporter=progress
-                )
+                thumbnails.create_thumbnails(filepath, thumb_paths, reporter=progress)
                 meta["thumbnails"] = thumb_rels
                 meta["thumbnail"] = thumb_rels["medium"]
                 return (True, meta)
