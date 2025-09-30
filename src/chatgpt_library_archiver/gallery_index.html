@@ -261,6 +261,27 @@ header.top-bar .search-bar {
   <div class="viewer-meta"><a id="viewerRaw" href="" target="_blank">Raw file</a></div>
 </div>
 <script>
+const sizeClassToKey = {
+  'gallery-small': 'small',
+  'gallery-medium': 'medium',
+  'gallery-large': 'large',
+};
+
+function currentSizeKey() {
+  const selector = document.getElementById('sizeSelector');
+  const className = selector ? selector.value : 'gallery-medium';
+  return sizeClassToKey[className] || 'medium';
+}
+
+function resolveThumbnails(item, fallback) {
+  const thumbs = item.thumbnails || {};
+  return {
+    small: thumbs.small || fallback,
+    medium: thumbs.medium || fallback,
+    large: thumbs.large || fallback,
+  };
+}
+
 async function loadImages() {
   const response = await fetch('metadata.json');
   const data = await response.json();
@@ -283,7 +304,10 @@ async function loadImages() {
     const tagsArr = item.tags || [];
     card.dataset.tags = tagsArr.map(t => t.toLowerCase()).join('\n');
     const imgPath = 'images/' + item.filename;
-    const thumbPath = item.thumbnail ? item.thumbnail : imgPath;
+    const fallbackThumb = item.thumbnail ? item.thumbnail : imgPath;
+    const thumbPaths = resolveThumbnails(item, fallbackThumb);
+    const thumbKey = currentSizeKey();
+    const thumbPath = thumbPaths[thumbKey];
     const created = item.created_at
       ? new Date(item.created_at * 1000)
           .toISOString()
@@ -298,7 +322,7 @@ async function loadImages() {
         : '';
     card.innerHTML =
       '<a href="' + imgPath + '" class="thumb">' +
-      '<img data-src="' + thumbPath + '" data-full="' + imgPath + '" alt="' + title + '" loading="lazy"></a>' +
+      '<img data-src="' + thumbPath + '" data-thumb-small="' + thumbPaths.small + '" data-thumb-medium="' + thumbPaths.medium + '" data-thumb-large="' + thumbPaths.large + '" data-full="' + imgPath + '" alt="' + title + '" loading="lazy"></a>' +
       '<div class="meta"><strong>' + (title || item.id) + '</strong>' +
       '<span class="created"><br>' + created + '</span>' +
       tagsHtml + '<br><a href="' +
@@ -308,7 +332,13 @@ async function loadImages() {
     if (tagsSpan) {
       tagsSpan.title = tagsArr.join(', ');
     }
-    const index = viewerData.push({ src: imgPath, thumb: thumbPath, title: title || item.id }) - 1;
+    const index =
+      viewerData.push({
+        src: imgPath,
+        thumb: thumbPath,
+        thumbs: thumbPaths,
+        title: title || item.id,
+      }) - 1;
     card.dataset.index = String(index);
     gallery.appendChild(card);
     const link = card.querySelector('a.thumb');
@@ -440,6 +470,27 @@ function makeSearchFn(expr) {
   }
   return parseExpr();
 }
+function updateThumbnailsForSize(sizeKey) {
+  const images = document.querySelectorAll('.image-card img');
+  images.forEach(img => {
+    let nextSrc = img.dataset[`thumb${sizeKey.charAt(0).toUpperCase() + sizeKey.slice(1)}`];
+    if (!nextSrc) {
+      nextSrc = img.dataset.src;
+    }
+    if (!nextSrc) return;
+    img.dataset.src = nextSrc;
+    if (img.hasAttribute('src')) {
+      img.src = nextSrc;
+    }
+  });
+  viewerData = viewerData.map(item => {
+    if (!item.thumbs) return item;
+    const updated = { ...item };
+    updated.thumb = item.thumbs[sizeKey] || item.thumb;
+    return updated;
+  });
+}
+
 function changeSize() {
   const gallery = document.getElementById('gallery');
   const size = document.getElementById('sizeSelector').value;
@@ -447,6 +498,8 @@ function changeSize() {
   if (typeof sessionStorage !== 'undefined') {
     sessionStorage.setItem('size', size);
   }
+  const sizeKey = sizeClassToKey[size] || 'medium';
+  updateThumbnailsForSize(sizeKey);
 }
 function resetFilters() {
   const textEl = document.getElementById('searchBox');

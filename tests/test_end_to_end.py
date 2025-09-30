@@ -134,7 +134,8 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
     for item in data:
         if item["id"] == "2":
             assert item.get("tags") == ["t"]
-        assert item["thumbnail"].startswith("thumbs/")
+        assert item["thumbnail"].startswith("thumbs/medium/")
+        assert item["thumbnails"]["medium"].startswith("thumbs/medium/")
 
     html = html_path.read_text()
     assert "metadata.json" in html

@@ -18,6 +18,9 @@ your images with this version or run a previous release to migrate your data.
 gallery/
 ├── images/
 ├── thumbs/
+│   ├── small/
+│   ├── medium/
+│   └── large/
 ├── metadata.json
 └── index.html  ← single-page gallery
 auth.txt        ← credentials for API access
@@ -126,7 +129,7 @@ it so you can monitor each stage of the workflow without losing context.
 ```bash
 python -m chatgpt_library_archiver [--tag-new]
 ```
-- Downloads **only new images**, adds them to `gallery/images`, updates `gallery/metadata.json`, creates `gallery/thumbs/<file>` thumbnails, and regenerates `gallery/index.html`
+- Downloads **only new images**, adds them to `gallery/images`, updates `gallery/metadata.json`, creates `gallery/thumbs/<size>/<file>` thumbnails, and regenerates `gallery/index.html`
 - Add `--tag-new` to tag fresh images during the download
 
 3. **Regenerate gallery or thumbnails without downloading**
@@ -136,7 +139,7 @@ python -m chatgpt_library_archiver [--tag-new]
  ```
  - Rebuilds the HTML gallery from existing files (sorts metadata and copies the
   bundled `index.html`).
- - Add `--regenerate-thumbnails` to (re)create entries in `gallery/thumbs/` for every
+ - Add `--regenerate-thumbnails` to (re)create entries in `gallery/thumbs/<size>/` for every
   image; combine with `--force-thumbnails` to overwrite existing thumbnails.
 
 4. **Generate or manage image tags**
@@ -167,7 +170,7 @@ python -m chatgpt_library_archiver import <files_or_directories...> [options]
 - Pass `--tag-new` to immediately tag imports using the existing OpenAI tagging workflow (honors `--tag-model`, `--tag-prompt`, and `--tag-workers`).
 - Enable `--ai-rename` to request a descriptive filename from OpenAI. The `tagging_config.json` file supplies the API key and optionally a `rename_prompt` value for this feature. Provide `--rename-model` or `--rename-prompt` to override the defaults ad hoc.
 - Set a shared `--title` for all imported files or allow the tool to derive one from the filename/AI slug.
-- Thumbnails are generated automatically in `gallery/thumbs/`. Run the command with
+- Thumbnails are generated automatically in the `gallery/thumbs/<size>/` directories. Run the command with
   `--regenerate-thumbnails [--force-thumbnails]` to refresh thumbnails for existing
   entries without importing new files.
 

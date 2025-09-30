@@ -4,7 +4,7 @@ import json
 import pytest
 from PIL import Image
 
-from chatgpt_library_archiver import importer
+from chatgpt_library_archiver import importer, thumbnails
 
 
 def _sample_png() -> bytes:
@@ -42,14 +42,17 @@ def test_import_single_file_move(monkeypatch, tmp_path):
     assert dest.exists()
     assert dest.read_bytes() == PNG_BYTES
 
-    thumb = gallery_root / "thumbs" / imported[0]["filename"]
-    assert thumb.exists()
+    for size in thumbnails.THUMBNAIL_SIZES:
+        thumb = gallery_root / "thumbs" / size / imported[0]["filename"]
+        assert thumb.exists()
 
     metadata = json.loads((gallery_root / "metadata.json").read_text())
     assert metadata[0]["tags"] == ["tag1", "tag2"]
     assert metadata[0]["conversation_link"] == "https://chat.openai.com/c/abc#def"
     assert isinstance(metadata[0]["created_at"], float)
-    assert metadata[0]["thumbnail"] == f"thumbs/{imported[0]['filename']}"
+    assert metadata[0]["thumbnail"] == f"thumbs/medium/{imported[0]['filename']}"
+    assert metadata[0]["thumbnails"]["small"] == f"thumbs/small/{imported[0]['filename']}"
+    assert metadata[0]["thumbnails"]["large"] == f"thumbs/large/{imported[0]['filename']}"
 
     metadata = json.loads((gallery_root / "metadata.json").read_text())
     assert metadata[0]["tags"] == ["tag1", "tag2"]
@@ -74,8 +77,9 @@ def test_import_copy_keeps_source(monkeypatch, tmp_path):
     assert src.exists()
     metadata = json.loads((gallery_root / "metadata.json").read_text())
     assert len(metadata) == 1
-    thumb = gallery_root / "thumbs" / metadata[0]["filename"]
-    assert thumb.exists()
+    for size in thumbnails.THUMBNAIL_SIZES:
+        thumb = gallery_root / "thumbs" / size / metadata[0]["filename"]
+        assert thumb.exists()
 
 
 def test_recursive_directory_import(monkeypatch, tmp_path):
@@ -114,7 +118,8 @@ def test_recursive_directory_import(monkeypatch, tmp_path):
     for entry in metadata:
         if entry["id"] in imported_ids:
             assert entry["tags"] == ["folder"]
-            assert entry["thumbnail"].startswith("thumbs/")
+            assert entry["thumbnail"].startswith("thumbs/medium/")
+            assert entry["thumbnails"]["medium"].startswith("thumbs/medium/")
     filenames = {entry["filename"] for entry in metadata}
     assert any(name.endswith(".png") for name in filenames if name != "existing.png")
 
@@ -144,7 +149,7 @@ def test_regenerate_thumbnails_recreates_missing(tmp_path, monkeypatch):
     gallery_root = tmp_path / "gallery"
     imported = importer.import_images(inputs=[str(src)], gallery_root=str(gallery_root))
     filename = imported[0]["filename"]
-    thumb = gallery_root / "thumbs" / filename
+    thumb = gallery_root / "thumbs" / "medium" / filename
     thumb.unlink()
 
     metadata_path = gallery_root / "metadata.json"
@@ -158,5 +163,9 @@ def test_regenerate_thumbnails_recreates_missing(tmp_path, monkeypatch):
 
     assert regenerated == [filename]
     new_data = json.loads(metadata_path.read_text())
-    assert new_data[0]["thumbnail"] == f"thumbs/{filename}"
+    assert new_data[0]["thumbnail"] == f"thumbs/medium/{filename}"
+    assert new_data[0]["thumbnails"]["large"] == f"thumbs/large/{filename}"
     assert thumb.exists()
+    for size in thumbnails.THUMBNAIL_SIZES:
+        path = gallery_root / "thumbs" / size / filename
+        assert path.exists()
