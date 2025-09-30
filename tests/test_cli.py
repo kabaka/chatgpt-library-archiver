@@ -1,7 +1,14 @@
+import importlib.util
 import json
+import os
+import platform
+import shutil
+import subprocess
 import sys
+import venv
 from pathlib import Path
 
+import pytest
 from chatgpt_library_archiver import importer, incremental_downloader, tagger
 
 
@@ -157,3 +164,65 @@ def test_import_subcommand(monkeypatch, tmp_path):
     assert called["inputs"] == ["example.png"]
     assert called["copy_files"] is True
     assert called["tags"] == ["demo"]
+
+
+@pytest.mark.skipif(
+    platform.python_implementation() != "CPython",
+    reason="Building wheels is only supported on CPython",
+)
+def test_console_script_help_via_built_wheel(tmp_path):
+    if importlib.util.find_spec("build") is None:
+        pytest.skip("build package is required to build wheels for this test")
+
+    project_root = Path(__file__).resolve().parents[1]
+    wheel_dir = tmp_path / "wheel"
+    wheel_dir.mkdir()
+    build_dir = project_root / "build"
+
+    venv_dir = tmp_path / "venv"
+    bin_dir = venv_dir / ("Scripts" if os.name == "nt" else "bin")
+    python_name = "python.exe" if os.name == "nt" else "python"
+    script_name = "chatgpt-archiver.exe" if os.name == "nt" else "chatgpt-archiver"
+
+    try:
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "build",
+                "--wheel",
+                "--outdir",
+                str(wheel_dir),
+            ],
+            cwd=project_root,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        wheels = list(wheel_dir.glob("chatgpt_library_archiver-*.whl"))
+        assert wheels, "Wheel build did not produce any artifacts"
+        wheel_path = wheels[0]
+
+        venv.EnvBuilder(with_pip=True).create(venv_dir)
+        python_bin = bin_dir / python_name
+
+        subprocess.run(
+            [str(python_bin), "-m", "pip", "install", str(wheel_path)],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        script_path = bin_dir / script_name
+        result = subprocess.run(
+            [str(script_path), "--help"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        if build_dir.exists():
+            shutil.rmtree(build_dir)
+
+    assert "usage: chatgpt-archiver" in result.stdout
