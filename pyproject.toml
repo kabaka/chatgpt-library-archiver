@@ -52,9 +52,9 @@ dev = [
 chatgpt-archiver = "chatgpt_library_archiver.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/bingwt504/chatgpt-library-archiver"
-Repository = "https://github.com/bingwt504/chatgpt-library-archiver"
-Issues = "https://github.com/bingwt504/chatgpt-library-archiver/issues"
+Homepage = "https://github.com/kabaka/chatgpt-library-archiver"
+Repository = "https://github.com/kabaka/chatgpt-library-archiver"
+Issues = "https://github.com/kabaka/chatgpt-library-archiver/issues"
 
 [tool.pytest.ini_options]
 addopts = "-q"
