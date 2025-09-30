@@ -209,18 +209,18 @@ def main() -> None:
                 gallery_root=args.gallery,
                 copy_files=args.copy,
                 recursive=args.recursive,
-            tags=args.tags,
-            title=args.title,
-            conversation_links=args.conversation_links,
-            tag_new=args.tag_new,
-            config_path=args.config,
-            ai_rename=args.ai_rename,
-            rename_model=args.rename_model,
-            rename_prompt=args.rename_prompt,
-            tag_prompt=args.tag_prompt,
-            tag_model=args.tag_model,
-            tag_workers=args.tag_workers,
-        )
+                tags=args.tags,
+                title=args.title,
+                conversation_links=args.conversation_links,
+                tag_new=args.tag_new,
+                config_path=args.config,
+                ai_rename=args.ai_rename,
+                rename_model=args.rename_model,
+                rename_prompt=args.rename_prompt,
+                tag_prompt=args.tag_prompt,
+                tag_model=args.tag_model,
+                tag_workers=args.tag_workers,
+            )
         except ValueError as exc:
             print(str(exc))
             return
