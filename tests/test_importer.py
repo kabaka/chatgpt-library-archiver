@@ -34,6 +34,7 @@ def test_import_single_file_move(monkeypatch, tmp_path):
     metadata = json.loads((gallery_root / "metadata.json").read_text())
     assert metadata[0]["tags"] == ["tag1", "tag2"]
     assert metadata[0]["conversation_link"] == "https://chat.openai.com/c/abc#def"
+    assert isinstance(metadata[0]["created_at"], float)
 
 
 def test_import_copy_keeps_source(monkeypatch, tmp_path):
@@ -87,7 +88,10 @@ def test_recursive_directory_import(monkeypatch, tmp_path):
 
     metadata = json.loads((gallery_root / "metadata.json").read_text())
     assert len(metadata) == 3
-    assert metadata[-1]["tags"] == ["folder"]
+    imported_ids = {entry["id"] for entry in imported}
+    for entry in metadata:
+        if entry["id"] in imported_ids:
+            assert entry["tags"] == ["folder"]
     filenames = {entry["filename"] for entry in metadata}
     assert any(name.endswith(".png") for name in filenames if name != "existing.png")
 
