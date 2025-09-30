@@ -249,9 +249,11 @@ def import_images(
                 shutil.move(source_path, dest)
 
             created_at = datetime.now(timezone.utc).timestamp()
-            thumb_rel = thumbnails.thumbnail_relative_path(filename)
-            thumb_path = gallery_path / thumb_rel
-            thumbnails.create_thumbnail(dest, thumb_path, reporter=reporter)
+            thumb_rels = thumbnails.thumbnail_relative_paths(filename)
+            thumb_paths = {
+                size: gallery_path / rel for size, rel in thumb_rels.items()
+            }
+            thumbnails.create_thumbnails(dest, thumb_paths, reporter=reporter)
 
             record = {
                 "id": uuid.uuid4().hex,
@@ -266,7 +268,8 @@ def import_images(
                 "conversation_id": None,
                 "message_id": None,
                 "conversation_link": item.conversation_link,
-                "thumbnail": thumb_rel,
+                "thumbnails": thumb_rels,
+                "thumbnail": thumb_rels["medium"],
             }
             data.append(record)
             imported.append(record)

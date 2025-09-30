@@ -74,10 +74,15 @@ def main(tag_new: bool = False) -> None:
                     f.write(response.content)
 
                 meta["filename"] = filename
-                thumb_rel = thumbnails.thumbnail_relative_path(filename)
-                thumb_path = gallery_root / thumb_rel
-                thumbnails.create_thumbnail(filepath, thumb_path, reporter=progress)
-                meta["thumbnail"] = thumb_rel
+                thumb_rels = thumbnails.thumbnail_relative_paths(filename)
+                thumb_paths = {
+                    size: gallery_root / rel for size, rel in thumb_rels.items()
+                }
+                thumbnails.create_thumbnails(
+                    filepath, thumb_paths, reporter=progress
+                )
+                meta["thumbnails"] = thumb_rels
+                meta["thumbnail"] = thumb_rels["medium"]
                 return (True, meta)
             except Exception as e:
                 return (False, meta["id"], str(e))
