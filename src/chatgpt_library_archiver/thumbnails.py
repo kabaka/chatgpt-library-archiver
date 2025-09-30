@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import concurrent.futures
+import multiprocessing
+import threading
 from collections.abc import Iterable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -126,15 +129,52 @@ def create_thumbnails(
                 fmt = _infer_format(dest, thumb)
                 prepared, save_kwargs = _prepare_for_format(thumb, fmt)
                 prepared.save(dest, fmt, **save_kwargs)
+        if reporter is not None:
+            reporter.log_status("Finished generating thumbnails for", source.name)
     except (FileNotFoundError, UnidentifiedImageError, OSError) as exc:
         raise RuntimeError(f"Failed to create thumbnail for {source}: {exc}") from exc
 
 
-def _create_thumbnails_worker(source: Path, dest_map: dict[str, Path]) -> str:
+def _create_thumbnails_worker(
+    source: Path,
+    dest_map: dict[str, Path],
+    status_queue: multiprocessing.queues.Queue | None = None,
+) -> str:
     """Create thumbnails for ``source`` without side-channel reporting."""
 
-    create_thumbnails(source, dest_map, reporter=None)
+    if status_queue is not None:
+        status_queue.put(("start", source.name))
+    try:
+        create_thumbnails(source, dest_map, reporter=None)
+    except Exception as exc:  # noqa: BLE001
+        if status_queue is not None:
+            status_queue.put(("error", source.name, str(exc)))
+        raise
+    else:
+        if status_queue is not None:
+            status_queue.put(("finish", source.name))
     return source.name
+
+
+def _consume_status_messages(
+    status_queue: multiprocessing.queues.Queue,
+    reporter: StatusReporter,
+) -> None:
+    """Forward worker status updates to ``reporter``."""
+
+    while True:
+        message = status_queue.get()
+        if message is None:
+            break
+        kind, name, *rest = message
+        if kind == "start":
+            reporter.log_status("Generating thumbnails for", name)
+        elif kind == "finish":
+            reporter.log_status("Finished generating thumbnails for", name)
+        elif kind == "error":
+            detail = rest[0] if rest else ""
+            suffix = f": {detail}" if detail else ""
+            reporter.log_status("Failed to generate thumbnails for", f"{name}{suffix}")
 
 
 def regenerate_thumbnails(
@@ -202,16 +242,55 @@ def regenerate_thumbnails(
     if max_workers is not None:
         executor_kwargs["max_workers"] = max_workers
 
-    with ProcessPoolExecutor(**executor_kwargs) as executor:
-        future_to_filename = {}
-        for filename, source, thumb_paths in pending:
-            if reporter is not None:
-                reporter.log_status("Generating thumbnails for", source.name)
-            future = executor.submit(_create_thumbnails_worker, source, thumb_paths)
-            future_to_filename[future] = filename
-        for future in as_completed(future_to_filename):
-            future.result()
-            if reporter is not None:
-                reporter.advance()
+    status_queue: multiprocessing.queues.Queue | None = None
+    status_thread: threading.Thread | None = None
+    if reporter is not None:
+        mp_context = multiprocessing.get_context()
+        status_queue = mp_context.Queue()
+        status_thread = threading.Thread(
+            target=_consume_status_messages,
+            args=(status_queue, reporter),
+            daemon=True,
+        )
+        status_thread.start()
+        executor_kwargs["mp_context"] = mp_context
+
+    try:
+        with ProcessPoolExecutor(**executor_kwargs) as executor:
+            pending_iter = iter(pending)
+            futures: set[concurrent.futures.Future] = set()
+
+            def submit_next() -> bool:
+                try:
+                    _filename, source, thumb_paths = next(pending_iter)
+                except StopIteration:
+                    return False
+                future = executor.submit(
+                    _create_thumbnails_worker,
+                    source,
+                    thumb_paths,
+                    status_queue,
+                )
+                futures.add(future)
+                return True
+
+            worker_limit = getattr(executor, "_max_workers", None)
+            if worker_limit is None:
+                worker_limit = len(pending)
+            for _ in range(worker_limit):
+                if not submit_next():
+                    break
+
+            while futures:
+                future = next(as_completed(futures))
+                futures.remove(future)
+                future.result()
+                if reporter is not None:
+                    reporter.advance()
+                submit_next()
+    finally:
+        if status_queue is not None and status_thread is not None:
+            status_queue.put(None)
+            status_thread.join()
 
     return processed, updated
