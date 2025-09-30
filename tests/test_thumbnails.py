@@ -231,7 +231,9 @@ def test_regenerate_thumbnails_parallel_with_spawn_queue(tmp_path, monkeypatch):
     except ValueError:  # pragma: no cover - safety for unusual platforms
         pytest.skip("spawn start method not available")
 
-    monkeypatch.setattr(thumbnails.multiprocessing, "get_context", lambda: spawn_context)
+    monkeypatch.setattr(
+        thumbnails.multiprocessing, "get_context", lambda: spawn_context
+    )
 
     gallery_root = tmp_path
     images_dir = gallery_root / "images"

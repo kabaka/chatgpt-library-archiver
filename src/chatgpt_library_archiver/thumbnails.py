@@ -6,11 +6,11 @@ import concurrent.futures
 import multiprocessing
 import threading
 from collections.abc import Iterable
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from multiprocessing.context import BaseContext
 from multiprocessing.managers import SyncManager
-from typing import Protocol
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
+from typing import Protocol
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
@@ -20,11 +20,14 @@ from .status import StatusReporter
 class _StatusQueueProtocol(Protocol):
     """Minimal protocol for status queue objects used by workers."""
 
-    def put(self, message: object, block: bool = True, timeout: float | None = None) -> None:  # noqa: D401
+    def put(
+        self, message: object, block: bool = True, timeout: float | None = None
+    ) -> None:  # noqa: D401
         """Send ``message`` to the queue."""
 
     def get(self) -> object:  # noqa: D401
         """Retrieve a message from the queue."""
+
 
 THUMBNAIL_DIR_NAME = "thumbs"
 THUMBNAIL_SIZES: dict[str, tuple[int, int]] = {
