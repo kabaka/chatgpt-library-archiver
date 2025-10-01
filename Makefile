@@ -8,7 +8,7 @@ lint:
 	pre-commit run --all-files
 
 test:
-        python -m pytest
+	python -m pytest
 
 build:
 	python -m build
