@@ -113,20 +113,23 @@ header.top-bar {
   z-index: 100;
   padding: 10px var(--space);
   width: 100%;
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "title search controls";
   gap: 10px;
   align-items: center;
 }
 header.top-bar h1 {
   margin: 0;
   font-size: 1.2em;
+  grid-area: title;
 }
 .controls {
-  display: flex;
+  display: inline-flex;
   justify-content: flex-end;
-  gap: 10px;
-  margin: 0 0 0 auto;
+  gap: 8px;
+  margin: 0;
+  grid-area: controls;
 }
 .toggle, .size-select {
   background: var(--control-bg);
@@ -134,28 +137,34 @@ header.top-bar h1 {
   padding: 6px 10px;
   cursor: pointer;
   font-size: 0.9em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .search-bar {
   display: flex;
   gap: 10px;
   align-items: center;
+  flex-wrap: wrap;
 }
 header.top-bar .search-bar {
-  flex: 1;
+  grid-area: search;
   margin: 0;
 }
 .search-bar input {
-  padding: 6px;
+  padding: 7px;
   font-size: 1em;
 }
 .search-bar input[type="text"] {
-  width: 200px;
+  flex: 1 1 200px;
+  min-width: 140px;
+  max-width: 100%;
 }
 .search-bar button {
   background: var(--control-bg);
   border: none;
   border-radius: 5px;
-  padding: 6px;
+  padding: 7px;
   cursor: pointer;
 }
 .search-bar .help-icon {
@@ -175,6 +184,9 @@ header.top-bar .search-bar {
   gap: 5px;
   align-items: center;
   font-size: 0.9em;
+}
+.date-range input {
+  padding: 5px 6px;
 }
 .icon-link {
   display: flex;
@@ -202,6 +214,67 @@ header.top-bar .search-bar {
     --text: #eee;
     --meta-color: #ccc;
     --control-bg: #555;
+  }
+}
+@media (max-width: 960px) {
+  header.top-bar {
+    padding: 8px calc(var(--space) * 0.75);
+    gap: 8px;
+  }
+  header.top-bar h1 {
+    font-size: 1.1em;
+  }
+  .toggle, .size-select, .search-bar button {
+    padding: 6px 8px;
+    font-size: 0.9em;
+  }
+  .controls {
+    gap: 6px;
+  }
+}
+@media (max-width: 680px) {
+  header.top-bar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "title controls"
+      "search search";
+    align-items: start;
+  }
+  header.top-bar h1 {
+    font-size: 1.05em;
+  }
+  .controls {
+    justify-self: end;
+  }
+  header.top-bar .search-bar {
+    width: 100%;
+  }
+  .search-bar {
+    gap: 8px;
+  }
+  .search-bar input[type="text"] {
+    flex: 1 1 160px;
+    min-width: 0;
+  }
+  .date-range {
+    width: 100%;
+    gap: 6px;
+    justify-content: space-between;
+  }
+  .date-range span {
+    flex: 1 1 auto;
+    min-width: 90px;
+  }
+  .date-range input {
+    flex: 1 1 120px;
+    min-width: 0;
+  }
+  .toggle, .size-select {
+    font-size: 0.95em;
+  }
+  .search-bar button {
+    padding: 7px 8px;
+    font-size: 0.95em;
   }
 }
 #viewer {
