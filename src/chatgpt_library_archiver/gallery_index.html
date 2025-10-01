@@ -234,36 +234,50 @@ header.top-bar .search-bar {
 }
 @media (max-width: 680px) {
   header.top-bar {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-      "title controls"
-      "search search";
-    align-items: start;
+      "search"
+      "controls";
+    align-items: stretch;
   }
   header.top-bar h1 {
-    font-size: 1.05em;
+    display: none;
   }
   .controls {
-    justify-self: end;
+    display: flex;
+    justify-content: flex-start;
+    gap: 8px;
+    width: 100%;
+    flex-wrap: wrap;
   }
   header.top-bar .search-bar {
     width: 100%;
-  }
-  .search-bar {
-    gap: 8px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "query help"
+      "dates reset";
+    column-gap: 8px;
+    row-gap: 10px;
   }
   .search-bar input[type="text"] {
-    flex: 1 1 160px;
+    grid-area: query;
     min-width: 0;
   }
+  .search-bar .help-icon {
+    grid-area: help;
+    justify-self: end;
+    align-self: center;
+  }
   .date-range {
+    grid-area: dates;
     width: 100%;
     gap: 6px;
-    justify-content: space-between;
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
   .date-range span {
-    flex: 1 1 auto;
-    min-width: 90px;
+    flex: 0 0 auto;
   }
   .date-range input {
     flex: 1 1 120px;
@@ -273,6 +287,8 @@ header.top-bar .search-bar {
     font-size: 0.95em;
   }
   .search-bar button {
+    grid-area: reset;
+    justify-self: end;
     padding: 7px 8px;
     font-size: 0.95em;
   }
