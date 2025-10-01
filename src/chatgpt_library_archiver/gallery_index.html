@@ -401,7 +401,7 @@ function resolveThumbnails(item, fallback, fullSrc) {
 }
 
 async function loadImages() {
-  const response = await fetch('metadata.json');
+  const response = await fetch('metadata.json', { cache: 'no-store' });
   const data = await response.json();
   const gallery = document.getElementById('gallery');
   const observer = new IntersectionObserver((entries, obs) => {
