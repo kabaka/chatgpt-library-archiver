@@ -180,13 +180,22 @@ header.top-bar .search-bar {
   width: 20px;
 }
 .date-range {
-  display: flex;
-  gap: 5px;
+  display: inline-flex;
+  gap: 6px;
   align-items: center;
   font-size: 0.9em;
 }
 .date-range input {
   padding: 5px 6px;
+}
+.date-range span {
+  white-space: nowrap;
+}
+.reset-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
 }
 .icon-link {
   display: flex;
@@ -256,7 +265,7 @@ header.top-bar .search-bar {
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
       "query help"
-      "dates reset";
+      "dates dates";
     column-gap: 8px;
     row-gap: 10px;
   }
@@ -272,25 +281,25 @@ header.top-bar .search-bar {
   .date-range {
     grid-area: dates;
     width: 100%;
-    gap: 6px;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-  }
-  .date-range span {
-    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) auto;
+    column-gap: 6px;
+    align-items: center;
   }
   .date-range input {
-    flex: 1 1 120px;
     min-width: 0;
   }
   .toggle, .size-select {
     font-size: 0.95em;
   }
-  .search-bar button {
-    grid-area: reset;
+  .reset-button {
     justify-self: end;
     padding: 7px 8px;
     font-size: 0.95em;
+  }
+  .controls .toggle,
+  .controls .icon-link {
+    display: none;
   }
 }
 #viewer {
@@ -340,8 +349,8 @@ header.top-bar .search-bar {
           <span>Date range:</span>
           <input type="date" id="startDate" aria-label="Start date" onchange="filterGallery()">
           <input type="date" id="endDate" aria-label="End date" onchange="filterGallery()">
+          <button type="button" id="resetFilters" class="reset-button" onclick="resetFilters()" title="Reset filters">⟲<span class="sr-only">Reset filters</span></button>
         </div>
-        <button type="button" id="resetFilters" onclick="resetFilters()" title="Reset filters">⟲<span class="sr-only">Reset filters</span></button>
       </div>
       <div class="controls">
         <div class="size-select">
