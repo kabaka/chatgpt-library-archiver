@@ -39,9 +39,26 @@ body.dark {
   grid-template-columns: repeat(auto-fill, minmax(var(--thumb-size, 200px), 1fr));
   grid-auto-rows: var(--thumb-size, 200px);
 }
+.gallery-full {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
 .gallery-small { --thumb-size: 150px; }
 .gallery-medium { --thumb-size: 250px; }
 .gallery-large { --thumb-size: 400px; }
+.gallery-full .image-card,
+.gallery-full .image-card a.thumb {
+  height: auto;
+}
+.gallery-full .image-card img {
+  width: 100%;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  object-fit: contain;
+  object-position: center;
+}
 .gallery-small .meta .created,
 .gallery-small .meta .tags { display: none; }
 .image-card {
@@ -244,6 +261,7 @@ header.top-bar .search-bar {
             <option value="gallery-small">Small</option>
             <option value="gallery-medium" selected>Medium</option>
             <option value="gallery-large">Large</option>
+            <option value="gallery-full">Full size</option>
           </select>
         </div>
         <div class="toggle" onclick="toggleDarkMode()">Toggle Dark Mode</div>
@@ -254,7 +272,7 @@ header.top-bar .search-bar {
       </div>
   </header>
   <div class="layout">
-    <div class="gallery-grid gallery-medium" id="gallery"></div>
+    <div class="gallery gallery-grid gallery-medium" id="gallery"></div>
   </div>
 <div id="viewer">
   <img id="viewerImg" src="" alt="">
@@ -265,6 +283,7 @@ const sizeClassToKey = {
   'gallery-small': 'small',
   'gallery-medium': 'medium',
   'gallery-large': 'large',
+  'gallery-full': 'full',
 };
 
 function currentSizeKey() {
@@ -273,12 +292,13 @@ function currentSizeKey() {
   return sizeClassToKey[className] || 'medium';
 }
 
-function resolveThumbnails(item, fallback) {
+function resolveThumbnails(item, fallback, fullSrc) {
   const thumbs = item.thumbnails || {};
   return {
     small: thumbs.small || fallback,
     medium: thumbs.medium || fallback,
     large: thumbs.large || fallback,
+    full: thumbs.full || fullSrc,
   };
 }
 
@@ -294,7 +314,7 @@ async function loadImages() {
         obs.unobserve(img);
       }
     });
-  });
+  }, { rootMargin: '200px 0px' });
   data.forEach(item => {
     const card = document.createElement('div');
     card.className = 'image-card';
@@ -305,7 +325,7 @@ async function loadImages() {
     card.dataset.tags = tagsArr.map(t => t.toLowerCase()).join('\n');
     const imgPath = 'images/' + item.filename;
     const fallbackThumb = item.thumbnail ? item.thumbnail : imgPath;
-    const thumbPaths = resolveThumbnails(item, fallbackThumb);
+    const thumbPaths = resolveThumbnails(item, fallbackThumb, imgPath);
     const thumbKey = currentSizeKey();
     const thumbPath = thumbPaths[thumbKey];
     const created = item.created_at
@@ -322,7 +342,7 @@ async function loadImages() {
         : '';
     card.innerHTML =
       '<a href="' + imgPath + '" class="thumb">' +
-      '<img data-src="' + thumbPath + '" data-thumb-small="' + thumbPaths.small + '" data-thumb-medium="' + thumbPaths.medium + '" data-thumb-large="' + thumbPaths.large + '" data-full="' + imgPath + '" alt="' + title + '" loading="lazy"></a>' +
+      '<img data-src="' + thumbPath + '" data-thumb-small="' + thumbPaths.small + '" data-thumb-medium="' + thumbPaths.medium + '" data-thumb-large="' + thumbPaths.large + '" data-thumb-full="' + thumbPaths.full + '" data-full="' + imgPath + '" alt="' + title + '" loading="lazy"></a>' +
       '<div class="meta"><strong>' + (title || item.id) + '</strong>' +
       '<span class="created"><br>' + created + '</span>' +
       tagsHtml + '<br><a href="' +
@@ -382,7 +402,11 @@ if (savedTheme === 'dark') {
 const savedSize = sessionStorage.getItem('size');
 if (savedSize) {
   document.getElementById('sizeSelector').value = savedSize;
-  document.getElementById('gallery').className = 'gallery-grid ' + savedSize;
+  if (savedSize === 'gallery-full') {
+    document.getElementById('gallery').className = 'gallery gallery-full';
+  } else {
+    document.getElementById('gallery').className = 'gallery gallery-grid ' + savedSize;
+  }
 }
 const savedText = sessionStorage.getItem('filter-text') || '';
 const savedStart = sessionStorage.getItem('filter-start') || '';
@@ -494,7 +518,11 @@ function updateThumbnailsForSize(sizeKey) {
 function changeSize() {
   const gallery = document.getElementById('gallery');
   const size = document.getElementById('sizeSelector').value;
-  gallery.className = 'gallery-grid ' + size;
+  if (size === 'gallery-full') {
+    gallery.className = 'gallery gallery-full';
+  } else {
+    gallery.className = 'gallery gallery-grid ' + size;
+  }
   if (typeof sessionStorage !== 'undefined') {
     sessionStorage.setItem('size', size);
   }
@@ -518,6 +546,9 @@ function resetFilters() {
 let viewerData = [];
 let visibleIndices = [];
 let currentIndex = 0;
+let justSwiped = false;
+let touchStartX = 0;
+let touchStartY = 0;
 
 function updateVisibleIndices() {
   const cards = document.querySelectorAll('.image-card');
@@ -547,6 +578,7 @@ function openViewer(index) {
 }
 function closeViewer() {
   document.getElementById('viewer').style.display = 'none';
+  justSwiped = false;
 }
 function showNext(delta) {
   const total = visibleIndices.length;
@@ -563,6 +595,36 @@ document.addEventListener('keydown', e => {
     showNext(1);
   } else if (e.key === 'ArrowLeft') {
     showNext(-1);
+  }
+});
+const viewer = document.getElementById('viewer');
+viewer.addEventListener('click', () => {
+  if (justSwiped) {
+    justSwiped = false;
+    return;
+  }
+  closeViewer();
+});
+viewer.addEventListener('touchstart', e => {
+  if (e.touches.length !== 1) return;
+  const touch = e.touches[0];
+  touchStartX = touch.clientX;
+  touchStartY = touch.clientY;
+  justSwiped = false;
+});
+viewer.addEventListener('touchend', e => {
+  if (e.changedTouches.length !== 1) return;
+  const touch = e.changedTouches[0];
+  const dx = touch.clientX - touchStartX;
+  const dy = touch.clientY - touchStartY;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+  const swipeThreshold = 50;
+  if (absDx > swipeThreshold && absDx > absDy) {
+    showNext(dx < 0 ? 1 : -1);
+    justSwiped = true;
+  } else {
+    closeViewer();
   }
 });
 loadImages().then(filterGallery);

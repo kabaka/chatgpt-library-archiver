@@ -187,6 +187,7 @@ Use the `-y/--yes` flag with any command to bypass confirmation prompts.
 - Images are lazy-loaded using the Intersection Observer API so they're fetched only when they enter the viewport.
 - A sticky header keeps the page title, search filters, and settings visible while you browse.
 - The header and image grid span the full width of the viewport, and thumbnails are centered within their square cells.
+- Switch to the **Full size** layout to show each image edge-to-edge using its full-resolution asset—perfect for mobile browsing.
 - Use the header's search filters to filter by title or tags with fuzzy matching
   and Boolean expressions (AND/OR/NOT) or by a date range.
 - Hover over a thumbnail to reveal its title, timestamp, tags, and conversation link;
@@ -196,8 +197,9 @@ Use the `-y/--yes` flag with any command to bypass confirmation prompts.
 - Your selected theme, image size, and filter values are remembered for the current browser session.
 - Click any thumbnail to open a full-screen viewer overlay. Navigate with the left/right
   arrow keys, press Escape to close, or follow the **Raw file** link to view the
-  underlying image. Ctrl-click (Cmd-click on macOS) a thumbnail to open the raw image
-  directly in a new tab without launching the viewer.
+  underlying image. Tap or click anywhere to dismiss the overlay, or swipe left/right on touch devices to jump between images.
+  Ctrl-click (Cmd-click on macOS) a thumbnail to open the raw image directly in a new
+  tab without launching the viewer.
 
 ### Disk Space
 This depends entirely on how many images you have.

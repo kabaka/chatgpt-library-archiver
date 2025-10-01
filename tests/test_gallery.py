@@ -106,6 +106,18 @@ def test_gallery_has_search_help_tooltip():
     assert "Use AND, OR, NOT, and parentheses to refine search" in html
 
 
+def test_gallery_has_full_size_mode_with_preload_and_swipe():
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    assert 'option value="gallery-full"' in html
+    assert ".gallery-full {" in html
+    assert "data-thumb-full=" in html
+    assert "rootMargin: '200px 0px'" in html
+    assert "viewer.addEventListener('touchend'" in html
+    assert "viewer.addEventListener('click'" in html
+
+
 def test_gallery_grid_centers_images_and_is_full_width():
     html = resources.read_text(
         "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
@@ -306,7 +318,7 @@ def test_viewer_keyboard_navigation():
     script = textwrap.dedent(
         """
         const elements = {
-          viewer: { style: { display: 'none' } },
+          viewer: { style: { display: 'none' }, addEventListener: () => {} },
           viewerImg: { src: '', alt: '' },
           viewerRaw: { href: '' },
         };
@@ -348,7 +360,7 @@ def test_viewer_navigation_respects_filters():
     script = textwrap.dedent(
         """
         const elements = {
-          viewer: { style: { display: 'none' } },
+          viewer: { style: { display: 'none' }, addEventListener: () => {} },
           viewerImg: { src: '', alt: '' },
           viewerRaw: { href: '' },
         };
