@@ -598,11 +598,16 @@ document.addEventListener('keydown', e => {
   }
 });
 const viewer = document.getElementById('viewer');
-viewer.addEventListener('click', () => {
+viewer.addEventListener('click', e => {
   if (justSwiped) {
     justSwiped = false;
     return;
   }
+  if (e.target.closest('#viewer .viewer-meta a')) {
+    return;
+  }
+  e.preventDefault();
+  e.stopPropagation();
   closeViewer();
 });
 viewer.addEventListener('touchstart', e => {
@@ -623,10 +628,13 @@ viewer.addEventListener('touchend', e => {
   if (absDx > swipeThreshold && absDx > absDy) {
     showNext(dx < 0 ? 1 : -1);
     justSwiped = true;
-  } else {
+  } else if (!e.target.closest('#viewer .viewer-meta a')) {
     closeViewer();
   }
-});
+  if (!e.target.closest('#viewer .viewer-meta a')) {
+    e.preventDefault();
+  }
+}, { passive: false });
 loadImages().then(filterGallery);
 </script>
 </body></html>
