@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from argparse import ArgumentParser, Namespace, _SubParsersAction
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Callable, Iterable, Optional
 
 
 @dataclass
@@ -33,7 +33,7 @@ class GalleryCommand:
         parser.set_defaults(command_handler=self.handle, command="gallery")
         return parser
 
-    def handle(self, args: Namespace) -> Optional[int]:
+    def handle(self, args: Namespace) -> int | None:
         gallery_root = getattr(args, "gallery", "gallery")
         if getattr(args, "regenerate_thumbnails", False):
             regenerated = list(

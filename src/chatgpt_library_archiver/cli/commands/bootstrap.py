@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 from argparse import ArgumentParser, Namespace, _SubParsersAction
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
 
 
 @dataclass
 class BootstrapCommand:
     """Command that prepares the project environment."""
 
-    run_bootstrap: Callable[[bool], Optional[int]]
+    run_bootstrap: Callable[[bool], int | None]
 
     def register(self, subparsers: _SubParsersAction[ArgumentParser]) -> ArgumentParser:
         parser = subparsers.add_parser(
@@ -27,5 +27,5 @@ class BootstrapCommand:
         parser.set_defaults(command_handler=self.handle, command="bootstrap")
         return parser
 
-    def handle(self, args: Namespace) -> Optional[int]:
+    def handle(self, args: Namespace) -> int | None:
         return self.run_bootstrap(bool(getattr(args, "tag_new", False)))

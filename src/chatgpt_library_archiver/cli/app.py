@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
-from typing import Callable, Iterable, Optional, Sequence
 
 from .commands.bootstrap import BootstrapCommand
 from .commands.download import DownloadCommand
@@ -18,17 +18,17 @@ class CLI:
     """Container that owns the argument parser and command dispatch."""
 
     parser: argparse.ArgumentParser
-    default_handler: Callable[[argparse.Namespace], Optional[int]]
+    default_handler: Callable[[argparse.Namespace], int | None]
 
-    def parse_args(self, argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+    def parse_args(self, argv: Sequence[str] | None = None) -> argparse.Namespace:
         """Parse CLI arguments."""
 
         return self.parser.parse_args(argv)
 
-    def run(self, args: argparse.Namespace) -> Optional[int]:
+    def run(self, args: argparse.Namespace) -> int | None:
         """Execute the handler associated with the parsed arguments."""
 
-        handler: Callable[[argparse.Namespace], Optional[int]] = getattr(
+        handler: Callable[[argparse.Namespace], int | None] = getattr(
             args, "command_handler", self.default_handler
         )
         return handler(args)
@@ -61,8 +61,8 @@ def _register_commands(
 
 def create_app(
     *,
-    bootstrap_runner: Callable[[bool], Optional[int]],
-    download_runner: Callable[[bool], Optional[int]],
+    bootstrap_runner: Callable[[bool], int | None],
+    download_runner: Callable[[bool], int | None],
     gallery_generator: Callable[[str], int],
     thumbnail_regenerator: Callable[[str, bool], Iterable[str]],
     import_runner: Callable[..., Iterable[dict]],
