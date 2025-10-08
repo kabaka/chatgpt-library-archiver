@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from argparse import ArgumentParser, Namespace, _SubParsersAction
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
-from typing import Callable, Iterable, Optional, Sequence
 
 
 @dataclass
@@ -20,7 +20,11 @@ class ImportCommand:
             "import",
             help="Import local images into the gallery",
         )
-        parser.add_argument("inputs", nargs="*", help="Image files or directories to import")
+        parser.add_argument(
+            "inputs",
+            nargs="*",
+            help="Image files or directories to import",
+        )
         parser.add_argument("--gallery", default="gallery", help="Gallery root path")
         parser.add_argument(
             "--copy",
@@ -84,7 +88,7 @@ class ImportCommand:
         parser.set_defaults(command_handler=self.handle, command="import")
         return parser
 
-    def handle(self, args: Namespace) -> Optional[int]:
+    def handle(self, args: Namespace) -> int | None:
         gallery_root = getattr(args, "gallery", "gallery")
         if not getattr(args, "inputs", []):
             if getattr(args, "regenerate_thumbnails", False):
@@ -138,9 +142,7 @@ class ImportCommand:
                 )
             )
             if regenerated:
-                self.printer(
-                    f"Regenerated thumbnails for {len(regenerated)} images."
-                )
+                self.printer(f"Regenerated thumbnails for {len(regenerated)} images.")
 
         if imported:
             self.printer(f"Imported {len(imported)} images.")
@@ -149,7 +151,7 @@ class ImportCommand:
         return None
 
     @staticmethod
-    def _normalize_sequence(value: Optional[Sequence[str]]) -> Optional[Sequence[str]]:
+    def _normalize_sequence(value: Sequence[str] | None) -> Sequence[str] | None:
         if value is None:
             return None
         return list(value)
