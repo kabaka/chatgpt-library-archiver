@@ -1,241 +1,42 @@
-"""Unified command-line interface for ChatGPT Library Archiver.
+"""Unified command-line interface for ChatGPT Library Archiver."""
 
-This script consolidates the various helper scripts into a single entry
-point. By default it downloads new images and regenerates the gallery.
-Use the ``bootstrap`` subcommand to create a virtual environment and
-install dependencies before running the downloader.
+from __future__ import annotations
 
-The ``-y/--yes`` flag can be used to automatically answer ``yes`` to any
-interactive prompts.
-"""
-
-import argparse
 import os
+from collections.abc import Callable, Sequence
 
 from . import bootstrap, gallery, importer, incremental_downloader, tagger
+from .cli import CLI, create_app
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="ChatGPT Library Archiver")
-    parser.add_argument(
-        "-y",
-        "--yes",
-        action="store_true",
-        help="Automatically answer yes to confirmation prompts.",
-    )
-    parser.add_argument(
-        "--tag-new",
-        action="store_true",
-        help="Tag newly downloaded images using OpenAI",
+def build_app(*, printer: Callable[[str], None] = print) -> CLI:
+    """Create the CLI wired up with the production dependencies."""
+
+    return create_app(
+        bootstrap_runner=bootstrap.main,
+        download_runner=incremental_downloader.main,
+        gallery_generator=gallery.generate_gallery,
+        thumbnail_regenerator=importer.regenerate_thumbnails,
+        import_runner=importer.import_images,
+        tag_runner=tagger.main,
+        printer=printer,
     )
 
-    sub = parser.add_subparsers(dest="command")
-    boot = sub.add_parser(
-        "bootstrap",
-        help=(
-            "Create a virtual environment, install requirements, "
-            "and run the downloader"
-        ),
-    )
-    boot.add_argument(
-        "--tag-new", action="store_true", help="Tag newly downloaded images"
-    )
-    dl = sub.add_parser(
-        "download",
-        help="Download new images and regenerate the gallery (default)",
-    )
-    dl.add_argument(
-        "--tag-new", action="store_true", help="Tag newly downloaded images"
-    )
-    imp = sub.add_parser(
-        "import",
-        help="Import local images into the gallery",
-    )
-    imp.add_argument("inputs", nargs="*", help="Image files or directories to import")
-    imp.add_argument("--gallery", default="gallery", help="Gallery root path")
-    imp.add_argument(
-        "--copy",
-        action="store_true",
-        help="Copy files instead of moving them",
-    )
-    imp.add_argument(
-        "--recursive",
-        action="store_true",
-        help="Recurse through directories when importing",
-    )
-    imp.add_argument(
-        "--tag",
-        dest="tags",
-        action="append",
-        default=[],
-        help="Add tag(s) to imported images (repeatable or comma-separated)",
-    )
-    imp.add_argument("--title", help="Override title for all imported images")
-    imp.add_argument(
-        "--conversation-link",
-        dest="conversation_links",
-        action="append",
-        help="Conversation link for each corresponding direct file input",
-    )
-    imp.add_argument(
-        "--tag-new",
-        action="store_true",
-        help="Tag imported images with OpenAI",
-    )
-    imp.add_argument(
-        "--config",
-        default="tagging_config.json",
-        help="Path to tagging/AI configuration",
-    )
-    imp.add_argument(
-        "--ai-rename",
-        action="store_true",
-        help="Use OpenAI to generate descriptive filenames",
-    )
-    imp.add_argument("--rename-model", help="Model override for AI renaming")
-    imp.add_argument("--rename-prompt", help="Prompt override for AI renaming")
-    imp.add_argument("--tag-prompt", help="Prompt override for tagging imports")
-    imp.add_argument("--tag-model", help="Model override for tagging imports")
-    imp.add_argument(
-        "--tag-workers",
-        type=int,
-        default=4,
-        help="Worker count when tagging imports",
-    )
-    imp.add_argument(
-        "--regenerate-thumbnails",
-        action="store_true",
-        help="Regenerate thumbnails after import or when run without inputs",
-    )
-    imp.add_argument(
-        "--force-thumbnails",
-        action="store_true",
-        help="Overwrite thumbnails when regenerating",
-    )
-    gal = sub.add_parser(
-        "gallery",
-        help="Regenerate gallery without downloading new images",
-    )
-    gal.add_argument("--gallery", default="gallery", help="Gallery root path")
-    gal.add_argument(
-        "--regenerate-thumbnails",
-        action="store_true",
-        help="Ensure thumbnails exist before writing the gallery",
-    )
-    gal.add_argument(
-        "--force-thumbnails",
-        action="store_true",
-        help="Overwrite thumbnails when regenerating",
-    )
-    tag = sub.add_parser(
-        "tag",
-        help="Generate or remove tags for images using OpenAI",
-    )
-    tag.add_argument("--all", action="store_true", help="Re-tag all images")
-    tag.add_argument("--ids", nargs="+", help="Tag only specific image IDs")
-    tag.add_argument(
-        "--remove-all", action="store_true", help="Remove tags from all images"
-    )
-    tag.add_argument(
-        "--remove-ids", nargs="+", help="Remove tags from specific image IDs"
-    )
-    tag.add_argument("--prompt", help="Override tagging prompt")
-    tag.add_argument("--model", help="Override model ID")
-    tag.add_argument(
-        "--gallery",
-        default="gallery",
-        help="Path to gallery directory",
-    )
-    tag.add_argument(
-        "--config",
-        default="tagging_config.json",
-        help="Path to OpenAI tagging configuration",
-    )
-    tag.add_argument(
-        "--workers",
-        type=int,
-        default=4,
-        help="Number of parallel workers",
-    )
 
-    return parser.parse_args()
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    printer: Callable[[str], None] = print,
+) -> int | None:
+    """Entrypoint for ``python -m chatgpt_library_archiver``."""
 
+    app = build_app(printer=printer)
+    args = app.parse_args(argv)
 
-def main() -> None:
-    args = parse_args()
-    if args.yes:
+    if getattr(args, "yes", False):
         os.environ["ARCHIVER_ASSUME_YES"] = "1"
 
-    if args.command == "bootstrap":
-        bootstrap.main(tag_new=args.tag_new)
-    elif args.command == "gallery":
-        if args.regenerate_thumbnails:
-            regenerated = importer.regenerate_thumbnails(
-                gallery_root=args.gallery, force=args.force_thumbnails
-            )
-            if regenerated:
-                print(f"Generated thumbnails for {len(regenerated)} images.")
-            else:
-                print("No thumbnails regenerated (no images found).")
-        total = gallery.generate_gallery(gallery_root=args.gallery)
-        if total:
-            print(f"Generated gallery with {total} images.")
-        else:
-            print("No gallery generated (no images found).")
-    elif args.command == "tag":
-        count = tagger.main(args)
-        if count:
-            print(f"Updated tags for {count} images.")
-        else:
-            print("No images processed.")
-    elif args.command == "import":
-        if not args.inputs and args.regenerate_thumbnails:
-            regenerated = importer.regenerate_thumbnails(
-                gallery_root=args.gallery, force=args.force_thumbnails
-            )
-            if regenerated:
-                print(f"Regenerated thumbnails for {len(regenerated)} images.")
-            else:
-                print("No thumbnails regenerated (no images found).")
-            return
-
-        if not args.inputs:
-            print("No inputs supplied for import.")
-            return
-
-        try:
-            imported = importer.import_images(
-                inputs=args.inputs,
-                gallery_root=args.gallery,
-                copy_files=args.copy,
-                recursive=args.recursive,
-                tags=args.tags,
-                title=args.title,
-                conversation_links=args.conversation_links,
-                tag_new=args.tag_new,
-                config_path=args.config,
-                ai_rename=args.ai_rename,
-                rename_model=args.rename_model,
-                rename_prompt=args.rename_prompt,
-                tag_prompt=args.tag_prompt,
-                tag_model=args.tag_model,
-                tag_workers=args.tag_workers,
-            )
-        except ValueError as exc:
-            print(str(exc))
-            return
-        if args.regenerate_thumbnails:
-            regenerated = importer.regenerate_thumbnails(
-                gallery_root=args.gallery, force=args.force_thumbnails
-            )
-            if regenerated:
-                print(f"Regenerated thumbnails for {len(regenerated)} images.")
-        if imported:
-            print(f"Imported {len(imported)} images.")
-        else:
-            print("No images imported.")
-    else:
-        incremental_downloader.main(tag_new=args.tag_new)
+    return app.run(args)
 
 
 if __name__ == "__main__":
