@@ -22,6 +22,8 @@ def test_gallery_item_roundtrip_with_extras(tmp_path):
         filename="image.jpg",
         title="Example",
         tags=["original"],
+        checksum="sha256",
+        content_type="image/jpeg",
         extra={"foo": "bar"},
     )
     save_gallery_items(gallery_root, [item])
@@ -32,5 +34,7 @@ def test_gallery_item_roundtrip_with_extras(tmp_path):
     assert loaded_item.id == "abc"
     assert loaded_item.filename == "image.jpg"
     assert loaded_item.title == "Example"
+    assert loaded_item.checksum == "sha256"
+    assert loaded_item.content_type == "image/jpeg"
     # extras are preserved without overwriting explicit values
     assert loaded_item.extra == {"foo": "bar"}

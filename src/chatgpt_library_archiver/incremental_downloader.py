@@ -1,14 +1,18 @@
+"""Incremental downloader for ChatGPT image library assets."""
+
+from __future__ import annotations
+
 import mimetypes
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import quote
 
-import requests
 from tqdm import tqdm
 
 from . import tagger, thumbnails
 from .gallery import generate_gallery
+from .http_client import HttpClient, HttpError
 from .metadata import (
     GalleryItem,
     load_gallery_items,
@@ -32,6 +36,12 @@ def build_headers(config: dict) -> dict:
     }
 
 
+def create_http_client() -> HttpClient:
+    """Factory for the shared HTTP client used by downloads."""
+
+    return HttpClient(timeout=30.0)
+
+
 def main(tag_new: bool = False) -> None:
     # Load auth (prompt if missing)
     config = ensure_auth_config("auth.txt")
@@ -47,9 +57,12 @@ def main(tag_new: bool = False) -> None:
     existing_metadata = load_gallery_items(gallery_root)
     existing_ids = {item.id for item in existing_metadata}
 
-    with StatusReporter(
-        total=0, description="Overall progress", unit="img", position=1
-    ) as progress:
+    with (
+        StatusReporter(
+            total=0, description="Overall progress", unit="img", position=1
+        ) as progress,
+        create_http_client() as client,
+    ):
         progress.log(f"Found {len(existing_ids)} previously downloaded image IDs.")
 
         if not prompt_yes_no("Proceed to download all new images from your account?"):
@@ -58,7 +71,7 @@ def main(tag_new: bool = False) -> None:
 
         # Step 2: Download new items only
         max_workers = 14
-        cursor = None
+        cursor: str | None = None
         new_metadata: list[GalleryItem] = []
         consecutive_empty_pages = 0
 
@@ -66,16 +79,24 @@ def main(tag_new: bool = False) -> None:
             try:
                 if not item.url:
                     raise ValueError("Missing URL for gallery item")
-                response = requests.get(item.url, headers=headers, timeout=30)
-                content_type = response.headers.get("Content-Type", "")
-                ext = mimetypes.guess_extension(content_type) or ".jpg"
+                temp_path = images_dir / f"{item.id}.download"
+                result = client.stream_download(
+                    item.url,
+                    temp_path,
+                    headers=headers,
+                    expected_content_prefixes=("image/",),
+                )
+                raw_type = (result.content_type or "").split(";", 1)[0].strip()
+                ext = mimetypes.guess_extension(raw_type) or ".jpg"
                 filename = f"{item.id}{ext}"
                 filepath = images_dir / filename
-
-                with open(filepath, "wb") as f:
-                    f.write(response.content)
+                if filepath.exists():
+                    filepath.unlink()
+                temp_path.replace(filepath)
 
                 item.filename = filename
+                item.checksum = result.checksum
+                item.content_type = result.content_type
                 thumb_rels = thumbnails.thumbnail_relative_paths(filename)
                 thumb_paths = {
                     size: gallery_root / rel for size, rel in thumb_rels.items()
@@ -83,28 +104,52 @@ def main(tag_new: bool = False) -> None:
                 thumbnails.create_thumbnails(filepath, thumb_paths, reporter=progress)
                 item.thumbnails = thumb_rels
                 item.thumbnail = thumb_rels["medium"]
-                return (True, item)
-            except Exception as e:
-                return (False, item.id, str(e))
+                return ("ok", item, "", None)
+            except HttpError as exc:
+                return ("error", item, exc.reason, exc)
+            except Exception as exc:  # pragma: no cover - safety net
+                return ("error", item, str(exc), exc)
 
         progress.log("Fetching metadata from API...")
 
         while True:
             url = base_url + (f"&after={quote(cursor)}" if cursor else "")
-            response = requests.get(url, headers=headers)
-
-            if response.status_code != 200:
-                progress.log(f"Error during fetch: {response.status_code}")
-                if response.status_code in (401, 403) and prompt_yes_no(
+            try:
+                data = client.get_json(url, headers=headers)
+            except HttpError as exc:
+                progress.report_error(
+                    "Fetch metadata",
+                    url,
+                    reason=exc.reason,
+                    context=exc.context,
+                    exception=exc,
+                )
+                if exc.status_code in (401, 403) and prompt_yes_no(
                     "Auth seems invalid/expired. Re-enter credentials now?"
                 ):
                     config = ensure_auth_config("auth.txt")
                     headers = build_headers(config)
                     continue
                 break
+            except Exception as exc:  # pragma: no cover - safety net
+                progress.report_error(
+                    "Fetch metadata",
+                    url,
+                    reason=str(exc),
+                    context={"url": url},
+                    exception=exc,
+                )
+                break
 
-            data = response.json()
-            items = data.get("items", [])
+            items = data.get("items") if isinstance(data, dict) else None
+            if not isinstance(items, list):
+                progress.report_error(
+                    "Fetch metadata",
+                    url,
+                    reason="Response missing 'items' list",
+                    context={"url": url},
+                )
+                break
             if not items:
                 progress.log("No more items in API.")
                 break
@@ -117,11 +162,10 @@ def main(tag_new: bool = False) -> None:
                 if consecutive_empty_pages >= 2:
                     progress.log("No new images found in 2 pages. Stopping.")
                     break
-                else:
-                    cursor = data.get("cursor")
-                    if not cursor:
-                        break
-                    continue
+                cursor = data.get("cursor") if isinstance(data, dict) else None
+                if not cursor:
+                    break
+                continue
 
             consecutive_empty_pages = 0  # Reset if we got new content
 
@@ -175,15 +219,23 @@ def main(tag_new: bool = False) -> None:
                     )
                 )
 
-            for result in results:
-                if result[0]:
-                    new_metadata.append(result[1])
-                    existing_ids.add(result[1].id)
+            for status, payload, message, exc in results:
+                if status == "ok":
+                    item = payload
+                    new_metadata.append(item)
+                    existing_ids.add(item.id)
                     progress.advance()
                 else:
-                    progress.log(f"Failed: {result[1]}: {result[2]}")
+                    item = payload
+                    progress.report_error(
+                        "Download",
+                        item.id,
+                        reason=message,
+                        context={"url": item.url or ""},
+                        exception=exc,
+                    )
 
-            cursor = data.get("cursor")
+            cursor = data.get("cursor") if isinstance(data, dict) else None
             if not cursor:
                 break
 

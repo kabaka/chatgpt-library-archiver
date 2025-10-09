@@ -64,6 +64,8 @@ class GalleryItem:
     conversation_link: str | None = None
     thumbnails: dict[str, str] = field(default_factory=dict)
     thumbnail: str | None = None
+    checksum: str | None = None
+    content_type: str | None = None
     extra: dict[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
@@ -85,6 +87,8 @@ class GalleryItem:
             "conversation_link": data.get("conversation_link"),
             "thumbnails": dict(data.get("thumbnails") or {}),
             "thumbnail": data.get("thumbnail"),
+            "checksum": data.get("checksum"),
+            "content_type": data.get("content_type"),
         }
         extras = {key: value for key, value in data.items() if key not in known}
         return cls(**known, extra=extras)
@@ -107,6 +111,8 @@ class GalleryItem:
             "conversation_link": self.conversation_link,
             "thumbnails": dict(self.thumbnails),
             "thumbnail": self.thumbnail,
+            "checksum": self.checksum,
+            "content_type": self.content_type,
         }
         payload.update(self.extra)
         return payload

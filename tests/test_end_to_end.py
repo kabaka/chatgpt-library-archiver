@@ -1,3 +1,4 @@
+import hashlib
 import io
 import json
 from urllib.parse import urlparse
@@ -5,6 +6,7 @@ from urllib.parse import urlparse
 from PIL import Image
 
 from chatgpt_library_archiver import incremental_downloader
+from chatgpt_library_archiver.http_client import DownloadResult
 
 
 def _sample_png() -> bytes:
@@ -14,17 +16,6 @@ def _sample_png() -> bytes:
 
 
 PNG_BYTES = _sample_png()
-
-
-class FakeResponse:
-    def __init__(self, status_code=200, json_data=None, content=b"", headers=None):
-        self.status_code = status_code
-        self._json = json_data or {}
-        self.content = content
-        self.headers = headers or {}
-
-    def json(self):
-        return self._json
 
 
 def test_incremental_download_and_gallery(monkeypatch, tmp_path):
@@ -78,13 +69,22 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
     # Mock network requests for both metadata and image download
     calls = {"meta": 0}
 
-    def fake_get(url, headers=None, timeout=None):
-        parsed = urlparse(url)
-        if parsed.scheme == "https" and parsed.netloc == "api.example.com":
-            calls["meta"] += 1
-            if calls["meta"] == 1:
-                return FakeResponse(
-                    json_data={
+    class FakeHttpClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, exc_tb):
+            return False
+
+        def close(self):
+            return None
+
+        def get_json(self, url, headers=None):
+            parsed = urlparse(url)
+            if parsed.scheme == "https" and parsed.netloc == "api.example.com":
+                calls["meta"] += 1
+                if calls["meta"] == 1:
+                    return {
                         "items": [
                             {
                                 "id": "1",
@@ -100,19 +100,29 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
                             },
                         ]
                     }
-                )
-            else:
-                return FakeResponse(json_data={"items": []})
-        elif url == "https://img.local/2.png":
-            return FakeResponse(
-                content=PNG_BYTES,
-                headers={"Content-Type": "image/png"},
-            )
-        elif url == "https://img.local/1.png":
-            raise AssertionError("Should not re-download existing image")
-        raise AssertionError(f"Unexpected URL {url}")
+                return {"items": []}
+            raise AssertionError(f"Unexpected metadata URL {url}")
 
-    monkeypatch.setattr(incremental_downloader.requests, "get", fake_get)
+        def stream_download(self, url, destination, headers=None, **kwargs):
+            if url == "https://img.local/2.png":
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(PNG_BYTES)
+                checksum = hashlib.sha256(PNG_BYTES).hexdigest()
+                return DownloadResult(
+                    path=destination,
+                    bytes_downloaded=len(PNG_BYTES),
+                    checksum=checksum,
+                    content_type="image/png",
+                )
+            if url == "https://img.local/1.png":
+                raise AssertionError("Should not re-download existing image")
+            raise AssertionError(f"Unexpected download URL {url}")
+
+    monkeypatch.setattr(
+        incremental_downloader,
+        "create_http_client",
+        lambda: FakeHttpClient(),
+    )
 
     # Run the full download + gallery generation flow
     incremental_downloader.main(tag_new=True)
@@ -134,6 +144,8 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
     for item in data:
         if item["id"] == "2":
             assert item.get("tags") == ["t"]
+            assert item.get("checksum") == hashlib.sha256(PNG_BYTES).hexdigest()
+            assert item.get("content_type") == "image/png"
         assert item["thumbnail"].startswith("thumbs/medium/")
         assert item["thumbnails"]["medium"].startswith("thumbs/medium/")
 

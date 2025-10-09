@@ -185,6 +185,7 @@ Use the `-y/--yes` flag with any command to bypass confirmation prompts.
 - The `index.html` viewer is bundled with the tool and reused on each run.
 - `gallery/index.html` loads `metadata.json` via JavaScript and displays all images on one page.
 - Images are lazy-loaded using the Intersection Observer API so they're fetched only when they enter the viewport.
+- Downloads use a resilient HTTP client with retry/backoff, stream images directly to disk, store SHA-256 checksums and content types in `metadata.json`, and surface actionable error summaries via the progress reporter.
 - A sticky header keeps the page title, search filters, and settings visible while you browse.
 - The header and image grid span the full width of the viewport, and thumbnails are centered within their square cells.
 - Switch to the **Full size** layout to show each image edge-to-edge using its full-resolution asset—perfect for mobile browsing.
