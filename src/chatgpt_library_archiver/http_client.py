@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import threading
+from collections.abc import Callable, Iterable, Mapping, MutableSet
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterable, Mapping, MutableSet
 
 from requests import Response, Session
 from requests.adapters import HTTPAdapter
@@ -88,8 +88,7 @@ class HttpClient:
         self._retry = _default_retry(
             retries=retries,
             backoff_factor=backoff_factor,
-            status_forcelist=status_forcelist
-            or (429, 500, 502, 503, 504),
+            status_forcelist=status_forcelist or (429, 500, 502, 503, 504),
         )
         self._session_factory = session_factory or Session
         self._sessions: MutableSet[Session] = set()
@@ -121,7 +120,7 @@ class HttpClient:
         for session in sessions:
             session.close()
 
-    def __enter__(self) -> "HttpClient":
+    def __enter__(self) -> HttpClient:
         return self
 
     def __exit__(self, exc_type, exc, exc_tb) -> None:  # type: ignore[override]
@@ -140,9 +139,7 @@ class HttpClient:
         status code indicates an error.
         """
 
-        response = self._get_session().get(
-            url, headers=headers, timeout=self.timeout
-        )
+        response = self._get_session().get(url, headers=headers, timeout=self.timeout)
         content_type = response.headers.get("Content-Type", "")
         if response.status_code >= 400:
             raise HttpError(
@@ -216,9 +213,7 @@ class HttpClient:
         """
 
         session = self._get_session()
-        response = session.get(
-            url, headers=headers, timeout=self.timeout, stream=True
-        )
+        response = session.get(url, headers=headers, timeout=self.timeout, stream=True)
         content_type = response.headers.get("Content-Type")
         if response.status_code >= 400:
             response.close()
@@ -232,7 +227,10 @@ class HttpClient:
 
         if expected_content_prefixes and content_type:
             lowered = content_type.lower()
-            if not any(lowered.startswith(prefix.lower()) for prefix in expected_content_prefixes):
+            if not any(
+                lowered.startswith(prefix.lower())
+                for prefix in expected_content_prefixes
+            ):
                 response.close()
                 raise HttpError(
                     url=url,

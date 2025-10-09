@@ -43,8 +43,8 @@ class FakeSession:
     def get(self, url: str, headers=None, timeout=None, stream: bool = False):
         try:
             response = self._responses.pop(url)
-        except KeyError:  # pragma: no cover - defensive
-            raise AssertionError(f"Unexpected URL {url}")
+        except KeyError as err:  # pragma: no cover - defensive
+            raise AssertionError(f"Unexpected URL {url}") from err
         return response
 
     def close(self) -> None:  # pragma: no cover - no-op
