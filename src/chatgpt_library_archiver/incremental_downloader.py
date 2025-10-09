@@ -1,4 +1,3 @@
-import json
 import mimetypes
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -10,6 +9,12 @@ from tqdm import tqdm
 
 from . import tagger, thumbnails
 from .gallery import generate_gallery
+from .metadata import (
+    GalleryItem,
+    load_gallery_items,
+    normalize_created_at,
+    save_gallery_items,
+)
 from .status import StatusReporter
 from .utils import ensure_auth_config, prompt_yes_no
 
@@ -39,13 +44,8 @@ def main(tag_new: bool = False) -> None:
     images_dir = gallery_root / "images"
     images_dir.mkdir(exist_ok=True)
 
-    existing_ids = set()
-    existing_metadata = []
-    metadata_path = gallery_root / "metadata.json"
-    if metadata_path.is_file():
-        with open(metadata_path, encoding="utf-8") as f:
-            existing_metadata = json.load(f)
-            existing_ids.update(item["id"] for item in existing_metadata)
+    existing_metadata = load_gallery_items(gallery_root)
+    existing_ids = {item.id for item in existing_metadata}
 
     with StatusReporter(
         total=0, description="Overall progress", unit="img", position=1
@@ -59,31 +59,33 @@ def main(tag_new: bool = False) -> None:
         # Step 2: Download new items only
         max_workers = 14
         cursor = None
-        new_metadata = []
+        new_metadata: list[GalleryItem] = []
         consecutive_empty_pages = 0
 
-        def download_image(meta):
+        def download_image(item: GalleryItem):
             try:
-                response = requests.get(meta["url"], headers=headers, timeout=30)
+                if not item.url:
+                    raise ValueError("Missing URL for gallery item")
+                response = requests.get(item.url, headers=headers, timeout=30)
                 content_type = response.headers.get("Content-Type", "")
                 ext = mimetypes.guess_extension(content_type) or ".jpg"
-                filename = f"{meta['id']}{ext}"
+                filename = f"{item.id}{ext}"
                 filepath = images_dir / filename
 
                 with open(filepath, "wb") as f:
                     f.write(response.content)
 
-                meta["filename"] = filename
+                item.filename = filename
                 thumb_rels = thumbnails.thumbnail_relative_paths(filename)
                 thumb_paths = {
                     size: gallery_root / rel for size, rel in thumb_rels.items()
                 }
                 thumbnails.create_thumbnails(filepath, thumb_paths, reporter=progress)
-                meta["thumbnails"] = thumb_rels
-                meta["thumbnail"] = thumb_rels["medium"]
-                return (True, meta)
+                item.thumbnails = thumb_rels
+                item.thumbnail = thumb_rels["medium"]
+                return (True, item)
             except Exception as e:
-                return (False, meta["id"], str(e))
+                return (False, item.id, str(e))
 
         progress.log("Fetching metadata from API...")
 
@@ -123,30 +125,36 @@ def main(tag_new: bool = False) -> None:
 
             consecutive_empty_pages = 0  # Reset if we got new content
 
-            metas = []
+            metas: list[GalleryItem] = []
             for item in new_items:
                 image_url = item.get("url")
                 image_id = item.get("id")
                 if not image_url or not image_id:
                     continue
+                conversation_id = item.get("conversation_id")
+                message_id = item.get("message_id")
+                conversation_link = None
+                if conversation_id and message_id:
+                    conversation_link = (
+                        f"https://chat.openai.com/c/{conversation_id}#{message_id}"
+                    )
 
-                meta = {
-                    "id": image_id,
-                    "filename": "",
-                    "title": item.get("title", ""),
-                    "prompt": item.get("prompt"),
-                    "tags": item.get("tags", []),
-                    "created_at": item.get("created_at"),
-                    "width": item.get("width"),
-                    "height": item.get("height"),
-                    "url": image_url,
-                    "conversation_id": item.get("conversation_id"),
-                    "message_id": item.get("message_id"),
-                }
-                meta["conversation_link"] = (
-                    f"https://chat.openai.com/c/{meta['conversation_id']}#{meta['message_id']}"
+                metas.append(
+                    GalleryItem(
+                        id=image_id,
+                        filename="",
+                        title=item.get("title", ""),
+                        prompt=item.get("prompt"),
+                        tags=list(item.get("tags") or []),
+                        created_at=normalize_created_at(item.get("created_at")),
+                        width=item.get("width"),
+                        height=item.get("height"),
+                        url=image_url,
+                        conversation_id=conversation_id,
+                        message_id=message_id,
+                        conversation_link=conversation_link,
+                    )
                 )
-                metas.append(meta)
 
             progress.add_total(len(metas))
 
@@ -170,7 +178,7 @@ def main(tag_new: bool = False) -> None:
             for result in results:
                 if result[0]:
                     new_metadata.append(result[1])
-                    existing_ids.add(result[1]["id"])
+                    existing_ids.add(result[1].id)
                     progress.advance()
                 else:
                     progress.log(f"Failed: {result[1]}: {result[2]}")
@@ -187,11 +195,10 @@ def main(tag_new: bool = False) -> None:
             _, updated = thumbnails.regenerate_thumbnails(
                 gallery_root, existing_metadata, reporter=progress
             )
-            with open(metadata_path, "w", encoding="utf-8") as f:
-                json.dump(existing_metadata, f, indent=2)
+            save_gallery_items(gallery_root, existing_metadata)
             progress.log(f"Saved {len(new_metadata)} new images to gallery/")
             if tag_new:
-                ids = [m["id"] for m in new_metadata]
+                ids = [m.id for m in new_metadata]
                 progress.log("Tagging new images...")
                 tagger.tag_images(ids=ids)
         else:

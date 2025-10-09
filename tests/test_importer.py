@@ -38,25 +38,21 @@ def test_import_single_file_move(monkeypatch, tmp_path):
     assert len(imported) == 1
     assert not src.exists()
 
-    dest = gallery_root / "images" / imported[0]["filename"]
+    dest = gallery_root / "images" / imported[0].filename
     assert dest.exists()
     assert dest.read_bytes() == PNG_BYTES
 
     for size in thumbnails.THUMBNAIL_SIZES:
-        thumb = gallery_root / "thumbs" / size / imported[0]["filename"]
+        thumb = gallery_root / "thumbs" / size / imported[0].filename
         assert thumb.exists()
 
     metadata = json.loads((gallery_root / "metadata.json").read_text())
     assert metadata[0]["tags"] == ["tag1", "tag2"]
     assert metadata[0]["conversation_link"] == "https://chat.openai.com/c/abc#def"
     assert isinstance(metadata[0]["created_at"], float)
-    assert metadata[0]["thumbnail"] == f"thumbs/medium/{imported[0]['filename']}"
-    assert (
-        metadata[0]["thumbnails"]["small"] == f"thumbs/small/{imported[0]['filename']}"
-    )
-    assert (
-        metadata[0]["thumbnails"]["large"] == f"thumbs/large/{imported[0]['filename']}"
-    )
+    assert metadata[0]["thumbnail"] == f"thumbs/medium/{imported[0].filename}"
+    assert metadata[0]["thumbnails"]["small"] == f"thumbs/small/{imported[0].filename}"
+    assert metadata[0]["thumbnails"]["large"] == f"thumbs/large/{imported[0].filename}"
 
     metadata = json.loads((gallery_root / "metadata.json").read_text())
     assert metadata[0]["tags"] == ["tag1", "tag2"]
@@ -118,7 +114,7 @@ def test_recursive_directory_import(monkeypatch, tmp_path):
 
     metadata = json.loads((gallery_root / "metadata.json").read_text())
     assert len(metadata) == 3
-    imported_ids = {entry["id"] for entry in imported}
+    imported_ids = {entry.id for entry in imported}
     for entry in metadata:
         if entry["id"] in imported_ids:
             assert entry["tags"] == ["folder"]
@@ -152,7 +148,7 @@ def test_regenerate_thumbnails_recreates_missing(tmp_path, monkeypatch):
 
     gallery_root = tmp_path / "gallery"
     imported = importer.import_images(inputs=[str(src)], gallery_root=str(gallery_root))
-    filename = imported[0]["filename"]
+    filename = imported[0].filename
     thumb = gallery_root / "thumbs" / "medium" / filename
     thumb.unlink()
 

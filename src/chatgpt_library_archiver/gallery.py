@@ -1,48 +1,17 @@
-import json
 import os
 import shutil
-from datetime import datetime
 from importlib import resources
 
-
-def _load_all_metadata(gallery_root: str) -> list[dict]:
-    """Return a list of metadata entries from ``metadata.json``."""
-    items: list[dict] = []
-    meta_path = os.path.join(gallery_root, "metadata.json")
-    if os.path.isfile(meta_path):
-        with open(meta_path, encoding="utf-8") as f:
-            items = json.load(f)
-    return items
+from .metadata import (
+    GalleryItem,
+    created_at_sort_key,
+    load_gallery_items,
+    save_gallery_items,
+)
 
 
-def _normalize_created_at(value) -> float | None:
-    """Convert assorted ``created_at`` values into a float timestamp."""
-
-    if value is None:
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return None
-        try:
-            return float(text)
-        except ValueError:
-            if text.endswith("Z"):
-                text = text[:-1] + "+00:00"
-            try:
-                return datetime.fromisoformat(text).timestamp()
-            except ValueError:
-                return None
-    return None
-
-
-def _created_at_key(value) -> float:
-    """Return a sortable timestamp for ``created_at`` values."""
-
-    normalized = _normalize_created_at(value)
-    return normalized if normalized is not None else 0.0
+def _created_at_key(item: GalleryItem) -> float:
+    return created_at_sort_key(item.created_at)
 
 
 def generate_gallery(gallery_root: str = "gallery") -> int:
@@ -51,22 +20,19 @@ def generate_gallery(gallery_root: str = "gallery") -> int:
     The bundled viewer supports filtering by title and date range.
     """
     os.makedirs(gallery_root, exist_ok=True)
-    items = _load_all_metadata(gallery_root)
+    items = load_gallery_items(gallery_root)
     if not items:
         return 0
 
     for item in items:
-        if "created_at" in item:
-            normalized = _normalize_created_at(item.get("created_at"))
-            item["created_at"] = normalized if normalized is not None else 0.0
+        if item.created_at is None:
+            item.created_at = 0.0
 
     items.sort(
-        key=lambda x: (_created_at_key(x.get("created_at")), x.get("id", "")),
+        key=lambda item: (_created_at_key(item), item.id),
         reverse=True,
     )
-    meta_path = os.path.join(gallery_root, "metadata.json")
-    with open(meta_path, "w", encoding="utf-8") as f:
-        json.dump(items, f, indent=2)
+    save_gallery_items(gallery_root, items)
 
     index_src = resources.open_binary("chatgpt_library_archiver", "gallery_index.html")
     with index_src as src, open(os.path.join(gallery_root, "index.html"), "wb") as dst:

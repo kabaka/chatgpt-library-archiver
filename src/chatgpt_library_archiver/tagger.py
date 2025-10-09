@@ -11,6 +11,7 @@ from typing import Any
 
 from openai import OpenAI
 
+from .metadata import GalleryItem, load_gallery_items, save_gallery_items
 from .status import StatusReporter
 from .utils import prompt_yes_no
 
@@ -89,20 +90,18 @@ def tag_images(
     model: str | None = None,
     max_workers: int = 4,
 ) -> int:
-    meta_path = os.path.join(gallery_root, "metadata.json")
-    if not os.path.isfile(meta_path):
+    items = load_gallery_items(gallery_root)
+    if not items:
         return 0
-    with open(meta_path, encoding="utf-8") as f:
-        data = json.load(f)
 
     ids_set = set(ids) if ids else None
     remove_ids_set = set(remove_ids) if remove_ids else None
 
     updated = 0
     if remove or remove_ids_set:
-        for item in data:
-            if remove or remove_ids_set and item.get("id") in remove_ids_set:
-                item["tags"] = []
+        for item in items:
+            if remove or (remove_ids_set and item.id in remove_ids_set):
+                item.tags = []
                 updated += 1
     else:
         cfg = ensure_tagging_config(config_path)
@@ -110,10 +109,10 @@ def tag_images(
         use_prompt = prompt or cfg.get("prompt", DEFAULT_PROMPT)
         use_model = model or cfg.get("model", "gpt-4.1-mini")
         to_tag = []
-        for item in data:
-            if ids_set and item.get("id") not in ids_set:
+        for item in items:
+            if ids_set and item.id not in ids_set:
                 continue
-            if not ids_set and not re_tag and item.get("tags"):
+            if not ids_set and not re_tag and item.tags:
                 continue
             to_tag.append(item)
 
@@ -125,13 +124,13 @@ def tag_images(
 
                 total_tokens = 0
 
-                def process(item):
-                    image_path = os.path.join(gallery_root, "images", item["filename"])
-                    reporter.log_status("Uploading", item["filename"])
+                def process(item: GalleryItem):
+                    image_path = os.path.join(gallery_root, "images", item.filename)
+                    reporter.log_status("Uploading", item.filename)
                     tags, usage = generate_tags(
                         image_path, client, use_model, use_prompt
                     )
-                    item["tags"] = tags
+                    item.tags = tags
                     tokens = (
                         getattr(usage, "total_tokens", None)
                         if usage is not None
@@ -140,10 +139,10 @@ def tag_images(
                     if tokens is not None:
                         reporter.log_status(
                             "Received tags for",
-                            f"{item['id']} (tokens: {tokens})",
+                            f"{item.id} (tokens: {tokens})",
                         )
                     else:
-                        reporter.log_status("Received tags for", item["id"])
+                        reporter.log_status("Received tags for", item.id)
                     return tokens or 0
 
                 with ThreadPoolExecutor(max_workers=max_workers) as ex:
@@ -156,8 +155,7 @@ def tag_images(
                 if total_tokens:
                     reporter.log(f"Total tokens used: {total_tokens}")
 
-    with open(meta_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    save_gallery_items(gallery_root, items)
     return updated
 
 

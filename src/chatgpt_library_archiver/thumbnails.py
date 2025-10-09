@@ -10,11 +10,27 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from multiprocessing.context import BaseContext
 from multiprocessing.managers import SyncManager
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from .status import StatusReporter
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from .metadata import GalleryItem
+
+
+def _entry_get(entry: GalleryItem | dict[str, Any], key: str) -> Any:
+    if isinstance(entry, dict):
+        return entry.get(key)
+    return getattr(entry, key, None)
+
+
+def _entry_set(entry: GalleryItem | dict[str, Any], key: str, value: Any) -> None:
+    if isinstance(entry, dict):
+        entry[key] = value
+    else:
+        setattr(entry, key, value)
 
 
 class _StatusQueueProtocol(Protocol):
@@ -195,7 +211,7 @@ def _consume_status_messages(
 
 def regenerate_thumbnails(
     gallery_root: Path,
-    metadata: Iterable[dict],
+    metadata: Iterable[GalleryItem | dict[str, Any]],
     *,
     force: bool = False,
     reporter: StatusReporter | None = None,
@@ -217,7 +233,7 @@ def regenerate_thumbnails(
     pending: list[tuple[str, Path, dict[str, Path]]] = []
 
     for entry in entries:
-        filename = entry.get("filename")
+        filename = _entry_get(entry, "filename")
         if not filename:
             continue
         source = images_dir / filename
@@ -233,12 +249,12 @@ def regenerate_thumbnails(
         )
         if need_create:
             pending.append((filename, source, thumb_path_map))
-        if entry.get("thumbnails") != thumb_rel_map:
-            entry["thumbnails"] = thumb_rel_map
+        if _entry_get(entry, "thumbnails") != thumb_rel_map:
+            _entry_set(entry, "thumbnails", thumb_rel_map)
             updated = True
         medium_rel = thumb_rel_map["medium"]
-        if entry.get("thumbnail") != medium_rel:
-            entry["thumbnail"] = medium_rel
+        if _entry_get(entry, "thumbnail") != medium_rel:
+            _entry_set(entry, "thumbnail", medium_rel)
             updated = True
 
     if reporter is not None and pending:
