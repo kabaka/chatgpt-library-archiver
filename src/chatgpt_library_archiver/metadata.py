@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 
 def metadata_path(gallery_root: str | Path) -> Path:
@@ -66,7 +67,7 @@ class GalleryItem:
     extra: dict[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> "GalleryItem":
+    def from_dict(cls, data: Mapping[str, Any]) -> GalleryItem:
         """Create an item from a JSON-compatible mapping."""
 
         known = {
@@ -85,11 +86,7 @@ class GalleryItem:
             "thumbnails": dict(data.get("thumbnails") or {}),
             "thumbnail": data.get("thumbnail"),
         }
-        extras = {
-            key: value
-            for key, value in data.items()
-            if key not in known
-        }
+        extras = {key: value for key, value in data.items() if key not in known}
         return cls(**known, extra=extras)
 
     def to_dict(self) -> dict[str, Any]:
