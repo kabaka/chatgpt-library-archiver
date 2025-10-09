@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from chatgpt_library_archiver import importer, incremental_downloader, tagger
+from chatgpt_library_archiver.metadata import GalleryItem
 
 
 def test_gallery_subcommand(monkeypatch, tmp_path):
@@ -140,7 +141,7 @@ def test_import_subcommand(monkeypatch, tmp_path):
 
     def fake_import_images(**kwargs):
         called.update(kwargs)
-        return [{"id": "abc"}]
+        return [GalleryItem(id="abc", filename="example.png")]
 
     monkeypatch.setattr(importer, "import_images", fake_import_images)
     monkeypatch.setattr(importer, "regenerate_thumbnails", lambda **kwargs: [])

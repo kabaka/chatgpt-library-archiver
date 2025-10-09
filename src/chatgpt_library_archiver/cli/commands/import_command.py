@@ -6,12 +6,14 @@ from argparse import ArgumentParser, Namespace, _SubParsersAction
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 
+from ...metadata import GalleryItem
+
 
 @dataclass
 class ImportCommand:
     """Command that imports local images into the gallery."""
 
-    import_images: Callable[..., Iterable[dict]]
+    import_images: Callable[..., Iterable[GalleryItem]]
     regenerate_thumbnails: Callable[[str, bool], Iterable[str]]
     printer: Callable[[str], None]
 

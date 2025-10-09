@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import json
 import mimetypes
 import re
 import shutil
@@ -18,6 +17,7 @@ from pathlib import Path
 from openai import OpenAI
 
 from . import gallery, tagger, thumbnails
+from .metadata import GalleryItem, load_gallery_items, save_gallery_items
 from .status import StatusReporter
 from .utils import prompt_yes_no
 
@@ -71,18 +71,6 @@ def _unique_filename(base: str, ext: str, existing: set[str]) -> str:
         counter += 1
     existing.add(candidate)
     return candidate
-
-
-def _load_metadata(path: Path) -> list[dict]:
-    if path.is_file():
-        with open(path, encoding="utf-8") as fh:
-            return json.load(fh)
-    return []
-
-
-def _write_metadata(path: Path, data: list[dict]) -> None:
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2)
 
 
 def _collect_inputs(
@@ -159,7 +147,7 @@ def import_images(
     tag_prompt: str | None = None,
     tag_model: str | None = None,
     tag_workers: int = 4,
-) -> list[dict]:
+) -> list[GalleryItem]:
     if not inputs:
         raise ValueError("No inputs supplied for import.")
 
@@ -184,11 +172,8 @@ def import_images(
     gallery_path = Path(gallery_root)
     images_dir = gallery_path / "images"
     images_dir.mkdir(parents=True, exist_ok=True)
-    metadata_path = gallery_path / "metadata.json"
-
-    data = _load_metadata(metadata_path)
-    existing_files = {entry.get("filename", "") for entry in data}
-    existing_files.discard("")
+    data = load_gallery_items(gallery_path)
+    existing_files = {entry.filename for entry in data if entry.filename}
 
     tags_list: list[str] = []
     if tags:
@@ -210,7 +195,7 @@ def import_images(
         )
         ai_prompt = rename_prompt or cfg_prompt
 
-    imported: list[dict] = []
+    imported: list[GalleryItem] = []
 
     with StatusReporter(
         total=len(items), description="Importing images", unit="img"
@@ -253,32 +238,32 @@ def import_images(
             thumb_paths = {size: gallery_path / rel for size, rel in thumb_rels.items()}
             thumbnails.create_thumbnails(dest, thumb_paths, reporter=reporter)
 
-            record = {
-                "id": uuid.uuid4().hex,
-                "filename": filename,
-                "title": title or slug.replace("-", " ").title(),
-                "prompt": None,
-                "tags": list(tags_list),
-                "created_at": created_at,
-                "width": None,
-                "height": None,
-                "url": None,
-                "conversation_id": None,
-                "message_id": None,
-                "conversation_link": item.conversation_link,
-                "thumbnails": thumb_rels,
-                "thumbnail": thumb_rels["medium"],
-            }
+            record = GalleryItem(
+                id=uuid.uuid4().hex,
+                filename=filename,
+                title=title or slug.replace("-", " ").title(),
+                prompt=None,
+                tags=list(tags_list),
+                created_at=created_at,
+                width=None,
+                height=None,
+                url=None,
+                conversation_id=None,
+                message_id=None,
+                conversation_link=item.conversation_link,
+                thumbnails=thumb_rels,
+                thumbnail=thumb_rels["medium"],
+            )
             data.append(record)
             imported.append(record)
             reporter.advance()
 
     thumbnails.regenerate_thumbnails(gallery_path, data)
-    _write_metadata(metadata_path, data)
+    save_gallery_items(gallery_path, data)
 
     if imported:
         if tag_new:
-            ids = [entry["id"] for entry in imported]
+            ids = [entry.id for entry in imported]
             tagger.tag_images(
                 gallery_root=str(gallery_path),
                 ids=ids,
@@ -400,8 +385,7 @@ def main(args: argparse.Namespace | None = None) -> int:
 
 def regenerate_thumbnails(*, gallery_root: str, force: bool = False) -> list[str]:
     gallery_path = Path(gallery_root)
-    metadata_path = gallery_path / "metadata.json"
-    data = _load_metadata(metadata_path)
+    data = load_gallery_items(gallery_path)
     if not data:
         return []
     with StatusReporter(
@@ -411,7 +395,7 @@ def regenerate_thumbnails(*, gallery_root: str, force: bool = False) -> list[str
             gallery_path, data, force=force, reporter=reporter
         )
     if updated:
-        _write_metadata(metadata_path, data)
+        save_gallery_items(gallery_path, data)
     return processed
 
 
