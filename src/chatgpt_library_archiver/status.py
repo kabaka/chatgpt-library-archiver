@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Mapping
 from contextlib import AbstractContextManager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from tqdm import tqdm
 
@@ -21,6 +22,29 @@ def format_status(action: str, detail: str) -> str:
     return f"{action} {detail}"
 
 
+@dataclass(slots=True)
+class StatusError:
+    """Structured error information captured during a run."""
+
+    action: str
+    detail: str
+    reason: str
+    context: dict[str, object] = field(default_factory=dict)
+    exception: Exception | None = None
+
+    def as_dict(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "action": self.action,
+            "detail": self.detail,
+            "reason": self.reason,
+        }
+        if self.context:
+            payload["context"] = dict(self.context)
+        if self.exception is not None:
+            payload["exception"] = repr(self.exception)
+        return payload
+
+
 @dataclass
 class StatusReporter(AbstractContextManager["StatusReporter"]):
     """Helper for logging messages while keeping a progress bar at the bottom."""
@@ -30,6 +54,7 @@ class StatusReporter(AbstractContextManager["StatusReporter"]):
     unit: str = "item"
     position: int = 0
     disable: bool | None = None
+    errors: list[StatusError] = field(default_factory=list, init=False)
 
     def __post_init__(self) -> None:
         self._bar = None
@@ -64,6 +89,29 @@ class StatusReporter(AbstractContextManager["StatusReporter"]):
 
     def log_status(self, action: str, detail: str) -> None:
         self.log(format_status(action, detail))
+
+    def report_error(
+        self,
+        action: str,
+        detail: str,
+        *,
+        reason: str,
+        context: Mapping[str, object] | None = None,
+        exception: Exception | None = None,
+    ) -> None:
+        """Record and display a structured error message."""
+
+        error = StatusError(
+            action=action,
+            detail=detail,
+            reason=reason,
+            context=dict(context or {}),
+            exception=exception,
+        )
+        self.errors.append(error)
+        message = format_status(action, detail)
+        message = f"ERROR {message}: {reason}" if reason else f"ERROR {message}"
+        self.log(message)
 
     def advance(self, amount: int = 1) -> None:
         if self._bar is None:
