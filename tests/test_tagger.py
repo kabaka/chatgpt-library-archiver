@@ -6,6 +6,10 @@ import pytest
 from chatgpt_library_archiver import tagger
 from chatgpt_library_archiver.ai import AIRequestTelemetry
 
+TAGGING_WORKERS = 2
+EXPECTED_TAGGED_ITEMS = 2
+EXPECTED_TOKEN_OCCURRENCES = 2
+
 
 def _write_metadata(tmp_path: Path, items):
     gallery = tmp_path / "gallery"
@@ -75,7 +79,7 @@ def test_retag_all(monkeypatch, tmp_path):
     )
 
     count = tagger.tag_images(gallery_root=str(gallery), re_tag=True)
-    assert count == 2
+    assert count == EXPECTED_TAGGED_ITEMS
     data = json.loads((gallery / "metadata.json").read_text())
     assert data[0]["tags"] == ["new"]
     assert data[1]["tags"] == ["new"]
@@ -123,7 +127,7 @@ def test_remove_all_tags(tmp_path):
     )
 
     count = tagger.tag_images(gallery_root=str(gallery), remove=True)
-    assert count == 2
+    assert count == EXPECTED_TAGGED_ITEMS
     data = json.loads((gallery / "metadata.json").read_text())
     assert data[0]["tags"] == []
     assert data[1]["tags"] == []
@@ -169,15 +173,17 @@ def test_progress_and_tokens(monkeypatch, capsys, tmp_path):
 
     monkeypatch.setattr(tagger, "generate_tags", fake_generate)
 
-    count = tagger.tag_images(gallery_root=str(gallery), re_tag=True, max_workers=2)
-    assert count == 2
+    count = tagger.tag_images(
+        gallery_root=str(gallery), re_tag=True, max_workers=TAGGING_WORKERS
+    )
+    assert count == EXPECTED_TAGGED_ITEMS
 
     out = capsys.readouterr().out
     assert "Uploading a.jpg" in out
     assert "Uploading b.jpg" in out
     assert "Received tags for 1" in out
     assert "Received tags for 2" in out
-    assert out.count("tokens: 7") == 2
+    assert out.count("tokens: 7") == EXPECTED_TOKEN_OCCURRENCES
     assert "latency: 0.50s" in out
     assert "Total tokens used: 14 | avg latency: 0.50s" in out
 

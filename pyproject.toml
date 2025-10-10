@@ -40,11 +40,12 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "black>=23.0",
   "build>=1.0.0",
   "pre-commit>=3.5.0",
   "pytest>=7.0",
-  "ruff>=0.1.0",
+  "pytest-cov>=4.1",
+  "pyright>=1.1.390",
+  "ruff>=0.5.0",
   "Pillow>=10.0.0"
 ]
 
@@ -60,16 +61,42 @@ Issues = "https://github.com/kabaka/chatgpt-library-archiver/issues"
 addopts = "-q"
 testpaths = ["tests"]
 
-[tool.black]
-line-length = 88
-target-version = ["py310"]
-
 [tool.ruff]
 line-length = 88
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "SIM"]
+select = ["E", "F", "I", "B", "UP", "SIM", "PL", "RUF", "FURB"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/chatgpt_library_archiver/ai.py" = ["PLR0913"]
+"src/chatgpt_library_archiver/cli/app.py" = ["PLR0913"]
+"src/chatgpt_library_archiver/http_client.py" = ["PLR0913"]
+"src/chatgpt_library_archiver/importer.py" = ["PLR0912", "PLR0913", "PLR0915"]
+"src/chatgpt_library_archiver/incremental_downloader.py" = ["PLR0912", "PLR0915"]
+"src/chatgpt_library_archiver/tagger.py" = ["PLR0912", "PLR0913", "PLR0915"]
+"src/chatgpt_library_archiver/thumbnails.py" = ["PLR0912", "PLR0915"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["chatgpt_library_archiver"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.coverage.run]
+omit = [
+  "src/chatgpt_library_archiver/bootstrap.py",
+  "src/chatgpt_library_archiver/cli/*",
+  "src/chatgpt_library_archiver/importer.py",
+  "src/chatgpt_library_archiver/incremental_downloader.py",
+  "src/chatgpt_library_archiver/tagger.py",
+]
+
+[tool.pyright]
+typeCheckingMode = "strict"
+reportMissingTypeStubs = "warning"
+include = ["src/chatgpt_library_archiver/metadata.py"]
 
 [tool.setuptools.package-data]
 chatgpt_library_archiver = ["gallery_index.html"]

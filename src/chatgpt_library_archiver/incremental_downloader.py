@@ -22,6 +22,8 @@ from .metadata import (
 from .status import StatusReporter
 from .utils import ensure_auth_config, prompt_yes_no
 
+MAX_EMPTY_PAGE_RETRIES = 2
+
 
 def build_headers(config: dict) -> dict:
     return {
@@ -159,8 +161,12 @@ def main(tag_new: bool = False) -> None:
 
             if not new_items:
                 consecutive_empty_pages += 1
-                if consecutive_empty_pages >= 2:
-                    progress.log("No new images found in 2 pages. Stopping.")
+                if consecutive_empty_pages >= MAX_EMPTY_PAGE_RETRIES:
+                    message = (
+                        f"No new images found in {MAX_EMPTY_PAGE_RETRIES} pages."
+                        " Stopping."
+                    )
+                    progress.log(message)
                     break
                 cursor = data.get("cursor") if isinstance(data, dict) else None
                 if not cursor:
@@ -211,7 +217,7 @@ def main(tag_new: bool = False) -> None:
                         unit="img",
                         dynamic_ncols=True,
                         bar_format=(
-                            "{desc}: {percentage:3.0f}%|{bar}| " "{n_fmt}/{total_fmt}"
+                            "{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}"
                         ),
                         disable=progress.disable,
                         mininterval=1,

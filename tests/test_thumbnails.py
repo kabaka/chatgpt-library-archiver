@@ -16,6 +16,7 @@ def _sample_png_bytes() -> bytes:
 
 
 PNG_BYTES = _sample_png_bytes()
+PARALLEL_WORKERS = 2
 
 
 class RecordingReporter:
@@ -62,7 +63,7 @@ def test_regenerate_thumbnails_parallel_uses_executor(monkeypatch, tmp_path):
 
     calls: list[tuple[str, dict[str, str]]] = []
 
-    def fake_create_thumbnails(source, dest_map, reporter=None):  # noqa: ANN001
+    def fake_create_thumbnails(source, dest_map, reporter=None):
         calls.append((source.name, dest_map))
 
     monkeypatch.setattr(thumbnails, "create_thumbnails", fake_create_thumbnails)
@@ -81,19 +82,19 @@ def test_regenerate_thumbnails_parallel_uses_executor(monkeypatch, tmp_path):
     class DummyExecutor:
         def __init__(self, **kwargs):
             executor_kwargs.append(kwargs)
-            self._max_workers = kwargs.get("max_workers", 1)
+            self._max_workers = kwargs.get("max_workers", PARALLEL_WORKERS)
 
         def __enter__(self):
             return self
 
-        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001, D401
+        def __exit__(self, exc_type, exc, tb):
             return False
 
-        def submit(self, fn, *args):  # noqa: ANN001
+        def submit(self, fn, *args):
             submitted.append(args)
             return DummyFuture(fn, *args)
 
-    def fake_as_completed(futures):  # noqa: ANN001
+    def fake_as_completed(futures):
         yield from list(futures)
 
     monkeypatch.setattr(thumbnails, "ProcessPoolExecutor", DummyExecutor)
@@ -103,11 +104,11 @@ def test_regenerate_thumbnails_parallel_uses_executor(monkeypatch, tmp_path):
         gallery_root,
         metadata,
         force=True,
-        max_workers=2,
+        max_workers=PARALLEL_WORKERS,
     )
 
-    assert executor_kwargs == [{"max_workers": 2}]
-    assert len(submitted) == 2
+    assert executor_kwargs == [{"max_workers": PARALLEL_WORKERS}]
+    assert len(submitted) == PARALLEL_WORKERS
     assert sorted(name for name, _ in calls) == sorted(filenames)
     assert processed == filenames
     assert updated
@@ -133,11 +134,11 @@ def test_regenerate_thumbnails_parallel_reports_start_and_finish(monkeypatch, tm
     executor_kwargs: list[dict[str, object]] = []
 
     class DummyFuture(Future):
-        def __init__(self, fn, *args):  # noqa: ANN001
+        def __init__(self, fn, *args):
             super().__init__()
             try:
                 result = fn(*args)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 self.set_exception(exc)
             else:
                 self.set_result(result)
@@ -145,15 +146,15 @@ def test_regenerate_thumbnails_parallel_reports_start_and_finish(monkeypatch, tm
     class DummyExecutor:
         def __init__(self, **kwargs):
             executor_kwargs.append(kwargs)
-            self._max_workers = kwargs.get("max_workers", 2)
+            self._max_workers = kwargs.get("max_workers", PARALLEL_WORKERS)
 
         def __enter__(self):
             return self
 
-        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001, D401
+        def __exit__(self, exc_type, exc, tb):
             return False
 
-        def submit(self, fn, *args):  # noqa: ANN001
+        def submit(self, fn, *args):
             return DummyFuture(fn, *args)
 
     class DummyManager:
@@ -161,7 +162,7 @@ def test_regenerate_thumbnails_parallel_reports_start_and_finish(monkeypatch, tm
             self.queue = queue.Queue()
             self.shutdown_called = False
 
-        def Queue(self):  # noqa: D401, ANN001
+        def Queue(self):
             return self.queue
 
         def shutdown(self) -> None:
@@ -171,7 +172,7 @@ def test_regenerate_thumbnails_parallel_reports_start_and_finish(monkeypatch, tm
         def __init__(self) -> None:
             self.manager = DummyManager()
 
-        def Manager(self) -> DummyManager:  # noqa: D401, ANN001
+        def Manager(self) -> DummyManager:
             return self.manager
 
     reporter = RecordingReporter()
@@ -187,12 +188,12 @@ def test_regenerate_thumbnails_parallel_reports_start_and_finish(monkeypatch, tm
         metadata,
         force=True,
         reporter=reporter,
-        max_workers=2,
+        max_workers=PARALLEL_WORKERS,
     )
 
     assert len(executor_kwargs) == 1
     kwargs = executor_kwargs[0]
-    assert kwargs.get("max_workers") == 2
+    assert kwargs.get("max_workers") == PARALLEL_WORKERS
     assert isinstance(kwargs.get("mp_context"), DummyContext)
     assert sorted(processed) == sorted(filenames)
     assert updated

@@ -12,6 +12,8 @@ from requests import Response, Session
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+HTTP_ERROR_STATUS = 400
+
 
 class HttpError(RuntimeError):
     """Exception raised when an HTTP request fails validation."""
@@ -141,7 +143,7 @@ class HttpClient:
 
         response = self._get_session().get(url, headers=headers, timeout=self.timeout)
         content_type = response.headers.get("Content-Type", "")
-        if response.status_code >= 400:
+        if response.status_code >= HTTP_ERROR_STATUS:
             raise HttpError(
                 url=url,
                 status_code=response.status_code,
@@ -162,15 +164,14 @@ class HttpClient:
                     details={"content_type": content_type},
                     response=response,
                 )
-        else:
-            if "json" not in content_type.lower():
-                raise HttpError(
-                    url=url,
-                    status_code=response.status_code,
-                    reason="Response is not JSON",
-                    details={"content_type": content_type},
-                    response=response,
-                )
+        elif "json" not in content_type.lower():
+            raise HttpError(
+                url=url,
+                status_code=response.status_code,
+                reason="Response is not JSON",
+                details={"content_type": content_type},
+                response=response,
+            )
 
         try:
             data = response.json()
@@ -215,7 +216,7 @@ class HttpClient:
         session = self._get_session()
         response = session.get(url, headers=headers, timeout=self.timeout, stream=True)
         content_type = response.headers.get("Content-Type")
-        if response.status_code >= 400:
+        if response.status_code >= HTTP_ERROR_STATUS:
             response.close()
             raise HttpError(
                 url=url,
