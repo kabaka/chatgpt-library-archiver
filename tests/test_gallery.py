@@ -182,6 +182,44 @@ def test_generate_gallery_creates_single_index(tmp_path):
     assert [item["id"] for item in sorted_data] == ["2", "1"]
 
 
+def test_generate_gallery_handles_empty_metadata(tmp_path):
+    gallery_root = tmp_path / "gallery"
+    gallery_root.mkdir()
+
+    write_metadata(gallery_root, [])
+
+    total = generate_gallery(str(gallery_root))
+
+    assert total == 0
+    assert not (gallery_root / "index.html").exists()
+
+
+def test_generate_gallery_backfills_missing_created_at(tmp_path):
+    gallery_root = tmp_path / "gallery"
+    gallery_root.mkdir()
+
+    write_metadata(
+        gallery_root,
+        [
+            {
+                "id": "missing",
+                "filename": "a.jpg",
+                "created_at": None,
+            }
+        ],
+    )
+
+    images_dir = gallery_root / "images"
+    (images_dir / "a.jpg").write_text("img")
+
+    total = generate_gallery(str(gallery_root))
+
+    assert total == 1
+    with open(gallery_root / "metadata.json", encoding="utf-8") as f:
+        data = json.load(f)
+    assert data[0]["created_at"] == 0.0
+
+
 def test_generate_gallery_handles_mixed_created_at_types(tmp_path):
     gallery_root = tmp_path / "gallery"
     gallery_root.mkdir()

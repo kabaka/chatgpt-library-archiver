@@ -8,11 +8,44 @@ import subprocess
 import sys
 import venv
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from chatgpt_library_archiver import importer, incremental_downloader, tagger
 from chatgpt_library_archiver.metadata import GalleryItem
+
+
+def test_main_sets_assume_yes(monkeypatch):
+    module = importlib.import_module("chatgpt_library_archiver.__main__")
+    previous_env = os.environ.pop("ARCHIVER_ASSUME_YES", None)
+
+    class DummyCLI:
+        def __init__(self) -> None:
+            self.parsed = SimpleNamespace(yes=True)
+            self.run_called_with: SimpleNamespace | None = None
+
+        def parse_args(self, argv=None):
+            return self.parsed
+
+        def run(self, args):
+            self.run_called_with = args
+            return 42
+
+    dummy_cli = DummyCLI()
+    monkeypatch.setattr(module, "build_app", lambda printer=print: dummy_cli)
+
+    expected_exit_code = 42
+    result = module.main(["--yes"], printer=lambda _: None)
+
+    assert result == expected_exit_code
+    assert dummy_cli.run_called_with is dummy_cli.parsed
+    assert os.environ["ARCHIVER_ASSUME_YES"] == "1"
+
+    if previous_env is None:
+        os.environ.pop("ARCHIVER_ASSUME_YES", None)
+    else:
+        os.environ["ARCHIVER_ASSUME_YES"] = previous_env
 
 
 def test_gallery_subcommand(monkeypatch, tmp_path):

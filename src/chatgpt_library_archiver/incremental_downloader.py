@@ -250,9 +250,14 @@ def main(tag_new: bool = False) -> None:
         # Save metadata
         if new_metadata:
             existing_metadata.extend(new_metadata)
-            _, updated = thumbnails.regenerate_thumbnails(
+            processed, thumbnails_updated = thumbnails.regenerate_thumbnails(
                 gallery_root, existing_metadata, reporter=progress
             )
+            if thumbnails_updated:
+                progress.log(
+                    "Refreshed thumbnails for "
+                    f"{len(processed)} image{'s' if len(processed) != 1 else ''}."
+                )
             save_gallery_items(gallery_root, existing_metadata)
             progress.log(f"Saved {len(new_metadata)} new images to gallery/")
             if tag_new:

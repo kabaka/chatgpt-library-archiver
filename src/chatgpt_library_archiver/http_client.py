@@ -142,57 +142,60 @@ class HttpClient:
         """
 
         response = self._get_session().get(url, headers=headers, timeout=self.timeout)
-        content_type = response.headers.get("Content-Type", "")
-        if response.status_code >= HTTP_ERROR_STATUS:
-            raise HttpError(
-                url=url,
-                status_code=response.status_code,
-                reason="HTTP request failed",
-                details={"content_type": content_type},
-                response=response,
-            )
-
-        if expected_content_types:
-            if not any(
-                content_type.lower().startswith(expected.lower())
-                for expected in expected_content_types
-            ):
+        try:
+            content_type = response.headers.get("Content-Type", "")
+            if response.status_code >= HTTP_ERROR_STATUS:
                 raise HttpError(
                     url=url,
                     status_code=response.status_code,
-                    reason="Unexpected content type",
+                    reason="HTTP request failed",
                     details={"content_type": content_type},
                     response=response,
                 )
-        elif "json" not in content_type.lower():
-            raise HttpError(
-                url=url,
-                status_code=response.status_code,
-                reason="Response is not JSON",
-                details={"content_type": content_type},
-                response=response,
-            )
 
-        try:
-            data = response.json()
-        except Exception as exc:  # pragma: no cover - requests wraps errors
-            raise HttpError(
-                url=url,
-                status_code=response.status_code,
-                reason="Failed to decode JSON",
-                details={"content_type": content_type},
-                response=response,
-            ) from exc
+            if expected_content_types:
+                if not any(
+                    content_type.lower().startswith(expected.lower())
+                    for expected in expected_content_types
+                ):
+                    raise HttpError(
+                        url=url,
+                        status_code=response.status_code,
+                        reason="Unexpected content type",
+                        details={"content_type": content_type},
+                        response=response,
+                    )
+            elif "json" not in content_type.lower():
+                raise HttpError(
+                    url=url,
+                    status_code=response.status_code,
+                    reason="Response is not JSON",
+                    details={"content_type": content_type},
+                    response=response,
+                )
 
-        if not isinstance(data, Mapping):
-            raise HttpError(
-                url=url,
-                status_code=response.status_code,
-                reason="JSON response must be an object",
-                details={"content_type": content_type},
-                response=response,
-            )
-        return data
+            try:
+                data = response.json()
+            except Exception as exc:  # pragma: no cover - requests wraps errors
+                raise HttpError(
+                    url=url,
+                    status_code=response.status_code,
+                    reason="Failed to decode JSON",
+                    details={"content_type": content_type},
+                    response=response,
+                ) from exc
+
+            if not isinstance(data, Mapping):
+                raise HttpError(
+                    url=url,
+                    status_code=response.status_code,
+                    reason="JSON response must be an object",
+                    details={"content_type": content_type},
+                    response=response,
+                )
+            return data
+        finally:
+            response.close()
 
     def stream_download(
         self,
