@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import base64
 import mimetypes
 import re
 import shutil
@@ -13,10 +12,12 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 from openai import OpenAI
 
 from . import gallery, tagger, thumbnails
+from .ai import AIRequestTelemetry, call_image_endpoint, get_cached_client
 from .metadata import GalleryItem, load_gallery_items, save_gallery_items
 from .status import StatusReporter
 from .utils import prompt_yes_no
@@ -97,37 +98,50 @@ def _collect_inputs(
 
 
 def _prepare_ai_client(
-    *, config_path: str, model: str | None
+    *,
+    config_path: str,
+    model: str | None,
+    api_key: str | None,
+    allow_interactive: bool | None,
 ) -> tuple[OpenAI, str, str]:
-    cfg = tagger.ensure_tagging_config(config_path)
-    client = OpenAI(api_key=cfg["api_key"])
+    cfg = tagger.ensure_tagging_config(
+        config_path,
+        api_key=api_key,
+        model=model,
+        allow_interactive=allow_interactive,
+    )
+    client = get_cached_client(cfg["api_key"])
     use_model = model or cfg.get("model", "gpt-4.1-mini")
     rename_prompt = cfg.get("rename_prompt", DEFAULT_RENAME_PROMPT)
     return client, use_model, rename_prompt
 
 
 def _generate_ai_slug(
-    client: OpenAI, model: str, prompt: str, image_path: Path
-) -> str | None:
-    mime = mimetypes.guess_type(str(image_path))[0] or "image/jpeg"
-    with open(image_path, "rb") as fh:
-        payload = base64.b64encode(fh.read()).decode("ascii")
-    image_url = f"data:{mime};base64,{payload}"
-    response = client.responses.create(
+    client: OpenAI,
+    model: str,
+    prompt: str,
+    image_path: Path,
+    *,
+    reporter: StatusReporter | None = None,
+) -> tuple[str | None, AIRequestTelemetry]:
+    def on_retry(attempt: int, delay: float) -> None:
+        if reporter is not None:
+            reporter.log_status(
+                "Rate limited",
+                f"{image_path.name} (retry {attempt} in {delay:.1f}s)",
+            )
+
+    text, telemetry, _usage = call_image_endpoint(
+        client=client,
         model=model,
-        input=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "input_text", "text": prompt},
-                    {"type": "input_image", "image_url": image_url},
-                ],
-            }
-        ],
+        prompt=prompt,
+        image_path=image_path,
+        operation="rename",
+        subject=image_path.name,
+        on_retry=on_retry,
     )
-    text = response.output_text.strip()
     slug = _slugify(text)
-    return slug or None
+    return (slug or None), telemetry
 
 
 def import_images(
@@ -147,6 +161,9 @@ def import_images(
     tag_prompt: str | None = None,
     tag_model: str | None = None,
     tag_workers: int = 4,
+    api_key: str | None = None,
+    allow_interactive: bool | None = None,
+    telemetry_sink: Callable[[AIRequestTelemetry], None] | None = None,
 ) -> list[GalleryItem]:
     if not inputs:
         raise ValueError("No inputs supplied for import.")
@@ -191,7 +208,10 @@ def import_images(
     ai_prompt: str | None = None
     if ai_rename:
         ai_client, ai_model, cfg_prompt = _prepare_ai_client(
-            config_path=config_path, model=rename_model
+            config_path=config_path,
+            model=rename_model,
+            api_key=api_key,
+            allow_interactive=allow_interactive,
         )
         ai_prompt = rename_prompt or cfg_prompt
 
@@ -211,12 +231,20 @@ def import_images(
             slug: str | None = None
             if ai_client is not None and ai_model is not None:
                 try:
-                    slug = _generate_ai_slug(
+                    slug, telemetry = _generate_ai_slug(
                         ai_client,
                         ai_model,
                         ai_prompt or DEFAULT_RENAME_PROMPT,
                         source_path,
+                        reporter=reporter,
                     )
+                    if telemetry_sink is not None:
+                        telemetry_sink(telemetry)
+                    if telemetry.total_tokens is not None:
+                        reporter.log_status(
+                            "AI rename",
+                            f"{source_path.name} tokens: {telemetry.total_tokens}, latency: {telemetry.latency_s:.2f}s",
+                        )
                 except Exception:
                     slug = None
 
@@ -271,6 +299,9 @@ def import_images(
                 prompt=tag_prompt,
                 model=tag_model,
                 max_workers=tag_workers,
+                api_key=api_key,
+                allow_interactive=allow_interactive,
+                telemetry_sink=telemetry_sink,
             )
         gallery.generate_gallery(gallery_root=str(gallery_path))
 
@@ -336,6 +367,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=4,
         help="Parallel workers when tagging imported images",
     )
+    parser.add_argument("--api-key", help="Override OpenAI API key for tagging/renaming")
+    parser.add_argument(
+        "--no-config-prompt",
+        action="store_true",
+        help="Fail if tagging configuration is missing instead of prompting",
+    )
     parser.add_argument(
         "--regenerate-thumbnails",
         action="store_true",
@@ -377,6 +414,8 @@ def main(args: argparse.Namespace | None = None) -> int:
         tag_prompt=args.tag_prompt,
         tag_model=args.tag_model,
         tag_workers=args.tag_workers,
+        api_key=getattr(args, "api_key", None),
+        allow_interactive=not getattr(args, "no_config_prompt", False),
     )
     if args.regenerate_thumbnails:
         regenerate_thumbnails(gallery_root=args.gallery, force=args.force_thumbnails)

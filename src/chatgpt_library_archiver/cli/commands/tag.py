@@ -39,6 +39,12 @@ class TagCommand:
             default="tagging_config.json",
             help="Path to OpenAI tagging configuration",
         )
+        parser.add_argument("--api-key", help="Override OpenAI API key")
+        parser.add_argument(
+            "--no-config-prompt",
+            action="store_true",
+            help="Fail if the tagging config is missing",
+        )
         parser.add_argument(
             "--workers",
             type=int,

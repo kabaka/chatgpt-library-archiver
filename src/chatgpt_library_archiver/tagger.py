@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import argparse
-import base64
 import json
-import mimetypes
 import os
+import sys
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any
+from pathlib import Path
+from typing import Any, Callable
 
 from openai import OpenAI
 
+from .ai import AIRequestTelemetry, call_image_endpoint, get_cached_client, resolve_config
 from .metadata import GalleryItem, load_gallery_items, save_gallery_items
 from .status import StatusReporter
 from .utils import prompt_yes_no
@@ -38,45 +39,72 @@ def _write_config(path: str) -> dict:
     return cfg
 
 
-def ensure_tagging_config(path: str = "tagging_config.json") -> dict:
+def ensure_tagging_config(
+    path: str = "tagging_config.json",
+    *,
+    api_key: str | None = None,
+    model: str | None = None,
+    prompt: str | None = None,
+    rename_prompt: str | None = None,
+    allow_interactive: bool | None = None,
+) -> dict:
+    if allow_interactive is None:
+        allow_interactive = sys.stdin is not None and sys.stdin.isatty()
+
+    overrides = {
+        "api_key": api_key,
+        "model": model,
+        "prompt": prompt,
+        "rename_prompt": rename_prompt,
+    }
+
     try:
         cfg = _load_config(path)
+        resolved = resolve_config(source=cfg, overrides=overrides)
     except FileNotFoundError:
-        if prompt_yes_no(f"{path} not found. Create it now?"):
-            cfg = _write_config(path)
-        else:
-            raise
-    if not cfg.get("api_key"):
-        raise ValueError("tagging config missing 'api_key'")
-    cfg.setdefault("model", "gpt-4.1-mini")
-    cfg.setdefault("prompt", DEFAULT_PROMPT)
-    return cfg
+        cfg = None
+        try:
+            resolved = resolve_config(source=None, overrides=overrides)
+        except ValueError:
+            if allow_interactive and prompt_yes_no(f"{path} not found. Create it now?"):
+                cfg = _write_config(path)
+                resolved = resolve_config(source=cfg, overrides=overrides)
+            else:
+                raise
+
+    resolved.setdefault("prompt", DEFAULT_PROMPT)
+    return resolved
 
 
 def generate_tags(
-    image_path: str, client: OpenAI, model: str, prompt: str
-) -> tuple[list[str], Any | None]:
-    mime = mimetypes.guess_type(image_path)[0] or "image/jpeg"
-    with open(image_path, "rb") as f:
-        b64 = base64.b64encode(f.read()).decode("ascii")
-    image_url = f"data:{mime};base64,{b64}"
-    response = client.responses.create(
+    image_path: str,
+    client: OpenAI,
+    model: str,
+    prompt: str,
+    *,
+    reporter: StatusReporter | None = None,
+) -> tuple[list[str], AIRequestTelemetry]:
+    path = Path(image_path)
+
+    def on_retry(attempt: int, delay: float) -> None:
+        if reporter is not None:
+            reporter.log_status(
+                "Rate limited",
+                f"{path.name} (retry {attempt} in {delay:.1f}s)",
+            )
+
+    text, telemetry, _usage = call_image_endpoint(
+        client=client,
         model=model,
-        input=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "input_text", "text": prompt},
-                    {"type": "input_image", "image_url": image_url},
-                ],
-            }
-        ],
+        prompt=prompt,
+        image_path=path,
+        operation="tag",
+        subject=path.name,
+        on_retry=on_retry,
     )
-    text = response.output_text.strip()
     parts = [p.strip() for p in text.replace("\n", ",").split(",")]
     tags = [p for p in parts if p]
-    usage = getattr(response, "usage", None)
-    return tags, usage
+    return tags, telemetry
 
 
 def tag_images(
@@ -89,6 +117,9 @@ def tag_images(
     prompt: str | None = None,
     model: str | None = None,
     max_workers: int = 4,
+    api_key: str | None = None,
+    allow_interactive: bool | None = None,
+    telemetry_sink: Callable[[AIRequestTelemetry], None] | None = None,
 ) -> int:
     items = load_gallery_items(gallery_root)
     if not items:
@@ -104,8 +135,12 @@ def tag_images(
                 item.tags = []
                 updated += 1
     else:
-        cfg = ensure_tagging_config(config_path)
-        client = OpenAI(api_key=cfg["api_key"])
+        cfg = ensure_tagging_config(
+            config_path,
+            api_key=api_key,
+            allow_interactive=allow_interactive,
+        )
+        client = get_cached_client(cfg["api_key"])
         use_prompt = prompt or cfg.get("prompt", DEFAULT_PROMPT)
         use_model = model or cfg.get("model", "gpt-4.1-mini")
         to_tag = []
@@ -123,36 +158,53 @@ def tag_images(
                 reporter.log_status("Tagging", f"{len(to_tag)} images.")
 
                 total_tokens = 0
+                total_latency = 0.0
+                telemetry_count = 0
 
                 def process(item: GalleryItem):
                     image_path = os.path.join(gallery_root, "images", item.filename)
                     reporter.log_status("Uploading", item.filename)
-                    tags, usage = generate_tags(
-                        image_path, client, use_model, use_prompt
+                    tags, telemetry = generate_tags(
+                        image_path,
+                        client,
+                        use_model,
+                        use_prompt,
+                        reporter=reporter,
                     )
                     item.tags = tags
-                    tokens = (
-                        getattr(usage, "total_tokens", None)
-                        if usage is not None
-                        else None
-                    )
+                    tokens = telemetry.total_tokens
+                    if telemetry_sink is not None:
+                        telemetry_sink(telemetry)
                     if tokens is not None:
                         reporter.log_status(
                             "Received tags for",
-                            f"{item.id} (tokens: {tokens})",
+                            f"{item.id} (tokens: {tokens}, latency: {telemetry.latency_s:.2f}s)",
                         )
                     else:
                         reporter.log_status("Received tags for", item.id)
-                    return tokens or 0
+                    return telemetry
 
                 with ThreadPoolExecutor(max_workers=max_workers) as ex:
                     futures = [ex.submit(process, item) for item in to_tag]
                     for fut in as_completed(futures):
-                        total_tokens += fut.result()
+                        telemetry = fut.result()
+                        if telemetry.total_tokens is not None:
+                            total_tokens += telemetry.total_tokens
+                        total_latency += telemetry.latency_s
+                        telemetry_count += 1
                         updated += 1
                         reporter.advance()
 
-                if total_tokens:
+                if telemetry_count:
+                    avg_latency = total_latency / telemetry_count
+                    if total_tokens:
+                        reporter.log(
+                            f"Total tokens used: {total_tokens} | "
+                            f"avg latency: {avg_latency:.2f}s"
+                        )
+                    else:
+                        reporter.log(f"Avg latency: {avg_latency:.2f}s")
+                elif total_tokens:
                     reporter.log(f"Total tokens used: {total_tokens}")
 
     save_gallery_items(gallery_root, items)
@@ -169,6 +221,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--remove-ids", nargs="+", help="Remove tags for specific IDs")
     parser.add_argument("--prompt", help="Override tagging prompt")
     parser.add_argument("--model", help="Override model ID")
+    parser.add_argument("--api-key", help="Override OpenAI API key")
+    parser.add_argument(
+        "--no-config-prompt",
+        action="store_true",
+        help="Fail if configuration is missing instead of prompting",
+    )
     parser.add_argument(
         "--workers",
         type=int,
@@ -192,6 +250,8 @@ def main(args: argparse.Namespace | None = None) -> int:
         prompt=args.prompt,
         model=args.model,
         max_workers=args.workers,
+        api_key=getattr(args, "api_key", None),
+        allow_interactive=not getattr(args, "no_config_prompt", False),
     )
 
 

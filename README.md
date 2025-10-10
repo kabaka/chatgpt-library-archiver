@@ -107,6 +107,23 @@ can create it manually with contents like:
 Only `api_key` is required; `model` and `prompt` have sensible defaults. Keep
 this file private—never commit it to version control.
 
+### Non-interactive configuration
+
+For scripted environments you can skip the interactive prompts by supplying
+configuration through environment variables or CLI flags:
+
+- Set `OPENAI_API_KEY`, `CHATGPT_LIBRARY_ARCHIVER_API_KEY`, or
+  `CHATGPT_LIBRARY_ARCHIVER_OPENAI_API_KEY` to inject the API key at runtime.
+- Optional overrides include `CHATGPT_LIBRARY_ARCHIVER_OPENAI_MODEL`,
+  `CHATGPT_LIBRARY_ARCHIVER_TAG_PROMPT`, and
+  `CHATGPT_LIBRARY_ARCHIVER_RENAME_PROMPT`.
+- Pass `--api-key` to the `tag` or `import` commands to provide an API key for a
+  single invocation. Combine with `--no-config-prompt` to fail fast instead of
+  asking to create `tagging_config.json`.
+
+When these values are provided the tool caches OpenAI clients per API key and
+uses them for tagging and renaming without mutating local configuration files.
+
 ---
 
 ## 🚀 3. Script Usage
@@ -169,6 +186,9 @@ python -m chatgpt_library_archiver import <files_or_directories...> [options]
 - Supply `--conversation-link` to attach a ChatGPT conversation URL for each file listed explicitly on the command line (directory imports skip this as they may expand to many files).
 - Pass `--tag-new` to immediately tag imports using the existing OpenAI tagging workflow (honors `--tag-model`, `--tag-prompt`, and `--tag-workers`).
 - Enable `--ai-rename` to request a descriptive filename from OpenAI. The `tagging_config.json` file supplies the API key and optionally a `rename_prompt` value for this feature. Provide `--rename-model` or `--rename-prompt` to override the defaults ad hoc.
+- The tagging and renaming helpers now emit per-image telemetry that includes
+  the tokens consumed, retry attempts due to rate limiting, and request
+  latency—ideal for piping into structured logs during automated runs.
 - Set a shared `--title` for all imported files or allow the tool to derive one from the filename/AI slug.
 - Thumbnails are generated automatically in the `gallery/thumbs/<size>/` directories. Run the command with
   `--regenerate-thumbnails [--force-thumbnails]` to refresh thumbnails for existing
