@@ -3,9 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from chatgpt_library_archiver.ai import AIRequestTelemetry
-
 from chatgpt_library_archiver import tagger
+from chatgpt_library_archiver.ai import AIRequestTelemetry
 
 
 def _write_metadata(tmp_path: Path, items):
@@ -188,9 +187,7 @@ def test_ensure_tagging_config_respects_env(monkeypatch, tmp_path):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "env-key")
 
-    cfg = tagger.ensure_tagging_config(
-        str(config_path), allow_interactive=False
-    )
+    cfg = tagger.ensure_tagging_config(str(config_path), allow_interactive=False)
 
     assert cfg["api_key"] == "env-key"
     assert cfg["prompt"] == tagger.DEFAULT_PROMPT

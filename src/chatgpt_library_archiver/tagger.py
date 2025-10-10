@@ -4,14 +4,18 @@ import argparse
 import json
 import os
 import sys
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Callable
 
 from openai import OpenAI
 
-from .ai import AIRequestTelemetry, call_image_endpoint, get_cached_client, resolve_config
+from .ai import (
+    AIRequestTelemetry,
+    call_image_endpoint,
+    get_cached_client,
+    resolve_config,
+)
 from .metadata import GalleryItem, load_gallery_items, save_gallery_items
 from .status import StatusReporter
 from .utils import prompt_yes_no
@@ -42,7 +46,6 @@ def _write_config(path: str) -> dict:
 def ensure_tagging_config(
     path: str = "tagging_config.json",
     *,
-    api_key: str | None = None,
     model: str | None = None,
     prompt: str | None = None,
     rename_prompt: str | None = None,
@@ -52,7 +55,6 @@ def ensure_tagging_config(
         allow_interactive = sys.stdin is not None and sys.stdin.isatty()
 
     overrides = {
-        "api_key": api_key,
         "model": model,
         "prompt": prompt,
         "rename_prompt": rename_prompt,
@@ -117,7 +119,6 @@ def tag_images(
     prompt: str | None = None,
     model: str | None = None,
     max_workers: int = 4,
-    api_key: str | None = None,
     allow_interactive: bool | None = None,
     telemetry_sink: Callable[[AIRequestTelemetry], None] | None = None,
 ) -> int:
@@ -137,7 +138,6 @@ def tag_images(
     else:
         cfg = ensure_tagging_config(
             config_path,
-            api_key=api_key,
             allow_interactive=allow_interactive,
         )
         client = get_cached_client(cfg["api_key"])
@@ -178,7 +178,10 @@ def tag_images(
                     if tokens is not None:
                         reporter.log_status(
                             "Received tags for",
-                            f"{item.id} (tokens: {tokens}, latency: {telemetry.latency_s:.2f}s)",
+                            (
+                                f"{item.id} (tokens: {tokens}, "
+                                f"latency: {telemetry.latency_s:.2f}s)"
+                            ),
                         )
                     else:
                         reporter.log_status("Received tags for", item.id)
@@ -221,7 +224,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--remove-ids", nargs="+", help="Remove tags for specific IDs")
     parser.add_argument("--prompt", help="Override tagging prompt")
     parser.add_argument("--model", help="Override model ID")
-    parser.add_argument("--api-key", help="Override OpenAI API key")
     parser.add_argument(
         "--no-config-prompt",
         action="store_true",
@@ -250,7 +252,6 @@ def main(args: argparse.Namespace | None = None) -> int:
         prompt=args.prompt,
         model=args.model,
         max_workers=args.workers,
-        api_key=getattr(args, "api_key", None),
         allow_interactive=not getattr(args, "no_config_prompt", False),
     )
 

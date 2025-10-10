@@ -78,10 +78,6 @@ class ImportCommand:
             help="Worker count when tagging imports",
         )
         parser.add_argument(
-            "--api-key",
-            help="Override OpenAI API key for tagging and renaming",
-        )
-        parser.add_argument(
             "--no-config-prompt",
             action="store_true",
             help="Fail instead of prompting to create tagging config",
@@ -139,7 +135,6 @@ class ImportCommand:
                     tag_prompt=getattr(args, "tag_prompt", None),
                     tag_model=getattr(args, "tag_model", None),
                     tag_workers=int(getattr(args, "tag_workers", 4)),
-                    api_key=getattr(args, "api_key", None),
                     allow_interactive=not bool(
                         getattr(args, "no_config_prompt", False)
                     ),
