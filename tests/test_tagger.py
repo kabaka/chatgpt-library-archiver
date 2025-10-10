@@ -1,6 +1,9 @@
 import json
 from pathlib import Path
-from types import SimpleNamespace
+
+import pytest
+
+from chatgpt_library_archiver.ai import AIRequestTelemetry
 
 from chatgpt_library_archiver import tagger
 
@@ -27,13 +30,18 @@ def test_tag_missing_only(monkeypatch, tmp_path):
     monkeypatch.setattr(
         tagger,
         "ensure_tagging_config",
-        lambda path="tagging_config.json": {
+        lambda *a, **k: {
             "api_key": "k",
             "model": "m",
             "prompt": "p",
         },
     )
-    monkeypatch.setattr(tagger, "generate_tags", lambda *a, **k: (["x", "y"], None))
+    telemetry = AIRequestTelemetry("tag", "file", 0.1, 2, 1, 1, 0)
+    monkeypatch.setattr(
+        tagger,
+        "generate_tags",
+        lambda *a, **k: (["x", "y"], telemetry),
+    )
 
     count = tagger.tag_images(gallery_root=str(gallery))
     assert count == 1
@@ -54,13 +62,18 @@ def test_retag_all(monkeypatch, tmp_path):
     monkeypatch.setattr(
         tagger,
         "ensure_tagging_config",
-        lambda path="tagging_config.json": {
+        lambda *a, **k: {
             "api_key": "k",
             "model": "m",
             "prompt": "p",
         },
     )
-    monkeypatch.setattr(tagger, "generate_tags", lambda *a, **k: (["new"], None))
+    telemetry = AIRequestTelemetry("tag", "file", 0.1, 1, 1, 0, 0)
+    monkeypatch.setattr(
+        tagger,
+        "generate_tags",
+        lambda *a, **k: (["new"], telemetry),
+    )
 
     count = tagger.tag_images(gallery_root=str(gallery), re_tag=True)
     assert count == 2
@@ -81,13 +94,18 @@ def test_tag_specific_ids(monkeypatch, tmp_path):
     monkeypatch.setattr(
         tagger,
         "ensure_tagging_config",
-        lambda path="tagging_config.json": {
+        lambda *a, **k: {
             "api_key": "k",
             "model": "m",
             "prompt": "p",
         },
     )
-    monkeypatch.setattr(tagger, "generate_tags", lambda *a, **k: (["tagged"], None))
+    telemetry = AIRequestTelemetry("tag", "file", 0.1, 1, 1, 0, 0)
+    monkeypatch.setattr(
+        tagger,
+        "generate_tags",
+        lambda *a, **k: (["tagged"], telemetry),
+    )
 
     count = tagger.tag_images(gallery_root=str(gallery), ids=["2"])
     assert count == 1
@@ -140,17 +158,17 @@ def test_progress_and_tokens(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(
         tagger,
         "ensure_tagging_config",
-        lambda path="tagging_config.json": {
+        lambda *a, **k: {
             "api_key": "k",
             "model": "m",
             "prompt": "p",
         },
     )
-    monkeypatch.setattr(
-        tagger,
-        "generate_tags",
-        lambda *a, **k: (["t"], SimpleNamespace(total_tokens=7)),
-    )
+
+    def fake_generate(*_args, **_kwargs):
+        return ["t"], AIRequestTelemetry("tag", "file", 0.5, 7, 4, 3, 0)
+
+    monkeypatch.setattr(tagger, "generate_tags", fake_generate)
 
     count = tagger.tag_images(gallery_root=str(gallery), re_tag=True, max_workers=2)
     assert count == 2
@@ -161,4 +179,27 @@ def test_progress_and_tokens(monkeypatch, capsys, tmp_path):
     assert "Received tags for 1" in out
     assert "Received tags for 2" in out
     assert out.count("tokens: 7") == 2
-    assert "Total tokens used: 14" in out
+    assert "latency: 0.50s" in out
+    assert "Total tokens used: 14 | avg latency: 0.50s" in out
+
+
+def test_ensure_tagging_config_respects_env(monkeypatch, tmp_path):
+    config_path = tmp_path / "tagging.json"
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "env-key")
+
+    cfg = tagger.ensure_tagging_config(
+        str(config_path), allow_interactive=False
+    )
+
+    assert cfg["api_key"] == "env-key"
+    assert cfg["prompt"] == tagger.DEFAULT_PROMPT
+    assert not config_path.exists()
+
+
+def test_ensure_tagging_config_missing_non_interactive(monkeypatch, tmp_path):
+    config_path = tmp_path / "missing.json"
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    with pytest.raises(ValueError):
+        tagger.ensure_tagging_config(str(config_path), allow_interactive=False)
