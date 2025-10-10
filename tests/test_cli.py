@@ -1,3 +1,4 @@
+import importlib
 import importlib.util
 import json
 import os
@@ -33,7 +34,6 @@ def test_gallery_subcommand(monkeypatch, tmp_path):
 
     # Invoke CLI to regenerate gallery
     monkeypatch.setattr(sys, "argv", ["chatgpt_library_archiver", "gallery"])
-    import importlib
 
     cli = importlib.import_module("chatgpt_library_archiver.__main__")
     cli.main()
@@ -75,8 +75,6 @@ def test_gallery_subcommand_with_thumbnails(monkeypatch, tmp_path):
             "--force-thumbnails",
         ],
     )
-    import importlib
-
     cli = importlib.import_module("chatgpt_library_archiver.__main__")
     cli.main()
 
@@ -105,7 +103,6 @@ def test_tag_subcommand(monkeypatch, tmp_path):
     monkeypatch.setattr(
         sys, "argv", ["chatgpt_library_archiver", "tag", "--remove-all"]
     )
-    import importlib
 
     cli = importlib.import_module("chatgpt_library_archiver.__main__")
     cli.main()
@@ -126,7 +123,6 @@ def test_download_tag_new_flag(monkeypatch, tmp_path):
     monkeypatch.setattr(
         sys, "argv", ["chatgpt_library_archiver", "download", "--tag-new"]
     )
-    import importlib
 
     cli = importlib.import_module("chatgpt_library_archiver.__main__")
     cli.main()
@@ -157,8 +153,6 @@ def test_import_subcommand(monkeypatch, tmp_path):
             "demo",
         ],
     )
-
-    import importlib
 
     cli = importlib.import_module("chatgpt_library_archiver.__main__")
     cli.main()

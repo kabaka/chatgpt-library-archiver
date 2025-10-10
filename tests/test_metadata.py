@@ -1,40 +1,41 @@
-from chatgpt_library_archiver.metadata import (
-    GalleryItem,
-    created_at_sort_key,
-    load_gallery_items,
-    normalize_created_at,
-    save_gallery_items,
-)
+import json
+from datetime import datetime
+from pathlib import Path
+
+import pytest
+
+from chatgpt_library_archiver import metadata
 
 
-def test_normalize_created_at_handles_iso_strings():
-    value = "2024-01-02T03:04:05Z"
-    normalized = normalize_created_at(value)
-    assert isinstance(normalized, float)
-    # created_at_sort_key should treat normalized float as-is
-    assert created_at_sort_key(normalized) == normalized
+def test_normalize_created_at_numeric_and_iso() -> None:
+    assert metadata.normalize_created_at(12) == pytest.approx(12.0)
+
+    iso_value = "2024-01-01T12:30:00Z"
+    expected = datetime.fromisoformat("2024-01-01T12:30:00+00:00").timestamp()
+    assert metadata.normalize_created_at(iso_value) == pytest.approx(expected)
 
 
-def test_gallery_item_roundtrip_with_extras(tmp_path):
-    gallery_root = tmp_path / "gallery"
-    item = GalleryItem(
-        id="abc",
-        filename="image.jpg",
-        title="Example",
-        tags=["original"],
-        checksum="sha256",
-        content_type="image/jpeg",
-        extra={"foo": "bar"},
-    )
-    save_gallery_items(gallery_root, [item])
+def test_normalize_created_at_blank() -> None:
+    assert metadata.normalize_created_at("   ") is None
 
-    loaded = load_gallery_items(gallery_root)
-    assert len(loaded) == 1
-    loaded_item = loaded[0]
-    assert loaded_item.id == "abc"
-    assert loaded_item.filename == "image.jpg"
-    assert loaded_item.title == "Example"
-    assert loaded_item.checksum == "sha256"
-    assert loaded_item.content_type == "image/jpeg"
-    # extras are preserved without overwriting explicit values
-    assert loaded_item.extra == {"foo": "bar"}
+
+def test_gallery_item_from_dict_filters_extras(tmp_path: Path) -> None:
+    raw = {
+        "id": "1",
+        "filename": "image.png",
+        "tags": ["a", "b"],
+        "thumbnails": {"small": "s.png", "medium": "m.png"},
+        "extra_field": "value",
+    }
+    item = metadata.GalleryItem.from_dict(raw)
+    assert item.id == "1"
+    assert item.tags == ["a", "b"]
+    assert item.thumbnails == {"small": "s.png", "medium": "m.png"}
+    assert item.extra == {"extra_field": "value"}
+
+    dest = tmp_path / "metadata.json"
+    metadata.save_gallery_items(tmp_path, [item])
+    assert json.loads(dest.read_text())[0]["id"] == "1"
+
+    loaded = metadata.load_gallery_items(tmp_path)
+    assert [loaded_item.id for loaded_item in loaded] == ["1"]

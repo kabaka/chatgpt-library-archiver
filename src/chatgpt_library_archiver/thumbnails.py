@@ -38,10 +38,10 @@ class _StatusQueueProtocol(Protocol):
 
     def put(
         self, message: object, block: bool = True, timeout: float | None = None
-    ) -> None:  # noqa: D401
+    ) -> None:
         """Send ``message`` to the queue."""
 
-    def get(self) -> object:  # noqa: D401
+    def get(self) -> object:
         """Retrieve a message from the queue."""
 
 
@@ -178,7 +178,7 @@ def _create_thumbnails_worker(
         status_queue.put(("start", source.name))
     try:
         create_thumbnails(source, dest_map, reporter=None)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         if status_queue is not None:
             status_queue.put(("error", source.name, str(exc)))
         raise

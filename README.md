@@ -75,6 +75,20 @@ make install         # default deps (pip) + pre-commit hook installation
 `make deps` is aliased to `deps-pip` for local development, while CI/CD can pick
 the appropriate `deps-*` target to ensure deterministic provisioning.
 
+### 🔍 Quality gates
+
+Run the following targets locally before opening a pull request to match the
+project's continuous integration pipeline:
+
+```bash
+make lint  # ruff linting & formatting checks plus strict Pyright type analysis
+make test  # pytest with coverage; fails below 85% project coverage
+```
+
+CI enforces these same commands to guarantee formatting convergence, modern Ruff
+rule sets (including `PL`, `RUF`, and `FURB`), strict static typing, and minimum
+test coverage.
+
 ---
 
 ## 🛠 2. `auth.txt` — Setup Your Authentication

@@ -14,6 +14,8 @@ def _sample_png() -> bytes:
 
 
 PNG_BYTES = _sample_png()
+EXPECTED_IMPORTED_COUNT = 2
+EXPECTED_METADATA_COUNT = 3
 
 
 def always_yes(*_args, **_kwargs):
@@ -110,10 +112,10 @@ def test_recursive_directory_import(monkeypatch, tmp_path):
     )
 
     # two png images imported, txt ignored
-    assert len(imported) == 2
+    assert len(imported) == EXPECTED_IMPORTED_COUNT
 
     metadata = json.loads((gallery_root / "metadata.json").read_text())
-    assert len(metadata) == 3
+    assert len(metadata) == EXPECTED_METADATA_COUNT
     imported_ids = {entry.id for entry in imported}
     for entry in metadata:
         if entry["id"] in imported_ids:

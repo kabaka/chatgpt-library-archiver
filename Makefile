@@ -19,10 +19,12 @@ deps-uv:
 	uv pip install -e . --no-deps
 
 lint:
-	python -m pre_commit run --all-files
+	python -m ruff check .
+	python -m ruff format --check .
+	python -m pyright
 
 test:
-	python -m pytest
+	python -m pytest --cov=chatgpt_library_archiver --cov-report=term-missing --cov-fail-under=85
 
 build:
 	python -m build

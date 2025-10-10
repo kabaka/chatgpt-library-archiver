@@ -6,6 +6,9 @@ import pytest
 
 from chatgpt_library_archiver import ai
 
+EXPECTED_LATENCY = 0.5
+EXPECTED_TOTAL_TOKENS = 5
+
 
 def test_get_cached_client_reuses_instance(monkeypatch):
     created = []
@@ -84,7 +87,7 @@ def test_call_image_endpoint_retries(monkeypatch, tmp_path):
 
     assert result == "slug"
     assert telemetry.retries == 1
-    assert pytest.approx(telemetry.latency_s, 0.01) == 0.5
-    assert telemetry.total_tokens == 5
-    assert usage.total_tokens == 5
+    assert pytest.approx(telemetry.latency_s, 0.01) == EXPECTED_LATENCY
+    assert telemetry.total_tokens == EXPECTED_TOTAL_TOKENS
+    assert usage.total_tokens == EXPECTED_TOTAL_TOKENS
     assert attempts == [1]

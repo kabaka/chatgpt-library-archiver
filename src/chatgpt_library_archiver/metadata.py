@@ -7,7 +7,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 
 def metadata_path(gallery_root: str | Path) -> Path:
@@ -19,23 +19,40 @@ def metadata_path(gallery_root: str | Path) -> Path:
 def normalize_created_at(value: Any) -> float | None:
     """Convert assorted ``created_at`` values into a float timestamp."""
 
+    normalized: float | None
     if value is None:
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, str):
+        normalized = None
+    elif isinstance(value, int | float):
+        normalized = float(value)
+    elif isinstance(value, str):
         text = value.strip()
-        if not text:
-            return None
+        normalized = None if not text else _parse_created_at_string(text)
+    else:
+        normalized = None
+    return normalized
+
+
+def _parse_created_at_string(text: str) -> float | None:
+    try:
+        return float(text)
+    except ValueError:
+        normalized_text = text[:-1] + "+00:00" if text.endswith("Z") else text
         try:
-            return float(text)
+            return datetime.fromisoformat(normalized_text).timestamp()
         except ValueError:
-            if text.endswith("Z"):
-                text = text[:-1] + "+00:00"
-            try:
-                return datetime.fromisoformat(text).timestamp()
-            except ValueError:
-                return None
+            return None
+
+
+def _coerce_optional_int(value: Any) -> int | None:
+    if isinstance(value, int | float):
+        return int(value)
+    return None
+
+
+def _coerce_optional_str(value: Any) -> str | None:
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
     return None
 
 
@@ -46,6 +63,18 @@ def created_at_sort_key(value: Any) -> float:
     return normalized if normalized is not None else 0.0
 
 
+def _default_tags() -> list[str]:
+    return []
+
+
+def _default_thumbnail_map() -> dict[str, str]:
+    return {}
+
+
+def _default_extra() -> dict[str, Any]:
+    return {}
+
+
 @dataclass(slots=True)
 class GalleryItem:
     """Typed representation of a gallery item."""
@@ -54,7 +83,7 @@ class GalleryItem:
     filename: str
     title: str = ""
     prompt: str | None = None
-    tags: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=_default_tags)
     created_at: float | None = None
     width: int | None = None
     height: int | None = None
@@ -62,36 +91,74 @@ class GalleryItem:
     conversation_id: str | None = None
     message_id: str | None = None
     conversation_link: str | None = None
-    thumbnails: dict[str, str] = field(default_factory=dict)
+    thumbnails: dict[str, str] = field(default_factory=_default_thumbnail_map)
     thumbnail: str | None = None
     checksum: str | None = None
     content_type: str | None = None
-    extra: dict[str, Any] = field(default_factory=dict, repr=False)
+    extra: dict[str, Any] = field(default_factory=_default_extra, repr=False)
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> GalleryItem:
         """Create an item from a JSON-compatible mapping."""
 
-        known = {
-            "id": str(data.get("id", "")),
-            "filename": data.get("filename", ""),
-            "title": data.get("title", "") or "",
-            "prompt": data.get("prompt"),
-            "tags": list(data.get("tags") or []),
-            "created_at": normalize_created_at(data.get("created_at")),
-            "width": data.get("width"),
-            "height": data.get("height"),
-            "url": data.get("url"),
-            "conversation_id": data.get("conversation_id"),
-            "message_id": data.get("message_id"),
-            "conversation_link": data.get("conversation_link"),
-            "thumbnails": dict(data.get("thumbnails") or {}),
-            "thumbnail": data.get("thumbnail"),
-            "checksum": data.get("checksum"),
-            "content_type": data.get("content_type"),
+        raw_thumbnails = data.get("thumbnails")
+        extras = {
+            key: value
+            for key, value in data.items()
+            if key
+            not in {
+                "id",
+                "filename",
+                "title",
+                "prompt",
+                "tags",
+                "created_at",
+                "width",
+                "height",
+                "url",
+                "conversation_id",
+                "message_id",
+                "conversation_link",
+                "thumbnails",
+                "thumbnail",
+                "checksum",
+                "content_type",
+            }
         }
-        extras = {key: value for key, value in data.items() if key not in known}
-        return cls(**known, extra=extras)
+        thumbnail_entries: dict[str, str] = {}
+        if isinstance(raw_thumbnails, Mapping):
+            for size_obj, path_obj in cast(
+                Mapping[object, object], raw_thumbnails
+            ).items():
+                if isinstance(size_obj, str) and isinstance(path_obj, str):
+                    thumbnail_entries[size_obj] = path_obj
+
+        raw_tags = data.get("tags")
+        tags: list[str] = []
+        if isinstance(raw_tags, Iterable):
+            for tag_obj in cast(Iterable[object], raw_tags):
+                if isinstance(tag_obj, str):
+                    tags.append(tag_obj)
+
+        return cls(
+            id=str(data.get("id", "")),
+            filename=str(data.get("filename", "")),
+            title=str(data.get("title", "") or ""),
+            prompt=data.get("prompt"),
+            tags=tags,
+            created_at=normalize_created_at(data.get("created_at")),
+            width=_coerce_optional_int(data.get("width")),
+            height=_coerce_optional_int(data.get("height")),
+            url=_coerce_optional_str(data.get("url")),
+            conversation_id=_coerce_optional_str(data.get("conversation_id")),
+            message_id=_coerce_optional_str(data.get("message_id")),
+            conversation_link=_coerce_optional_str(data.get("conversation_link")),
+            thumbnails=thumbnail_entries,
+            thumbnail=_coerce_optional_str(data.get("thumbnail")),
+            checksum=_coerce_optional_str(data.get("checksum")),
+            content_type=_coerce_optional_str(data.get("content_type")),
+            extra=extras,
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable representation of the item."""
@@ -129,7 +196,7 @@ def load_gallery_items(gallery_root: str | Path) -> list[GalleryItem]:
     items: list[GalleryItem] = []
     for raw in raw_items:
         if isinstance(raw, Mapping):
-            items.append(GalleryItem.from_dict(raw))
+            items.append(GalleryItem.from_dict(cast(Mapping[str, Any], raw)))
     return items
 
 

@@ -12,6 +12,8 @@ from chatgpt_library_archiver.utils import (
     prompt_yes_no,
 )
 
+EXPECTED_AUTH_MODE = 0o600
+
 
 def write_auth(tmpdir, content: str):
     path = os.path.join(tmpdir, "auth.txt")
@@ -76,7 +78,7 @@ def test_prompt_and_write_auth_sets_strict_permissions(monkeypatch):
         path = os.path.join(d, "auth.txt")
         cfg = prompt_and_write_auth(path)
         mode = stat.S_IMODE(os.stat(path).st_mode)
-        assert mode == 0o600
+        assert mode == EXPECTED_AUTH_MODE
         assert cfg["url"] == "val_url"
 
 
