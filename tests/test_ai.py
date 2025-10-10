@@ -24,13 +24,23 @@ def test_get_cached_client_reuses_instance(monkeypatch):
     assert created == ["key-123"]
 
 
-def test_resolve_config_prefers_overrides(monkeypatch):
+def test_resolve_config_prefers_env_and_model_override(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "env")
 
-    cfg = ai.resolve_config(source=None, overrides={"api_key": "override"})
+    cfg = ai.resolve_config(
+        source={"api_key": "file", "model": "file-model"},
+        overrides={"model": "override"},
+    )
 
-    assert cfg["api_key"] == "override"
-    assert cfg["model"] == ai.DEFAULT_MODEL
+    assert cfg["api_key"] == "env"
+    assert cfg["model"] == "override"
+
+
+def test_resolve_config_rejects_api_key_override(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "env")
+
+    with pytest.raises(ValueError):
+        ai.resolve_config(source=None, overrides={"api_key": "override"})
 
 
 def test_call_image_endpoint_retries(monkeypatch, tmp_path):
@@ -52,7 +62,9 @@ def test_call_image_endpoint_retries(monkeypatch, tmp_path):
                 raise ai.RateLimitError("limit", response=fake_response, body=None)
             return SimpleNamespace(
                 output_text="slug",
-                usage=SimpleNamespace(total_tokens=5, prompt_tokens=2, completion_tokens=3),
+                usage=SimpleNamespace(
+                    total_tokens=5, prompt_tokens=2, completion_tokens=3
+                ),
             )
 
     client = SimpleNamespace(responses=DummyResponses())

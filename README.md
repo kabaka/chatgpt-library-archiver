@@ -110,16 +110,15 @@ this file private—never commit it to version control.
 ### Non-interactive configuration
 
 For scripted environments you can skip the interactive prompts by supplying
-configuration through environment variables or CLI flags:
+configuration through environment variables:
 
 - Set `OPENAI_API_KEY`, `CHATGPT_LIBRARY_ARCHIVER_API_KEY`, or
   `CHATGPT_LIBRARY_ARCHIVER_OPENAI_API_KEY` to inject the API key at runtime.
 - Optional overrides include `CHATGPT_LIBRARY_ARCHIVER_OPENAI_MODEL`,
   `CHATGPT_LIBRARY_ARCHIVER_TAG_PROMPT`, and
   `CHATGPT_LIBRARY_ARCHIVER_RENAME_PROMPT`.
-- Pass `--api-key` to the `tag` or `import` commands to provide an API key for a
-  single invocation. Combine with `--no-config-prompt` to fail fast instead of
-  asking to create `tagging_config.json`.
+- Combine these with `--no-config-prompt` to fail fast instead of asking to
+  create `tagging_config.json`.
 
 When these values are provided the tool caches OpenAI clients per API key and
 uses them for tagging and renaming without mutating local configuration files.

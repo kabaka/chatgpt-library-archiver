@@ -6,9 +6,10 @@ import base64
 import mimetypes
 import os
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from openai import OpenAI, RateLimitError
 
@@ -61,26 +62,35 @@ def resolve_config(
 ) -> dict[str, Any]:
     """Merge configuration from file, environment variables, and overrides."""
 
+    if overrides and overrides.get("api_key") is not None:
+        raise ValueError(
+            "API key overrides are not supported; configure via file or environment."
+        )
+
     merged: dict[str, Any] = {}
     if source:
         merged.update(source)
 
+    env_api_key = _env_override(
+        "CHATGPT_LIBRARY_ARCHIVER_OPENAI_API_KEY",
+        "CHATGPT_LIBRARY_ARCHIVER_API_KEY",
+        "OPENAI_API_KEY",
+    )
+    if env_api_key:
+        merged["api_key"] = env_api_key
+
     env_overrides = {
-        "api_key": _env_override(
-            "CHATGPT_LIBRARY_ARCHIVER_OPENAI_API_KEY",
-            "CHATGPT_LIBRARY_ARCHIVER_API_KEY",
-            "OPENAI_API_KEY",
-        ),
         "model": _env_override("CHATGPT_LIBRARY_ARCHIVER_OPENAI_MODEL"),
         "prompt": _env_override("CHATGPT_LIBRARY_ARCHIVER_TAG_PROMPT"),
-        "rename_prompt": _env_override(
-            "CHATGPT_LIBRARY_ARCHIVER_RENAME_PROMPT",
-        ),
+        "rename_prompt": _env_override("CHATGPT_LIBRARY_ARCHIVER_RENAME_PROMPT"),
     }
     merged.update({k: v for k, v in env_overrides.items() if v})
 
     if overrides:
-        merged.update({k: v for k, v in overrides.items() if v is not None})
+        for key in ("model", "prompt", "rename_prompt"):
+            value = overrides.get(key)
+            if value is not None:
+                merged[key] = value
 
     if not merged.get("api_key"):
         raise ValueError("tagging config missing 'api_key'")

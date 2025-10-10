@@ -8,11 +8,10 @@ import re
 import shutil
 import unicodedata
 import uuid
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
 
 from openai import OpenAI
 
@@ -101,12 +100,10 @@ def _prepare_ai_client(
     *,
     config_path: str,
     model: str | None,
-    api_key: str | None,
     allow_interactive: bool | None,
 ) -> tuple[OpenAI, str, str]:
     cfg = tagger.ensure_tagging_config(
         config_path,
-        api_key=api_key,
         model=model,
         allow_interactive=allow_interactive,
     )
@@ -161,7 +158,6 @@ def import_images(
     tag_prompt: str | None = None,
     tag_model: str | None = None,
     tag_workers: int = 4,
-    api_key: str | None = None,
     allow_interactive: bool | None = None,
     telemetry_sink: Callable[[AIRequestTelemetry], None] | None = None,
 ) -> list[GalleryItem]:
@@ -210,7 +206,6 @@ def import_images(
         ai_client, ai_model, cfg_prompt = _prepare_ai_client(
             config_path=config_path,
             model=rename_model,
-            api_key=api_key,
             allow_interactive=allow_interactive,
         )
         ai_prompt = rename_prompt or cfg_prompt
@@ -243,7 +238,10 @@ def import_images(
                     if telemetry.total_tokens is not None:
                         reporter.log_status(
                             "AI rename",
-                            f"{source_path.name} tokens: {telemetry.total_tokens}, latency: {telemetry.latency_s:.2f}s",
+                            (
+                                f"{source_path.name} tokens: {telemetry.total_tokens}, "
+                                f"latency: {telemetry.latency_s:.2f}s"
+                            ),
                         )
                 except Exception:
                     slug = None
@@ -299,7 +297,6 @@ def import_images(
                 prompt=tag_prompt,
                 model=tag_model,
                 max_workers=tag_workers,
-                api_key=api_key,
                 allow_interactive=allow_interactive,
                 telemetry_sink=telemetry_sink,
             )
@@ -367,7 +364,6 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=4,
         help="Parallel workers when tagging imported images",
     )
-    parser.add_argument("--api-key", help="Override OpenAI API key for tagging/renaming")
     parser.add_argument(
         "--no-config-prompt",
         action="store_true",
@@ -414,7 +410,6 @@ def main(args: argparse.Namespace | None = None) -> int:
         tag_prompt=args.tag_prompt,
         tag_model=args.tag_model,
         tag_workers=args.tag_workers,
-        api_key=getattr(args, "api_key", None),
         allow_interactive=not getattr(args, "no_config_prompt", False),
     )
     if args.regenerate_thumbnails:
