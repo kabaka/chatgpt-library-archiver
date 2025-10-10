@@ -13,7 +13,12 @@ def restore_env(monkeypatch):
 
 
 def test_select_installer_prefers_uv(monkeypatch):
-    env = bootstrap.EnvironmentInfo(prefix="/env", python="python", is_active=False, created=False)
+    env = bootstrap.EnvironmentInfo(
+        prefix="/env",
+        python="python",
+        is_active=False,
+        created=False,
+    )
 
     def fake_find_executable(name, env_dir=None):
         if name == "uv":
@@ -25,7 +30,12 @@ def test_select_installer_prefers_uv(monkeypatch):
 
 
 def test_select_installer_prefers_pip_tools(monkeypatch):
-    env = bootstrap.EnvironmentInfo(prefix="/env", python="python", is_active=False, created=False)
+    env = bootstrap.EnvironmentInfo(
+        prefix="/env",
+        python="python",
+        is_active=False,
+        created=False,
+    )
 
     def fake_find_executable(name, env_dir=None):
         if name == "pip-sync":
@@ -37,14 +47,35 @@ def test_select_installer_prefers_pip_tools(monkeypatch):
 
 
 def test_select_installer_falls_back_to_pip(monkeypatch):
-    env = bootstrap.EnvironmentInfo(prefix="/env", python="python", is_active=False, created=False)
-    monkeypatch.setattr(bootstrap, "find_executable", lambda *args, **kwargs: None)
-    assert bootstrap.select_installer(env) == ("pip", ("python", "-m", "pip", "install"))
+    env = bootstrap.EnvironmentInfo(
+        prefix="/env",
+        python="python",
+        is_active=False,
+        created=False,
+    )
+    monkeypatch.setattr(
+        bootstrap,
+        "find_executable",
+        lambda *args, **kwargs: None,
+    )
+    assert bootstrap.select_installer(env) == (
+        "pip",
+        ("python", "-m", "pip", "install"),
+    )
 
 
 def test_install_dependencies_skips_missing_files(monkeypatch, capsys, tmp_path):
-    env = bootstrap.EnvironmentInfo(prefix=str(tmp_path), python="python", is_active=False, created=False)
-    monkeypatch.setattr(bootstrap, "select_installer", lambda env: ("pip", ("python", "-m", "pip", "install")))
+    env = bootstrap.EnvironmentInfo(
+        prefix=str(tmp_path),
+        python="python",
+        is_active=False,
+        created=False,
+    )
+    monkeypatch.setattr(
+        bootstrap,
+        "select_installer",
+        lambda env: ("pip", ("python", "-m", "pip", "install")),
+    )
     bootstrap.install_dependencies(env, [str(tmp_path / "missing.txt")])
     captured = capsys.readouterr()
     assert "No requirements files found" in captured.out
@@ -52,7 +83,12 @@ def test_install_dependencies_skips_missing_files(monkeypatch, capsys, tmp_path)
 
 @pytest.mark.parametrize("tool", ["pip", "pip-tools", "uv"])
 def test_install_dependencies_invokes_expected_command(monkeypatch, tmp_path, tool):
-    env = bootstrap.EnvironmentInfo(prefix=str(tmp_path), python="py", is_active=False, created=False)
+    env = bootstrap.EnvironmentInfo(
+        prefix=str(tmp_path),
+        python="py",
+        is_active=False,
+        created=False,
+    )
     requirement = tmp_path / "requirements.txt"
     requirement.write_text("")
 
@@ -79,7 +115,11 @@ def test_install_dependencies_invokes_expected_command(monkeypatch, tmp_path, to
         )
 
     called = []
-    monkeypatch.setattr(bootstrap.subprocess, "check_call", lambda cmd: called.append(cmd))
+    monkeypatch.setattr(
+        bootstrap.subprocess,
+        "check_call",
+        lambda cmd: called.append(cmd),
+    )
     bootstrap.install_dependencies(env, [str(requirement)])
     assert called == [expected_cmd]
 
