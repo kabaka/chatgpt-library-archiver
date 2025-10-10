@@ -41,11 +41,17 @@ tagging_config.json ← OpenAI API key, model, and prompt for tagging
 
 Recommended: use a virtual environment.
 
-Option A — one command bootstrap (creates `.venv`, installs deps, runs):
+Option A — one command bootstrap (detects/creates env, installs deps, runs):
 
 ```
 python -m chatgpt_library_archiver bootstrap
 ```
+
+The bootstrapper reuses an activated virtual environment, otherwise it creates
+`.venv` for you. It prefers [`uv`](https://github.com/astral-sh/uv) or
+[`pip-tools`](https://github.com/jazzband/pip-tools) when available to perform a
+deterministic sync of `requirements*.txt`, falling back to `pip install` if
+neither tool is present.
 
 Option B — manual setup:
 
@@ -56,8 +62,18 @@ pip install -e .[dev]
 pre-commit install --install-hooks
 ```
 
-The `Makefile` target `make install` performs the same steps and installs the
-pre-commit git hooks automatically so linting runs before each commit.
+The `Makefile` includes dedicated targets so you can choose the dependency
+installer that matches your automation environment:
+
+```
+make deps-pip        # pip install -e .[dev]
+make deps-pip-tools  # pip-sync requirements*.txt, then install package editable
+make deps-uv         # uv pip sync requirements*.txt, then install package editable
+make install         # default deps (pip) + pre-commit hook installation
+```
+
+`make deps` is aliased to `deps-pip` for local development, while CI/CD can pick
+the appropriate `deps-*` target to ensure deterministic provisioning.
 
 ---
 

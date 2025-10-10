@@ -1,11 +1,25 @@
-.PHONY: install lint test build
+.PHONY: install lint test build deps deps-pip deps-pip-tools deps-uv
 
-install:
+SYNC_REQUIREMENTS = requirements.txt requirements-dev.txt
+
+install: deps
+	python -m pre_commit install --install-hooks
+
+deps: deps-pip
+
+deps-pip:
 	python -m pip install -e .[dev]
-	pre-commit install --install-hooks
+
+deps-pip-tools:
+	pip-sync $(SYNC_REQUIREMENTS)
+	python -m pip install -e . --no-deps
+
+deps-uv:
+	uv pip sync $(SYNC_REQUIREMENTS)
+	uv pip install -e . --no-deps
 
 lint:
-	pre-commit run --all-files
+	python -m pre_commit run --all-files
 
 test:
 	python -m pytest
