@@ -85,12 +85,13 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.coverage.run]
+source = ["chatgpt_library_archiver"]
 omit = [
-  "src/chatgpt_library_archiver/bootstrap.py",
-  "src/chatgpt_library_archiver/cli/*",
-  "src/chatgpt_library_archiver/importer.py",
-  "src/chatgpt_library_archiver/incremental_downloader.py",
-  "src/chatgpt_library_archiver/tagger.py",
+  "*/chatgpt_library_archiver/bootstrap.py",
+  "*/chatgpt_library_archiver/cli/*",
+  "*/chatgpt_library_archiver/importer.py",
+  "*/chatgpt_library_archiver/incremental_downloader.py",
+  "*/chatgpt_library_archiver/tagger.py",
 ]
 
 [tool.pyright]
