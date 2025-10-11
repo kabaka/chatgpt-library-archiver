@@ -227,6 +227,84 @@ Use the `-y/--yes` flag with any command to bypass confirmation prompts.
 
 ---
 
+## 🧱 Architecture Overview
+
+The package is organized around a small set of composable modules so that
+downloading, importing, tagging, and gallery generation can evolve
+independently while sharing common infrastructure.
+
+### Core modules and responsibilities
+
+- `chatgpt_library_archiver/__main__.py` – entry point that mirrors running the
+  package as a module (`python -m chatgpt_library_archiver`). It wires the CLI
+  defaults to the incremental downloader.
+- `chatgpt_library_archiver/cli/` – argument parsing and sub-command routing.
+  `cli.app` owns the top-level parser while `cli.commands.*` modules wrap the
+  individual workflows (`bootstrap`, `download`, `gallery`, `import`, `tag`).
+- `chatgpt_library_archiver/incremental_downloader.py` – coordinates the
+  network fetch loop, incremental metadata reconciliation, thumbnail creation,
+  and optional tagging when downloading from ChatGPT.
+- `chatgpt_library_archiver/importer.py` – ingests local files, normalises
+  filenames, and appends metadata entries so local assets behave the same as
+  remote downloads.
+- `chatgpt_library_archiver/tagger.py` and `ai.py` – talk to the OpenAI APIs to
+  generate tags or AI-assisted filenames. They centralise retry logic and rate
+  limit handling so command modules can stay declarative.
+- `chatgpt_library_archiver/gallery.py` and `gallery_index.html` – assemble the
+  static gallery by sorting metadata, copying the bundled HTML shell, and
+  emitting the JSON payload consumed by the browser UI.
+- `chatgpt_library_archiver/thumbnails.py` – resizes images into the
+  `thumbs/<size>/` directories and tracks where thumbnails land so metadata can
+  reference them.
+- `chatgpt_library_archiver/http_client.py` – wraps `httpx` with checksums,
+  strict content-type validation, and streaming support that the downloader and
+  importer reuse.
+- `chatgpt_library_archiver/metadata.py` – defines the `GalleryItem` data class,
+  JSON serialisation helpers, and timestamp normalisation utilities.
+- `chatgpt_library_archiver/status.py` – a small status reporter used to surface
+  progress bars, log lines, and aggregated error summaries across commands.
+- `chatgpt_library_archiver/bootstrap.py` and `utils.py` – create virtual
+  environments, install dependencies, and manage user prompts and config file
+  discovery (`auth.txt`, `tagging_config.json`).
+
+Each command-specific module constructs the dependencies it needs (e.g. the HTTP
+client or status reporter) and delegates to these shared building blocks.
+
+### Gallery data layout
+
+The gallery directory remains intentionally flat so static hosting and manual
+inspection stay straightforward:
+
+```
+gallery/
+├── images/                # Original assets, named by their ChatGPT ID
+├── thumbs/{small,medium,large}/
+├── metadata.json          # Array of GalleryItem records
+└── index.html             # Copied from gallery_index.html template
+```
+
+`metadata.json` is the single source of truth for the gallery. Each object in
+the array mirrors `GalleryItem` and may include:
+
+- `id` – stable identifier from the ChatGPT API or importer.
+- `filename` – basename located under `gallery/images/`.
+- `title`, `prompt` – human-readable metadata sourced from ChatGPT or CLI
+  prompts.
+- `created_at` – Unix timestamp (float) used for chronological sorting.
+- `width`, `height` – recorded image dimensions when known.
+- `url` – original CDN location for reproducibility (optional).
+- `conversation_id`, `message_id`, `conversation_link` – traceability back to
+  the originating ChatGPT conversation.
+- `tags` – list of strings generated via the tagger workflow.
+- `thumbnail` – default thumbnail path (usually `thumbs/medium/<file>`).
+- `thumbnails` – mapping of size -> relative path under `gallery/thumbs/`.
+- `checksum`, `content_type` – SHA-256 hash and MIME type captured during
+  download/import.
+- `extra` – JSON object that preserves unknown keys for forward compatibility.
+
+Avoid editing `metadata.json` manually—use the CLI workflows so helper fields
+such as `thumbnails` and `checksum` stay in sync.
+
 ## 💡 Notes
 
 - No old data is overwritten. All images are saved with unique filenames and metadata is appended.
@@ -271,18 +349,47 @@ General estimate:
 
 ## 🧪 Testing and Linting
 
-Tests cover `auth.txt` parsing, gallery generation, and a full end-to-end
-flow with mocked network calls so the suite runs entirely offline.
-Network requests in these tests use strict URL parsing to avoid
-ambiguous domain matches.
+The project leans on pytest, Ruff, and Pyright. `make lint` and `make test`
+mirror the CI pipeline and enforce formatting, static typing, and a minimum of
+85% coverage.
+
+### Test suite layout
+
+- `tests/test_cli.py` – verifies argument parsing and sub-command wiring.
+- `tests/test_end_to_end.py` – exercises the download pipeline, metadata
+  reconciliation, tagging, and gallery regeneration in a hermetic filesystem.
+- `tests/test_gallery.py`, `tests/test_thumbnails.py`, `tests/test_metadata.py`
+  – cover pure rendering and data transformation helpers.
+- `tests/test_http_client.py`, `tests/test_status.py`, `tests/test_utils.py` –
+  focus on infrastructure primitives and error handling.
+- `tests/test_importer.py`, `tests/test_tagger.py`, `tests/test_ai.py` – validate
+  import flows and OpenAI integration points by stubbing HTTP calls.
+- `tests/test_bootstrap.py`, `tests/test_pre_commit_hook.py` – guard the
+  development tooling.
+
+The tests favour dependency injection and monkeypatching so new behaviour can be
+covered without performing real network requests or writing outside the
+temporary directory created by pytest fixtures.
+
+### Running and extending tests
 
 ```
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -e .[dev]
 pre-commit run --all-files
-pytest
+make lint
+make test
 ```
+
+When adding a feature, mirror the existing module-level test files so new cases
+live alongside the behaviour they exercise. Prefer constructing fake HTTP
+clients and in-memory images (see `tests/test_end_to_end.py`) over touching real
+network resources. If a workflow depends on filesystem state, target the
+`tmp_path` fixture so the suite stays deterministic. Add focused unit tests for
+helpers, then augment the end-to-end flow if the user journey changes. Finally,
+run `make lint` and `make test` locally before pushing to confirm the coverage
+gate and static analysis still pass.
 
 ### Git hook
 
