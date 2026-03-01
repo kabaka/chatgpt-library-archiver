@@ -61,6 +61,10 @@ These modules are listed in `[tool.coverage.run] omit` in [pyproject.toml](pypro
 - [Line 80](src/chatgpt_library_archiver/utils.py#L80): Empty field re-prompt in `prompt_and_write_auth`
 - [Lines 96–109](src/chatgpt_library_archiver/utils.py#L96-L109): Re-enter credentials flow in `ensure_auth_config`
 
+**[ai.py](src/chatgpt_library_archiver/ai.py) — AI-specific uncovered paths (identified via cross-review):**
+- [Line 178](src/chatgpt_library_archiver/ai.py#L178): `response.output_text.strip()` — no test covers `output_text=None` (content-filtered response), which would raise `AttributeError`. This is a real crash vector, not just a coverage gap.
+- The retry loop ([lines 148–166](src/chatgpt_library_archiver/ai.py#L148-L166)) only catches `RateLimitError`. No test exercises what happens when `APIConnectionError`, `APITimeoutError`, or `InternalServerError` are raised — they propagate unhandled. This is both a code gap and a test gap.
+
 ---
 
 ## 2. Test Quality Assessment
@@ -157,6 +161,38 @@ monkeypatch.setattr(tagger, "generate_tags", lambda *a, **k: (["x", "y"], teleme
 
 These accept any signature without complaint. If `generate_tags` changes its API, these tests would still pass — they don't verify the call interface. Using `MagicMock(spec=...)` or explicit function signatures would catch regressions.
 
+### Refined Mock Strategy for AI/OpenAI Tests (from cross-review)
+
+The testing skill recommends `MagicMock(spec=OpenAI)` for AI mocks, but the cross-review from @openai-specialist correctly identifies that this is **not appropriate for the OpenAI client itself**. The SDK uses dynamic method composition — `spec=OpenAI` would not include `client.responses.create` because the Responses API is dynamically constructed at runtime. The `SimpleNamespace` approach currently used in [test_ai.py](tests/test_ai.py#L60-L77) is the right choice for the client mock.
+
+The refined guidance is:
+
+| Target | Mock Approach | Rationale |
+|--------|--------------|-----------|
+| **OpenAI client** | `SimpleNamespace` (current approach) | SDK uses dynamic APIs; `spec=OpenAI` would miss `responses.create` |
+| **Project functions** (`generate_tags`, `ensure_tagging_config`) | `Mock(spec=target_function)` | Catches signature drift; these are stable internal APIs |
+| **OpenAI responses** | `SimpleNamespace(output_text=..., usage=...)` | Minimal, mirrors actual API shape without SDK internals |
+| **OpenAI errors** | Real exception classes with `SimpleNamespace` response | Errors carry `response` and `body` attrs; real classes needed for `isinstance` checks |
+
+This is a sound refinement. The skill file's `MagicMock(spec=OpenAI)` recommendation should be updated to reflect this nuance.
+
+**Immediate action:** Replace lambda mocks for `generate_tags` and `ensure_tagging_config` in [test_tagger.py](tests/test_tagger.py) with `Mock(spec=generate_tags)` to catch signature changes. Keep `SimpleNamespace` for OpenAI client mocks.
+
+### OpenAI Error Hierarchy Test Pattern (from cross-review)
+
+The cross-review proposes parametrizing AI tests over the OpenAI error hierarchy:
+
+```python
+TRANSIENT_ERRORS = [RateLimitError, APIConnectionError, APITimeoutError]
+FATAL_ERRORS = [AuthenticationError, BadRequestError]
+```
+
+This is accurate to the SDK's error classes, and the suggestion to add `InternalServerError` (HTTP 500) to `TRANSIENT_ERRORS` is correct — OpenAI's API occasionally returns 500s that succeed on retry.
+
+**Current gap:** [test_ai.py](tests/test_ai.py#L53) only tests `RateLimitError` retry. The code itself ([ai.py L148–166](src/chatgpt_library_archiver/ai.py#L148-L166)) also only catches `RateLimitError`, so parametrized transient-error tests would initially *fail* for `APIConnectionError` et al. — exposing a real code gap. This is the correct test-driven approach: write the failing tests first, then expand the exception handling.
+
+**Note:** `InternalServerError` requires the `openai` package version to be checked — it was added in `openai>=1.x`. The current project uses `openai>=1.0` so this is safe.
+
 ---
 
 ## 4. Test Isolation
@@ -213,6 +249,19 @@ Currently, each test file recreates these patterns independently. A `conftest.py
 | `write_metadata()` / `_write_metadata()` | 2 files (different names!) | → `conftest.py` fixture |
 | `always_yes()` | 1 file (but pattern repeated elsewhere) | → `conftest.py` fixture |
 
+### AI-Specific Test Helpers (from cross-review)
+
+The cross-review proposes four AI-specific test helpers. Evaluation:
+
+| Proposed Helper | Assessment | Recommendation |
+|----------------|------------|----------------|
+| **Token budget assertion** (`assert_api_called_with_max_tokens`) | Sound in concept, but **premature** — `max_tokens` is not currently passed to API calls. Implement when/if `max_tokens` support is added. | **Defer** |
+| **Image resize verification** (`assert_encoded_image_within`) | Same issue — depends on resize optimization that doesn't exist yet. The helper design (decode base64 → check dimensions) is correct. | **Defer** |
+| **Cost tracking fixture** (`telemetry_collector`) | Moderate value. `AIRequestTelemetry` instances are already created manually in [test_tagger.py](tests/test_tagger.py#L45-L46). A shared fixture would reduce boilerplate but the current inline approach is only ~1 line per test. | **Low priority** — include in `conftest.py` if created |
+| **Retry-After header simulation** | Good test design, but the code doesn't currently parse `Retry-After` headers ([ai.py L154–166](src/chatgpt_library_archiver/ai.py#L154-L166) uses fixed exponential backoff). Implement when header parsing is added. | **Defer** |
+
+The cross-review also suggests a separate `tests/helpers/openai_fakes.py` module for AI test factories (e.g., `make_openai_response()`, `make_openai_error()`). For this project's size, putting these in `conftest.py` is simpler. A dedicated helpers module is warranted only if AI test infrastructure grows significantly (>100 lines of shared utilities).
+
 ---
 
 ## 6. Missing Tests (Prioritized)
@@ -229,25 +278,37 @@ Currently, each test file recreates these patterns independently. A `conftest.py
 
 5. **Thumbnail creation failure handling.** [thumbnails.py lines 181–184](src/chatgpt_library_archiver/thumbnails.py#L181-L184) — `FileNotFoundError`, `UnidentifiedImageError`, and `OSError` are caught and re-raised as `RuntimeError`. No test covers this.
 
+6. **`output_text=None` crash in `call_image_endpoint`.** [ai.py line 178](src/chatgpt_library_archiver/ai.py#L178) calls `response.output_text.strip()` without guarding against `None`. When the API returns a content-filtered response, `output_text` is `None` and this raises `AttributeError`. This is a real bug — the test should verify that the function either handles `None` gracefully or raises a clear error. *(Identified via cross-review.)*
+
+7. **Tagger batch failure isolation.** [tagger.py line 193](src/chatgpt_library_archiver/tagger.py#L193) calls `fut.result()` without try/except inside the `as_completed` loop. If any single image fails (e.g., API error), the entire batch aborts and previously-successful tags are lost. A test should submit 3 items where item 2 raises, and verify that items 1 and 3's tags are preserved. *(Identified via cross-review — the same unguarded `future.result()` pattern exists in the thumbnail pipeline.)*
+
 ### Medium Priority
 
-6. **Unicode in filenames.** No test imports or downloads an image with non-ASCII characters in the filename. The `_slugify` function in [importer.py](src/chatgpt_library_archiver/importer.py#L57-L62) handles Unicode normalization, but it's untested.
+8. **Parametrized OpenAI error type tests.** The retry loop in [ai.py](src/chatgpt_library_archiver/ai.py#L148-L166) only catches `RateLimitError`. Tests should parametrize over:
+   - **Transient errors** (should retry): `RateLimitError`, `APIConnectionError`, `APITimeoutError`, `InternalServerError`
+   - **Fatal errors** (should raise immediately): `AuthenticationError`, `BadRequestError`
 
-7. **`get_json` with `expected_content_types`.** [http_client.py lines 157–161](src/chatgpt_library_archiver/http_client.py#L157-L161) — the `expected_content_types` parameter is untested.
+   Currently, only `RateLimitError` retry is tested. The transient-error tests will *fail* initially, exposing the code gap — this is intentional test-driven development. *(Identified via cross-review.)*
 
-8. **`HttpError.context` property.** The structured error details property ([http_client.py lines 44–47](src/chatgpt_library_archiver/http_client.py#L44-L47)) is never directly asserted in tests.
+9. **Unicode in filenames.** No test imports or downloads an image with non-ASCII characters in the filename. The `_slugify` function in [importer.py](src/chatgpt_library_archiver/importer.py#L57-L62) handles Unicode normalization, but it's untested.
 
-9. **`GalleryItem.from_dict` with missing required fields.** No test verifies behavior when `id` or `filename` is missing from the input dict.
+10. **`get_json` with `expected_content_types`.** [http_client.py lines 157–161](src/chatgpt_library_archiver/http_client.py#L157-L161) — the `expected_content_types` parameter is untested.
 
-10. **`_coerce_optional_int` / `_coerce_optional_str` edge cases.** Float-to-int coercion and whitespace-only string handling.
+11. **`HttpError.context` property.** The structured error details property ([http_client.py lines 44–47](src/chatgpt_library_archiver/http_client.py#L44-L47)) is never directly asserted in tests.
+
+12. **`GalleryItem.from_dict` with missing required fields.** No test verifies behavior when `id` or `filename` is missing from the input dict.
+
+13. **`_coerce_optional_int` / `_coerce_optional_str` edge cases.** Float-to-int coercion and whitespace-only string handling.
 
 ### Low Priority
 
-11. **`prompt_yes_no` invalid input loop.** [utils.py line 47](src/chatgpt_library_archiver/utils.py#L47) — the `while True` loop that re-prompts on invalid input (not "y", "n", or empty).
+14. **`prompt_yes_no` invalid input loop.** [utils.py line 47](src/chatgpt_library_archiver/utils.py#L47) — the `while True` loop that re-prompts on invalid input (not "y", "n", or empty).
 
-12. **`gallery.py` `__main__` block.** Standard `if __name__ == "__main__"` pattern — not worth testing.
+15. **`gallery.py` `__main__` block.** Standard `if __name__ == "__main__"` pattern — not worth testing.
 
-13. **Thread safety of `HttpClient._get_session`.** `_get_session` uses `threading.local` — no concurrent test exercises this.
+16. **Thread safety of `HttpClient._get_session`.** `_get_session` uses `threading.local` — no concurrent test exercises this.
+
+17. **`encode_image` MIME detection and round-trip.** No dedicated test verifies MIME type inference or that the base64 data URL round-trips to a valid image. Low priority now, but becomes high priority if/when image resize optimization is added to `encode_image`. *(Identified via cross-review.)*
 
 ---
 
@@ -270,6 +331,8 @@ Currently, each test file recreates these patterns independently. A `conftest.py
 2. **No auth refresh E2E test.** The incremental_downloader has auth-refresh logic for 401/403 responses — no integration test covers this path.
 
 3. **No gallery-only regeneration E2E.** While `test_gallery_subcommand` mocks the gallery generator, no test verifies the real gallery generation → HTML output → metadata sorting pipeline from scratch.
+
+4. **No AI tagging partial-failure E2E test.** The batch failure isolation bug (§6 item 7) means that a single API error during tagging loses all successfully-tagged results. An E2E test should verify the expected behavior after the fix: successful tags are saved even when some images fail. *(Identified via cross-review.)*
 
 ---
 
@@ -369,7 +432,7 @@ def test_console_script_help_via_built_wheel(tmp_path):
 | `sample_items` shared fixture | Not implemented | **Missing** |
 | `mock_session` shared fixture | Not implemented | **Missing** |
 | `MagicMock(spec=Session)` for HTTP | Custom `FakeSession` class (better) | **Exceeded** |
-| `MagicMock(spec=OpenAI)` for AI | `SimpleNamespace` mocks | **Different approach** |
+| `MagicMock(spec=OpenAI)` for AI | `SimpleNamespace` mocks | **Correct divergence** — see §3 |
 | `tmp_path` for filesystem isolation | Consistently used | **Compliant** |
 | 85% project minimum | 91% line / 86% branch | **Passing** |
 | Empty gallery edge case | Tested in `test_gallery.py` | **Compliant** |
@@ -379,6 +442,8 @@ def test_console_script_help_via_built_wheel(tmp_path):
 | Rate limit responses | Tested in `test_ai.py` | **Compliant** |
 | `disable=True` for tqdm | Used in `test_status.py` | **Compliant** |
 | `monkeypatch.setattr("builtins.input", ...)` | Used in `test_utils.py` | **Compliant** |
+
+**Skill file update needed:** The testing skill recommends `MagicMock(spec=OpenAI)` for AI mocks. Per the cross-review analysis in §3, the `SimpleNamespace` approach is actually correct for the OpenAI client due to dynamic API composition in the SDK. The skill file's mock strategy table should be updated to reflect this nuance. The status is changed from "Different approach" to "Correct divergence" — the implementation is right, the skill guidance needs updating.
 
 ---
 
@@ -392,36 +457,73 @@ def test_console_script_help_via_built_wheel(tmp_path):
 
 3. **Fix the manual env save/restore** in [test_cli.py::test_main_sets_assume_yes](tests/test_cli.py#L10) — replace with `monkeypatch.setenv`/`monkeypatch.delenv`.
 
+4. **Replace lambda mocks with `Mock(spec=...)` for project functions** in [test_tagger.py](tests/test_tagger.py). Change `lambda *a, **k: (["x", "y"], telemetry)` patterns to `Mock(spec=generate_tags, return_value=(["x", "y"], telemetry))`. Keep `SimpleNamespace` for OpenAI client mocks. *(Refined via cross-review.)*
+
 ### P1 — Coverage Gaps (Medium effort, high value)
 
-4. **Add corrupt metadata tests** — truncated JSON, non-list root, items missing `id` or `filename`. The silent-skip behavior in `load_gallery_items` needs explicit verification.
+5. **Add corrupt metadata tests** — truncated JSON, non-list root, items missing `id` or `filename`. The silent-skip behavior in `load_gallery_items` needs explicit verification.
 
-5. **Add HTTP streaming failure test** — mock `iter_content` to raise mid-stream and verify partial file cleanup.
+6. **Add HTTP streaming failure test** — mock `iter_content` to raise mid-stream and verify partial file cleanup.
 
-6. **Add empty response body test** (without `allow_empty=True`) for `stream_download`.
+7. **Add empty response body test** (without `allow_empty=True`) for `stream_download`.
 
-7. **Add thumbnail format-specific tests** — test WebP, GIF, BMP input images through `create_thumbnails` to cover `_prepare_for_format` branches.
+8. **Add thumbnail format-specific tests** — test WebP, GIF, BMP input images through `create_thumbnails` to cover `_prepare_for_format` branches.
 
-8. **Add thumbnail creation failure test** — `FileNotFoundError` or corrupt image input to `create_thumbnails`.
+9. **Add thumbnail creation failure test** — `FileNotFoundError` or corrupt image input to `create_thumbnails`.
+
+10. **Add `output_text=None` test for `call_image_endpoint`** — mock `responses.create` to return `SimpleNamespace(output_text=None, usage=...)` and verify the function handles it gracefully (or raises a clear error, not `AttributeError`). *(From cross-review.)*
+
+11. **Add tagger batch failure isolation test** — submit 3 items where item 2's `generate_tags` raises, verify items 1 and 3's tags are saved. This test will initially fail (exposing the unguarded `fut.result()` bug at [tagger.py L193](src/chatgpt_library_archiver/tagger.py#L193)), which is intentional — fix the code alongside. *(From cross-review.)*
 
 ### P2 — Robustness (Medium effort, medium value)
 
-9. **Test `_slugify` and `_unique_filename`** in the importer with Unicode input, empty input, and collision scenarios.
+12. **Parametrize OpenAI error tests** over `TRANSIENT_ERRORS` and `FATAL_ERRORS` lists to verify retry behavior for each error type. Start with the test (which will fail for non-`RateLimitError` transient errors), then expand the exception handling in `call_image_endpoint`. *(From cross-review.)*
 
-10. **Test `ensure_auth_config` re-entry path** — where the user says "yes" to re-entering credentials after partial config detection.
+13. **Test `_slugify` and `_unique_filename`** in the importer with Unicode input, empty input, and collision scenarios.
 
-11. **Add `HttpError.context` property assertions** to existing error-path tests.
+14. **Test `ensure_auth_config` re-entry path** — where the user says "yes" to re-entering credentials after partial config detection.
 
-12. **Add integration test for partial download failure** — some images fail while others succeed, verify saved state.
+15. **Add `HttpError.context` property assertions** to existing error-path tests.
+
+16. **Add integration test for partial download failure** — some images fail while others succeed, verify saved state.
 
 ### P3 — Quality of Life (Lower priority)
 
-13. **Improve test naming** — audit test names against `test_<fn>_<scenario>_<expected>` convention.
+17. **Improve test naming** — audit test names against `test_<fn>_<scenario>_<expected>` convention.
 
-14. **Add docstrings** to tests in `test_gallery.py`, `test_metadata.py`, `test_http_client.py`, `test_importer.py`, `test_thumbnails.py`.
+18. **Add docstrings** to tests in `test_gallery.py`, `test_metadata.py`, `test_http_client.py`, `test_importer.py`, `test_thumbnails.py`.
 
-15. **Consolidate gallery JS test extraction** — the `_extract_filter_fn()`, `_extract_viewer_script()`, `_extract_thumb_handler()` helpers each independently parse the full HTML template. A shared fixture could parse once.
+19. **Consolidate gallery JS test extraction** — the `_extract_filter_fn()`, `_extract_viewer_script()`, `_extract_thumb_handler()` helpers each independently parse the full HTML template. A shared fixture could parse once.
 
-16. **Replace `importlib.import_module` pattern** in CLI tests with direct imports.
+20. **Replace `importlib.import_module` pattern** in CLI tests with direct imports.
 
-17. **Consider adding branch coverage enforcement** — change `make test` from `--cov-fail-under=85` (line-only) to also enforce branch coverage, since branch coverage is currently 86% (close to the threshold).
+21. **Consider adding branch coverage enforcement** — change `make test` from `--cov-fail-under=85` (line-only) to also enforce branch coverage, since branch coverage is currently 86% (close to the threshold).
+
+22. **Update the testing skill file's mock strategy table** — change the OpenAI mock recommendation from `MagicMock(spec=OpenAI)` to `SimpleNamespace`, with a note explaining why `spec=OpenAI` breaks on dynamic SDK APIs.
+
+### P4 — Future (implement when corresponding features land)
+
+These recommendations from the cross-review are sound but depend on features that don't exist yet. They should be implemented alongside their corresponding code changes:
+
+23. **Token budget assertion helper** — add `assert_api_called_with_max_tokens` when `max_tokens` is passed to API calls.
+
+24. **Image resize verification helper** — add `assert_encoded_image_within(data_url, max_dim)` when `encode_image` gains resize support.
+
+25. **Retry-After header test** — add a test verifying `Retry-After` header is respected when header-aware retry logic is implemented.
+
+26. **`encode_image` format conversion tests** — test BMP/TIFF → JPEG conversion and dimension capping when the resize optimization is built.
+
+---
+
+## Cross-Review Contributors
+
+| Contributor | Role | Contributions to This Review |
+|------------|------|------------------------------|
+| @openai-specialist | AI / OpenAI integration | Refined mock strategy (§3): validated `SimpleNamespace` for OpenAI client mocks vs `Mock(spec=...)` for project functions. Identified `output_text=None` crash vector (§6 item 6). Proposed parametrized OpenAI error hierarchy tests (§3, §6 item 8). Identified batch failure isolation bug shared between tagger and thumbnail pipeline (§6 item 7). Proposed 4 AI-specific test helpers — 2 deferred as premature, 2 accepted at lower priority (§5). |
+
+**Cross-review evaluation notes:**
+- The mock strategy refinement is the most immediately actionable finding — it corrects the testing skill's recommendation and should be adopted now.
+- The `output_text=None` and batch failure isolation findings are real bugs, not just test gaps. They expose crash paths in production code.
+- The parametrized error hierarchy tests are a good test-driven approach to expanding error handling coverage.
+- The proposed AI-specific test helpers (token budget, image resize, Retry-After) are well-designed but premature — they target features that haven't been implemented. They're preserved as P4 items to implement alongside the corresponding code changes.
+- The suggestion for a separate `tests/helpers/openai_fakes.py` module is reasonable but over-engineering for the current project size; `conftest.py` is sufficient.

@@ -15,6 +15,8 @@ The project has a solid foundation: a working GitHub Actions CI pipeline, compre
 - `make test`: **PASSING** (136 tests, 91% coverage, ~25s)
 - `pre-commit run --all-files`: **PASSING** (but uses outdated ruff v0.5.7 — masks failures)
 
+> **Cross-review note:** This document has been updated to incorporate validated findings from the Architecture & Code Quality cross-review. New material is marked with "**(Cross-review)**" where it extends the original analysis. One cross-review finding (`make lint` ordering) was evaluated and found to be incorrect — see [Cross-Review Integration Notes](#cross-review-integration-notes).
+
 ---
 
 ## 1. Build System
@@ -79,7 +81,7 @@ The build backend is setuptools (configured in [pyproject.toml](../../pyproject.
 
 2. **Version drift between files**: `ruff>=0.5.0` in `pyproject.toml` dev deps vs `ruff>=0.1.0` in `requirements-dev.txt` — the minimum versions disagree and neither matches the installed v0.13.0.
 
-3. **Duplicate `Pillow`**: Listed as both a runtime and dev dependency, which is harmless but redundant.
+3. **Duplicate `Pillow`**: Listed as both a runtime and dev dependency, which is harmless but redundant. **(Cross-review)** This matters more than it appears: if the two constraints drift apart (e.g., someone bumps the runtime minimum to `>=11.0.0` but forgets the dev copy), pip's resolver may produce confusing results. Remove the dev duplicate to maintain a single source of truth for `Pillow`'s version range.
 
 ### Recommendations
 
@@ -87,7 +89,7 @@ The build backend is setuptools (configured in [pyproject.toml](../../pyproject.
 |---|---|
 | **High** | Generate pinned lock files (`pip-compile` or `uv pip compile`) and commit them. Update Makefile sync targets to use those. |
 | Medium | Reconcile version ranges between `pyproject.toml` and `requirements-dev.txt` (single source of truth should be `pyproject.toml`). |
-| Low | Remove `Pillow` from `[project.optional-dependencies.dev]` since it's already a runtime dependency. |
+| Low | Remove `Pillow` from `[project.optional-dependencies.dev]` since it's already a runtime dependency — prevents resolver confusion if version ranges drift. |
 
 ---
 
@@ -131,10 +133,29 @@ This mismatch means `pre-commit run --all-files` **passes** while `make lint` **
 
 | Priority | Recommendation |
 |---|---|
-| **Critical** | Update `.pre-commit-config.yaml` ruff-pre-commit rev to match the installed version (or pin both to the same version via a single source of truth). |
+| **Critical** | Update `.pre-commit-config.yaml` ruff-pre-commit rev to match the installed version (currently `v0.13.0`). **(Cross-review)** The preferred long-term fix is to switch to `language: system` hooks that delegate to the venv-installed ruff, eliminating the duplicate version specifier entirely — see example below. |
 | **High** | Decide on one hook strategy: either use pre-commit framework exclusively (add pyright, pytest as local hooks) or keep `.githooks` and remove the pre-commit config. Having both is confusing. |
 | Medium | Add `detect-private-key` and `check-merge-conflict` hooks to pre-commit config. |
 | Low | Consider running tests only in CI instead of the git hook to keep commits fast. |
+
+**(Cross-review)** Preferred `language: system` configuration that eliminates the version mismatch by definition:
+
+```yaml
+- repo: local
+  hooks:
+    - id: ruff-check
+      name: ruff check
+      entry: python -m ruff check --fix --exit-non-zero-on-fix
+      language: system
+      types: [python]
+    - id: ruff-format
+      name: ruff format
+      entry: python -m ruff format --check
+      language: system
+      types: [python]
+```
+
+This delegates to whatever ruff version is installed in the project's virtualenv, so pre-commit and `make lint` always use the same binary.
 
 ---
 
@@ -174,7 +195,7 @@ jobs:
 
 3. **No pre-commit CI job**: The CI does not run `pre-commit run --all-files`, which means the pre-commit hooks (trailing whitespace, end-of-file-fixer, etc.) are only enforced locally.
 
-4. **No build verification**: The `make build` target isn't exercised in CI — a broken package build wouldn't be caught.
+4. **No build verification**: The `make build` target isn't exercised in CI — a broken package build wouldn't be caught. **(Cross-review)** Additionally, there is no `MANIFEST.in` to explicitly control sdist contents. While modern setuptools with `include-package-data = true` uses git-tracked files, there is no CI step to verify the built sdist/wheel actually contains the expected files (e.g., `gallery_index.html`). A `check-manifest` pre-commit hook or a CI smoke test that installs the built wheel would catch packaging regressions.
 
 5. **Duplicate dependency installation**: Both jobs independently run `pip install .[dev]`. This could be deduplicated with a reusable workflow or a shared setup step.
 
@@ -228,7 +249,7 @@ jobs:
 
 | Priority | Recommendation |
 |---|---|
-| **High** | Incrementally expand pyright `include` to cover all source modules. Start with pure-logic modules (`utils.py`, `status.py`, `gallery.py`, `ai.py`, `http_client.py`). |
+| **High** | Incrementally expand pyright `include` to cover all source modules. **(Cross-review)** Recommended expansion order by complexity (easiest first): 1) `status.py`, 2) `utils.py`, 3) `ai.py`, 4) `http_client.py`, 5) `gallery.py`, 6) `thumbnails.py`, 7) `tagger.py` / `importer.py` / `incremental_downloader.py`. Add one or two modules per PR to keep the type-fixing work incremental. Note: expanding scope will increase `make lint` time since pyright currently runs near-instantly thanks to the single-file scope. |
 | Medium | Add `S` (bandit security) rule set to catch common security issues. |
 | Medium | Add `PTH` (pathlib preference) rule set — the project already uses `pathlib` in tests. |
 | Low | Consider adding `T20` to flag stray `print()` calls (the project should use a logger or the status reporter). |
@@ -260,6 +281,8 @@ jobs:
 **Issues:**
 
 1. **Coverage omissions hide untested code**: Six modules (including major ones like `importer.py`, `tagger.py`, `incremental_downloader.py`, and the entire `cli/` package) are excluded from coverage. The reported 91% **only reflects 693 statements out of the full codebase**. True project-wide coverage is significantly lower.
+
+   **(Cross-review)** This coverage gap intersects with the highest-risk code identified by the Security Audit and Image Pipeline reviews. Specifically, `incremental_downloader.py` (core download pipeline with known security findings) and `thumbnails.py` (batch error recovery bugs) are either excluded from coverage or lack integration tests for the download→thumbnail→metadata pipeline. The error recovery bugs in the thumbnail parallel path exist partly because this code path has no coverage gate. `thumbnails.py` is also outside pyright's scope, making it the intersection of highest-risk code and lowest tooling coverage.
 
 2. **No parallel test execution**: Tests take ~25s sequentially. `pytest-xdist` could cut this significantly.
 
@@ -444,12 +467,12 @@ This is the largest gap in the project's DevOps posture. There is **no automated
 ## Prioritized Action Items
 
 ### Critical (blocks correctness)
-1. **Fix ruff version mismatch**: Update `.pre-commit-config.yaml` ruff-pre-commit from `v0.5.7` to match installed `v0.13.0` (or pin both in sync). This currently causes `make lint` to fail while `pre-commit` passes.
+1. **Fix ruff version mismatch**: Update `.pre-commit-config.yaml` ruff-pre-commit from `v0.5.7` to match installed `v0.13.0`, or adopt `language: system` hooks (see Section 3) to eliminate the version sync problem permanently. This currently causes `make lint` to fail while `pre-commit` passes.
 
 ### High Priority
 2. Generate and commit pinned dependency lock files.
 3. Add Python version matrix (`3.10`, `3.11`, `3.12`, `3.13`) to CI.
-4. Expand pyright `include` beyond just `metadata.py`.
+4. Expand pyright `include` beyond just `metadata.py` (see Section 5 for recommended expansion order).
 5. Add `pip-audit` to CI for vulnerability scanning.
 6. Enable ruff `S` (bandit security) rules.
 7. Reduce coverage omit list — add tests for `cli/`, `importer.py`.
@@ -458,7 +481,7 @@ This is the largest gap in the project's DevOps posture. There is **no automated
 ### Medium Priority
 9. Add pip caching to CI (`actions/setup-python` `cache: 'pip'`).
 10. Add pre-commit CI job to the GitHub Actions workflow.
-11. Add `make build` verification to CI.
+11. Add `make build` verification to CI (including sdist content verification — consider `check-manifest` or wheel install smoke test).
 12. Unify hook strategy (pre-commit framework vs. `.githooks`).
 13. Add `.gitattributes`.
 14. Add CodeQL or Semgrep to CI.
@@ -470,6 +493,29 @@ This is the largest gap in the project's DevOps posture. There is **no automated
 18. Add `devcontainer.json`.
 19. Add `pytest-xdist` for parallel tests.
 20. Add issue/PR templates.
+
+---
+
+## Cross-Review Integration Notes
+
+The Architecture & Code Quality cross-review raised six findings relevant to this DevOps review. Five were validated and integrated above; one was found to be incorrect:
+
+| Finding | Status | Notes |
+|---|---|---|
+| `language: system` hooks to eliminate ruff version mismatch | **Validated** | Incorporated into Section 3 as the preferred long-term fix. |
+| Phased pyright expansion order | **Validated** | Incorporated into Section 5 with concrete module ordering. |
+| Misleading coverage metric / risk intersection | **Validated** | Incorporated into Section 6 with cross-report risk analysis. |
+| Missing `MANIFEST.in` for sdist verification | **Partially validated** | Modern setuptools handles this via git-tracked files, but the absence of CI verification is a real gap. Incorporated into Section 4. |
+| Redundant Pillow dev dependency (resolver confusion risk) | **Validated** | Incorporated into Section 2 with enhanced justification. |
+| `make lint` ordering issue ("pyright runs after formatting failure") | **Incorrect** | GNU Make stops recipe execution on the first non-zero exit code. Verified empirically: when `ruff format --check` fails, make aborts immediately and pyright does **not** run. No change needed. |
+
+---
+
+## Cross-Review Contributors
+
+| Reviewer | Perspective | Contributions |
+|---|---|---|
+| Architecture & Code Quality | Architectural soundness, maintainability | `language: system` hook strategy, pyright expansion order, coverage risk intersection analysis, `MANIFEST.in` gap, Pillow resolver concern |
 
 ---
 

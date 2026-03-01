@@ -35,12 +35,18 @@ The project has a sensible top-level structure with clear separation of concerns
 - No circular dependencies at the top level. The two deferred imports in [incremental_downloader.py](src/chatgpt_library_archiver/incremental_downloader.py#L50) and [browser_extract.py](src/chatgpt_library_archiver/browser_extract.py#L342) are correctly scoped inside functions to avoid circular import chains and to keep `browser_extract` optional on non-macOS platforms.
 
 **Issues**:
-- **`importer.py` is a borderline god module.** It handles file collection, AI renaming, file copy/move, thumbnail creation, metadata updates, tagging orchestration, argparse definition, and gallery regeneration — all in one file. The `import_images()` function alone at [importer.py L151–291](src/chatgpt_library_archiver/importer.py#L151-L291) spans ~140 lines and has 16 parameters.
+- **`importer.py` is a borderline god module.** It handles file collection, AI renaming, file copy/move, thumbnail creation, metadata updates, tagging orchestration, argparse definition, and gallery regeneration — all in one file. The `import_images()` function alone at [importer.py L151–291](src/chatgpt_library_archiver/importer.py#L151-L291) spans ~140 lines and has 17 keyword-only parameters.
 - **Duplicate `parse_args()` definitions.** Both [importer.py L297](src/chatgpt_library_archiver/importer.py#L297) and [tagger.py L211](src/chatgpt_library_archiver/tagger.py#L211) define standalone `parse_args()` functions with near-identical argument sets that overlap heavily with the CLI commands in `cli/commands/`. These appear to be legacy remnants from before the CLI refactor.
 
 **Recommendations**:
 1. Extract the file-collection and AI-rename logic from `importer.py` into smaller focused functions or a helper module.
 2. Remove the standalone `parse_args()` / `main()` in `importer.py` and `tagger.py` if they're only used via the CLI layer. If they serve as standalone entry points, document that clearly.
+
+### Testability Implications
+
+The testing-perspective cross-review makes a strong case that **decomposition should precede new test coverage** for `importer.py`. Writing tests against the current 17-parameter `import_images()` API requires elaborate mock setups (AI client, config files, file system, thumbnails, tagging, gallery generation) that create test maintenance debt. Each extracted function would become independently testable with focused fixtures. This is the single biggest testability win available in the codebase.
+
+For the duplicate `parse_args()` functions, their removal would also eliminate the need for tests that currently exist only to cover these dead code paths.
 
 ---
 
@@ -93,6 +99,14 @@ The project has a sensible top-level structure with clear separation of concerns
 3. Create an `AuthConfig` TypedDict for `utils.py`'s auth functions.
 4. Add `from __future__ import annotations` to the four missing files.
 
+### Testability Implications
+
+The cross-review highlights a practical benefit of typed config models beyond type safety: **they make tests more expressive and less fragile**. Currently, `test_tagger.py` has 6+ occurrences of inline dict stubs like `lambda *a, **k: {"api_key": "k", "model": "m", "prompt": "p"}`. With a `TaggingConfig` dataclass, tests would assert `config.api_key` instead of `config["api_key"]`, catching key-name typos at both test time and type-check time.
+
+Typed configs also enable cleaner parametrized tests via `dataclasses.replace()` — varying one config field at a time rather than duplicating entire dict literals.
+
+That said, the cross-review's mild disagreement with prioritizing pyright expansion as a top-5 item has merit: decomposing the complex functions (enabling testability) addresses a more immediate quality bottleneck than stricter type checking. Both are valuable, but the decomposition work has a higher multiplier effect since it unblocks test coverage for the 5 modules with suppressed complexity warnings.
+
 ---
 
 ## 3. Error Handling Patterns
@@ -144,6 +158,29 @@ The project has a sensible top-level structure with clear separation of concerns
 2. Create a `ThumbnailError` exception class rather than wrapping into generic `RuntimeError`.
 3. Add at minimum debug-level logging to the `_scrape_client_version` catch-all.
 
+### Testability Implications
+
+The cross-review maps each error handling finding to a concrete test scenario and identifies a critical gap: **none of these error paths have test coverage today**. Here is the verified overlap between error handling findings and missing tests:
+
+| Finding | Test exists? | Suggested test |
+|---------|-------------|----------------|
+| `importer.py` swallowed AI rename exception | **No** | Mock `call_image_endpoint` to raise, assert import continues with slugified original name |
+| `_scrape_client_version()` returns `""` on any failure | Partial | Existing tests cover the happy path; add a test confirming empty-string fallback |
+| `incremental_downloader` safety-net `except` blocks | **No** (`# pragma: no cover`) | Fault-injection tests that trigger the safety nets and verify error logging |
+| `thumbnails.py` `RuntimeError` wrapping | **No** | Pass missing/corrupt source to `create_thumbnails`; assert `RuntimeError` with path in message |
+
+The cross-review makes a sound recommendation regarding remediation order for `thumbnails.py`: create `ThumbnailError` *before* fixing the batch-abort-on-failure pattern (see §9), so the batch recovery logic can catch the specific exception type. This also means tests can assert the exact exception class rather than matching on `RuntimeError` strings.
+
+For the `importer.py` swallowed exception, a characterization test should be written first to document the current behavior:
+
+```python
+def test_import_ai_rename_failure_falls_back_to_filename(monkeypatch, tmp_path):
+    """When AI rename raises, import continues with the original filename stem."""
+    monkeypatch.setattr(ai, "call_image_endpoint", Mock(side_effect=RuntimeError("API down")))
+    # ... run import_images with ai_rename=True ...
+    # Assert: file imported with slugified original name, no crash
+```
+
 ---
 
 ## 4. Function Complexity
@@ -166,7 +203,7 @@ This means **5 out of 12 core modules** have suppressed complexity warnings.
 
 | Function | Location | Issue |
 |----------|----------|-------|
-| `import_images()` | [importer.py L151](src/chatgpt_library_archiver/importer.py#L151) | 16 parameters (PLR0913), ~140 lines (PLR0915), 12+ branches (PLR0912) |
+| `import_images()` | [importer.py L151](src/chatgpt_library_archiver/importer.py#L151) | 17 parameters (PLR0913), ~140 lines (PLR0915), 12+ branches (PLR0912) |
 | `main()` in downloader | [incremental_downloader.py L47](src/chatgpt_library_archiver/incremental_downloader.py#L47) | ~240 lines, deeply nested while/for/if/try blocks, inline `download_image()` closure |
 | `tag_images()` | [tagger.py L112](src/chatgpt_library_archiver/tagger.py#L112) | 11 parameters, 4 levels of nesting |
 | `regenerate_thumbnails()` | [thumbnails.py L211](src/chatgpt_library_archiver/thumbnails.py#L211) | Complex multiprocessing setup with status queue plumbing |
@@ -175,7 +212,7 @@ This means **5 out of 12 core modules** have suppressed complexity warnings.
 
 1. **`incremental_downloader.main()`**: Extract the API pagination loop into `_fetch_all_new_items(client, headers, existing_ids, progress) -> list[GalleryItem]` and the download-with-retry logic into a named top-level function instead of the nested `download_image()` closure.
 
-2. **`import_images()`**: Group the 16 parameters into configuration dataclasses:
+2. **`import_images()`**: Group the 17 parameters into configuration dataclasses:
    ```python
    @dataclass
    class ImportConfig:
@@ -188,6 +225,18 @@ This means **5 out of 12 core modules** have suppressed complexity warnings.
    ```
 
 3. **`tag_images()`**: Split the remove-tags path and the generate-tags path into separate functions; the current function does both, controlled by boolean flags.
+
+### Testability Implications
+
+The cross-review identifies these complexity hotspots as the **primary reason** several modules are excluded from coverage enforcement. The 5 modules with suppressed PLR warnings are precisely the modules hardest to test. This correlation is not coincidental — high parameter counts and deep nesting require elaborate mock setups that make tests brittle and slow to write.
+
+The recommended decomposition order, from a testability perspective:
+
+1. **`import_images()` first** — the 17-parameter function is the #1 barrier. An `ImportConfig` dataclass plus extracted helper functions would make each step independently testable with focused fixtures.
+2. **`incremental_downloader.main()` second** — extracting `download_image()` from a closure to a top-level function makes it directly testable without orchestrating the full pagination loop.
+3. **`tag_images()` third** — splitting generate vs. remove into separate functions eliminates boolean-flag API design, which the cross-review correctly notes makes it impossible to test *interactions* between the two modes cleanly.
+
+The key insight: **decompose before adding coverage.** Writing tests against the current high-parameter APIs creates test maintenance debt that compounds during future refactors. The test-first purist approach of "write tests then refactor" is counterproductive here because the current signatures are themselves the testability problem.
 
 ---
 
@@ -222,6 +271,10 @@ This means **5 out of 12 core modules** have suppressed complexity warnings.
 2. Consolidate `HttpClient` creation in `browser_extract.py`.
 3. Remove duplicate `parse_args()`/`main()` functions from `importer.py` and `tagger.py` or clearly document them as standalone entry points.
 
+### Testability Implications
+
+The cross-review identifies a parallel duplication problem in the test suite: `_sample_png()` is duplicated across 3 test files and `_write_metadata()` across 2 files. Creating `tests/conftest.py` with shared fixtures (`gallery_dir`, `sample_png_bytes`, `write_metadata`) would reduce this duplication and make adopting new test patterns significantly easier. The `conftest.py` gap should be addressed before writing new tests for any of the code remediations above, to prevent further fixture proliferation.
+
 ---
 
 ## 6. Configuration Management
@@ -248,6 +301,20 @@ Two distinct configuration systems exist:
 1. Create typed config models (`TaggingConfig`, `AuthConfig`) as dataclasses or TypedDicts.
 2. Centralize `DEFAULT_MODEL` from `ai.py` and remove duplicated literal strings.
 3. Add semantic validation for auth config values.
+
+### Testability Implications
+
+Typed config models would improve test expressiveness across the board. The cross-review provides a concrete example: a `TaggingConfig` dataclass would replace the 6+ lambda stubs in `test_tagger.py` with a reusable fixture:
+
+```python
+@pytest.fixture
+def tagging_config() -> TaggingConfig:
+    return TaggingConfig(api_key="test-key", model="gpt-4.1-mini", prompt="test prompt")
+```
+
+This also enables `pytest.mark.parametrize` with `dataclasses.replace()` to vary one field at a time — more readable and maintainable than duplicating entire dict literals per test case.
+
+Additionally, invalid-config tests become straightforward: `pytest.raises(TypeError)` or custom `ValidationError` for malformed construction, replacing implicit runtime `KeyError` failures that are harder to debug.
 
 ---
 
@@ -300,6 +367,26 @@ API → incremental_downloader.main()
 2. Skip the full `regenerate_thumbnails()` call in `importer.py` when thumbnails were already created in-loop.
 3. Gate `generate_gallery()` behind `if new_metadata:` in the downloader.
 
+### Testability Implications
+
+The cross-review identifies two data flow issues that are directly testable today (and untested):
+
+**Incremental metadata save**: No test currently verifies that progress is lost on mid-batch crash. A test mocking HTTP to fail mid-batch and asserting that metadata for completed downloads was persisted would document the current (broken) behavior and provide a regression baseline for the fix.
+
+**Redundant thumbnail call**: The double-call pattern can be instrumented with a counting mock to document the current behavior:
+
+```python
+def test_import_creates_thumbnails_per_file_not_full_gallery(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(thumbnails, "create_thumbnails", lambda *a, **k: calls.append(1))
+    monkeypatch.setattr(thumbnails, "regenerate_thumbnails", lambda *a, **k: calls.append("regen"))
+    # Import 3 files
+    assert calls.count(1) == 3
+    assert calls.count("regen") == 1  # Documents current behavior
+```
+
+This is not just a performance concern — if metadata changes between the per-file calls and the full-gallery `regenerate_thumbnails()`, there is a potential race condition. Testing the current behavior first establishes the regression baseline before any optimization.
+
 ---
 
 ## 9. Concurrency Model
@@ -314,13 +401,37 @@ API → incremental_downloader.main()
 - **Cross-process status reporting** via a `multiprocessing.Manager().Queue()` with a dedicated consumer thread at [thumbnails.py L270–280](src/chatgpt_library_archiver/thumbnails.py#L270-L280) — well-designed pattern.
 
 **Issues**:
+- **Batch abort on single failure** — This is the **#1 cross-report finding** identified across three independent reviews (architecture, image pipeline, and OpenAI integration). Both the thumbnail pipeline and the tagger thread pool use `future.result()` without try/except:
+  - [thumbnails.py L327](src/chatgpt_library_archiver/thumbnails.py#L327): `future.result()` in the `ProcessPoolExecutor` loop — a single corrupt image aborts the entire thumbnail batch.
+  - [tagger.py L191](src/chatgpt_library_archiver/tagger.py#L191): `fut.result()` in the `ThreadPoolExecutor` loop — a single failed API call aborts all remaining tag operations.
+
+  The fix pattern is identical in both modules: wrap `future.result()` in try/except, route errors to `StatusReporter.report_error()`, and continue processing the remaining items.
+
 - **Potential race condition in tagger**: `tag_images()` at [tagger.py L160–182](src/chatgpt_library_archiver/tagger.py#L160-L182) uses `ThreadPoolExecutor` to process items concurrently. The `process()` closure mutates `item.tags` directly. While each `item` is unique, the `total_tokens` and `total_latency` accumulators at [tagger.py L156–157](src/chatgpt_library_archiver/tagger.py#L156-L157) are shared across the main thread that calls `as_completed()` — this is safe because `as_completed()` serializes the result processing, but it's fragile. If the accumulation logic were moved into the `process()` callback, it would become a real race condition.
 - **`download_image()` closure in `incremental_downloader.py`** at [line 81](src/chatgpt_library_archiver/incremental_downloader.py#L81) mutates `item.filename`, `item.checksum`, etc. on the `GalleryItem` objects. Since each item is distinct, this is safe, but the mutation-from-thread pattern makes it hard to reason about.
 - **No concurrency for the download phase in `importer.py`** — files are imported sequentially in a single-threaded loop at [importer.py L220–285](src/chatgpt_library_archiver/importer.py#L220-L285), even when processing many files.
 
 **Recommendations**:
 1. Have `download_image()` return a new `GalleryItem` (or a result DTO) instead of mutating the input item.
-2. Consider adding concurrent processing to `import_images()` for large batch imports.
+2. Wrap `future.result()` in try/except in both `thumbnails.py` and `tagger.py` to prevent batch abort on single-item failure.
+3. Consider adding concurrent processing to `import_images()` for large batch imports.
+
+### Testability Implications
+
+The cross-review makes a compelling case that **return-value-based design simultaneously fixes concurrency fragility and improves testability**. If `download_image()` returns a `DownloadResult`-style object instead of mutating `GalleryItem` in-place, tests can assert return values (clean arrange→act→assert) rather than inspecting mutation side effects on input objects.
+
+The batch-abort-on-failure pattern should be tested with `@pytest.mark.parametrize("max_workers", [1, 2])` to cover both serial and parallel code paths with the same test logic:
+
+```python
+@pytest.mark.parametrize("max_workers", [1, 2])
+def test_regenerate_thumbnails_bad_image_does_not_abort_batch(tmp_path, max_workers):
+    """A corrupt image should be skipped; other images should still get thumbnails."""
+    # One good PNG, one corrupt file
+    # After fix: good.png processed, bad.png error collected
+    # Before fix: this test documents that the batch aborts
+```
+
+The cross-review recommends routing batch errors through `StatusReporter.report_error()` rather than return values, since the existing `RecordingReporter` mock in the test suite already captures errors without needing function signature changes.
 
 ---
 
@@ -378,6 +489,12 @@ API → incremental_downloader.main()
 2. Split `tag_images()` into `tag_images()` and `remove_tags()`.
 3. Use keyword-only parameters (after `*`) for functions with more than 3 parameters.
 
+### Testability Implications
+
+The cross-review highlights that the `tag_images()` conflation issue has a direct testing consequence: the current boolean-flag API makes it possible to test `remove=True` and `remove=False` separately (which `test_tagger.py` does), but impossible to cleanly test *interactions* between the two code paths. Splitting into `tag_images()` and `remove_tags()` as separate functions would allow each to have focused test suites without the combinatorial explosion of boolean flag combinations.
+
+The inconsistent return types also make test assertions uneven — some tests assert a count, some assert `None`, and `bootstrap.main()` requires catching `SystemExit`. Standardizing to `int` exit codes would homogenize the test pattern across all command handlers.
+
 ---
 
 ## 12. Naming Conventions
@@ -409,19 +526,25 @@ API → incremental_downloader.main()
 | Configuration Management | Adequate | Medium |
 | CLI Architecture | Excellent | — |
 | Data Flow | Good | Medium |
-| Concurrency Model | Good | Low |
+| Concurrency Model | Good | Medium |
 | Python Best Practices | Good | Low |
 | API Design | Good | Medium |
 | Naming Conventions | Good | Low |
 
 ### Top 5 Actionable Items
 
-1. **Expand pyright strict mode** beyond `metadata.py`. Add `ai.py`, `http_client.py`, `status.py`, `gallery.py`, and `thumbnails.py` to the include list. These modules are already close to strict-compatible.
+1. **Decompose `import_images()` and `incremental_downloader.main()`** — These are the highest-complexity functions and the primary barriers to test coverage. Group `import_images()`'s 17 parameters into configuration dataclasses; extract the `download_image` closure to a top-level function. *Testability note*: Decompose before writing new tests — adding tests against the current high-parameter APIs creates maintenance debt that compounds during future refactors.
 
-2. **Decompose `incremental_downloader.main()`** (~240 lines). Extract the pagination loop and the `download_image` closure into top-level functions. This eliminates the deepest nesting and the PLR0912/PLR0915 suppression.
+2. **Fix batch-abort-on-single-failure** in both `thumbnails.py` and `tagger.py` — The `future.result()` calls without try/except are the #1 cross-report finding, identified independently by three reviewers. The fix is small (wrap in try/except, route to `StatusReporter.report_error()`), but the impact is high: a single corrupt image or failed API call currently aborts the entire batch. *Testability note*: Create `ThumbnailError` first (§3), then fix the batch recovery so it can catch the specific exception type.
 
-3. **Introduce typed config models** (`TaggingConfig`, `AuthConfig`) to replace the 7 functions that return bare `dict`. This catches key-name typos at type-check time and makes signatures self-documenting.
+3. **Introduce typed config models** (`TaggingConfig`, `AuthConfig`) to replace the 7 functions that return bare `dict`. This catches key-name typos at type-check time, makes signatures self-documenting, and enables cleaner parametrized tests via `dataclasses.replace()`.
 
-4. **Refactor `import_images()`** — group its 16 parameters into one or two configuration dataclasses. Extract the AI-rename block and the per-file import-loop body into named functions.
+4. **Expand pyright strict mode** beyond `metadata.py`. Add `ai.py`, `http_client.py`, `status.py`, `gallery.py`, and `thumbnails.py` to the include list. These modules are already close to strict-compatible.
 
 5. **Save metadata incrementally** in the download loop. If the process dies mid-batch, all progress for that batch is currently lost. Saving after each API page would limit the blast radius.
+
+---
+
+## Cross-Review Contributors
+
+- **Testing & Quality Perspective** — Cross-review by @testing-expert ([cross-review-testing-perspective.md](cross-review-testing-perspective.md)). Contributed testability analysis across all sections, identified the batch-abort-on-single-failure pattern as the #1 cross-report finding, provided concrete test scenarios for each error handling finding, recommended decomposition-before-testing order for complex functions, and highlighted the `conftest.py` gap as a prerequisite for new test patterns. The priority order of the Top 5 Actionable Items was adjusted based on the cross-review's insight that decomposition enables test coverage more effectively than type checking alone.

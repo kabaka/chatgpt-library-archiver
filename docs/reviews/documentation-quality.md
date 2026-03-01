@@ -2,6 +2,7 @@
 
 **Project:** chatgpt-library-archiver
 **Date:** 2026-03-01
+**Updated:** 2026-03-01 (incorporated cross-review findings)
 **Scope:** All documentation files, skill files, inline documentation, and configuration examples
 
 ---
@@ -10,12 +11,19 @@
 
 The project has **above-average documentation for its scale**. The README is comprehensive, covering setup through advanced usage. Skill files provide substantial depth for AI agents. However, several **factual inaccuracies** have crept in as the codebase evolved, there are **undocumented features**, and some areas have **domain inconsistencies** that could confuse both human users and automated agents.
 
+Cross-review input from the UX and synthesis perspectives surfaced two key insights this review originally underweighted:
+
+- **`extract-auth` is the single highest-impact documentation fix.** The UX review makes a compelling case: it transforms the auth setup from a fragile 7-step manual process into a single command. Most CLI tool abandonment happens during initial setup, making this a user-retention issue, not just a completeness gap.
+- **Documentation gaps have security-preventing value.** The synthesis identified 12 documentation items that, if they existed, would prevent users from making dangerous misconfigurations — a framing this review didn't apply to its findings.
+
 **Top priorities:**
 1. Fix factual inaccuracy: README claims `http_client.py` wraps `httpx` when it actually wraps `requests` (P0)
 2. Reconcile `chat.openai.com` vs `chatgpt.com` domain inconsistencies across all docs (P0)
-3. Document the `extract-auth` command and `--browser` download flag in the README (P1)
-4. Update OpenAI vision API skill to reflect actual `responses.create` API usage (P1)
-5. Add missing module docstring to `utils.py` (P2)
+3. Remove/replace real API key in working-tree `tagging_config.json` (P0 — elevated from P3 per synthesis)
+4. Document the `extract-auth` command as the primary macOS auth method in the README (P0 — elevated from P1 per UX review)
+5. Document `--browser` download flag and add explicit "view your gallery" step (P1)
+6. Update OpenAI vision API skill to reflect actual `responses.create` API usage (P1)
+7. Add warning about not publicly hosting `metadata.json` (P1 — new, from security-preventing documentation analysis)
 
 ---
 
@@ -39,6 +47,9 @@ The project has **above-average documentation for its scale**. The README is com
 | `browser_extract.py` module undocumented | Medium | The browser credential extraction module (509 lines) has no mention in the Architecture Overview. |
 | No changelog or release history | Low | Version is `0.1.0`; as the project matures, a CHANGELOG would help track evolution. |
 | No "Uninstallation" section | Low | Minor but helpful for users who want to clean up. |
+| No "view your gallery" step in happy path | Medium | After download completes, the README never explicitly says "open `gallery/index.html` in your browser." The UX cross-review identifies this as a journey-breaking gap — users reach the payoff moment and don't know what to do next. |
+| No warning about publicly hosting `metadata.json` | High | Contains signed download URLs and internal file IDs. The synthesis identifies this as security-preventing documentation. |
+| No privacy/consent notice for `tag` command | Medium | The `tag` command sends images to OpenAI's vision API without notification. The UX review recommends a consent prompt, suppressible via `ARCHIVER_ASSUME_YES`. |
 
 ---
 
@@ -189,15 +200,17 @@ The Troubleshooting section (README lines 347–354) covers only three scenarios
 
 ### Missing Troubleshooting Entries
 
-| Scenario | Current Documentation |
-|----------|---------------------|
-| Pillow `UnidentifiedImageError` on corrupt downloads | Undocumented |
-| `tagging_config.json` missing API key | Partially covered (error raised, but no troubleshooting entry) |
-| `pre-commit` hook blocking commits | Undocumented |
-| Pyright type errors during `make lint` | Undocumented |
-| macOS Keychain access denied for `extract-auth` | Undocumented |
-| `ProcessPoolExecutor` failures on thumbnail generation | Undocumented |
-| Gallery `metadata.json` corruption or manual editing gone wrong | Mentioned only as a warning ("Avoid editing `metadata.json` manually") |
+| Scenario | Current Documentation | User Impact (UX assessment) |
+|----------|---------------------|----------------------------|
+| Gallery blank when opened via `file://` | Undocumented | **High** — The UX review calls this "the most insidious" gap: no visible error, just an empty grid. Every first-time user who double-clicks `index.html` hits this. Should include both a troubleshooting entry AND a `<noscript>` hint in the gallery HTML. |
+| Token expiry mid-download (401/403) | Partially covered (generic entry) | **High** — Common during long download sessions. Needs specific guidance on re-running `extract-auth` or refreshing `auth.txt`. |
+| macOS Keychain access denied for `extract-auth` | Undocumented | **Medium** — Will become high-frequency once `extract-auth` is documented as the primary auth method. |
+| Pillow `UnidentifiedImageError` on corrupt downloads | Undocumented | **Medium** |
+| `tagging_config.json` missing API key | Partially covered (error raised, but no troubleshooting entry) | **Medium** |
+| `pre-commit` hook blocking commits | Undocumented | **Medium** (contributor-facing) |
+| Pyright type errors during `make lint` | Undocumented | **Low** (contributor-facing) |
+| `ProcessPoolExecutor` failures on thumbnail generation | Undocumented | **Low** |
+| Gallery `metadata.json` corruption or manual editing gone wrong | Mentioned only as a warning ("Avoid editing `metadata.json` manually") | **Medium** |
 
 ---
 
@@ -338,9 +351,25 @@ Clear, concise disclaimer covering:
 
 **How to view the gallery**: After running the download, the README never explicitly says "open `gallery/index.html` in your browser" as a discrete step. The gallery viewer is described in the Notes section, but the "happy path" workflow doesn't include this step.
 
-### Browser Credential Extraction
+The UX cross-review adds important context: the `gallery/` directory contains both `index.html` and legacy `page_*.html` files, so new users might open the wrong one. Additionally, `file://` protocol doesn't reliably load `metadata.json` via `fetch()` — users need to serve the gallery via HTTP. The recommended post-download instruction should be:
 
-The `extract-auth` command would dramatically simplify the getting-started experience (vs. manually copying 7+ headers from DevTools), but it is **completely undocumented** in the README. Documenting this as the primary auth method for macOS users would improve the onboarding experience significantly.
+```
+cd gallery && python -m http.server 8000
+# Then open http://localhost:8000/
+```
+
+### Browser Credential Extraction — Highest-Impact Documentation Change
+
+The `extract-auth` command would dramatically simplify the getting-started experience, but it is **completely undocumented** in the README.
+
+The UX cross-review makes a compelling case that this is **the single highest-impact documentation fix in the entire project**, not merely a High-priority gap. The reasoning:
+
+| Auth Method | Steps | Error-Prone? | User Skill Required |
+|-------------|-------|-------------|--------------------|
+| Manual (documented) | 7+ (open DevTools → Network tab → find request → copy 7+ headers → paste into file) | Yes — wrong header, missed semicolon, stale copy | Moderate (DevTools familiarity) |
+| `extract-auth` (undocumented) | 1 (`chatgpt-archiver extract-auth --browser edge`) | No — automated extraction | None |
+
+Most CLI tool abandonment occurs during initial setup. Reducing auth from "follow 7 instructions and maybe copy the wrong header" to "run one command" directly affects user retention. This should be documented as the **primary** auth method for macOS users, with manual extraction as a fallback.
 
 ---
 
@@ -396,43 +425,97 @@ These sections serve as models for the project's documentation standards:
 
 ## 14. Prioritized Recommendations
 
-### P0 — Fix Now (Accuracy Errors)
+*Updated with input from UX and synthesis cross-reviews. Changes from the original assessment are noted inline.*
+
+### P0 — Fix Now (Accuracy Errors and Security)
 
 1. **Fix `httpx` → `requests` in README** line 259. One-word change with high impact — anyone reading the architecture section is learning the wrong HTTP library.
 
 2. **Reconcile domain names**: Update README `auth.txt` example, prerequisites, and instructions from `chat.openai.com` to `chatgpt.com` to match `auth.txt.example` and the actual code. Update the credential-handling skill file similarly.
 
-### P1 — Fix Soon (Missing Features Documentation)
+3. **Remove/replace the API key value in `tagging_config.json`** in the working tree. *(Elevated from P3 → P0 per synthesis: even though `.gitignore` prevents commits, the file sets a bad example and the key may still be live. The synthesis correctly identifies this as a Critical security item.)*
 
-3. **Document `extract-auth` command** in README Script Usage section. Include `--browser`, `--output`, `--dry-run`, `--no-verify` flags.
+4. **Document `extract-auth` command** as the primary macOS auth method in README. Include `--browser`, `--output`, `--dry-run`, `--no-verify` flags. *(Elevated from P1 → P0 per UX review: this is the single highest-impact change for new user retention — transforms a fragile 7-step manual process into one command.)*
 
-4. **Document `--browser` flag** on the `download` command in README.
+### P1 — Fix Soon (Missing Features, Security-Preventing Documentation)
 
-5. **Update `openai-vision-api` skill**: Replace `chat.completions.create` examples with `responses.create` and update content type keys.
+5. **Document `--browser` flag** on the `download` command in README.
 
-6. **Update `archiver-testing-strategy` skill**: Fix OpenAI mock example to use `responses.create`.
+6. **Add explicit "View your gallery" step** to the README workflow, including HTTP serving instructions (`python -m http.server 8000`). *(Elevated from P2 per UX review: this is the payoff moment of the entire tool, and it's undocumented. The `file://` protocol issue makes the serving instructions non-optional.)*
+
+7. **Update `openai-vision-api` skill**: Replace `chat.completions.create` examples with `responses.create` and update content type keys.
+
+8. **Update `archiver-testing-strategy` skill**: Fix OpenAI mock example to use `responses.create`.
+
+9. **Add warning about not publicly hosting `metadata.json`** in README gallery section. *(New — from security-preventing documentation analysis: contains signed download URLs and internal file IDs.)*
+
+10. **Add troubleshooting entry for gallery blank over `file://`** — the UX review identifies this as the highest-frequency troubleshooting gap, affecting every first-time user who double-clicks `index.html`. *(Elevated from unlisted → P1.)*
 
 ### P2 — Improve (Quality Enhancements)
 
-7. **Add module docstring to `utils.py`** and `gallery.py`.
+11. **Add module docstring to `utils.py`** and `gallery.py`.
 
-8. **Add "View your gallery" step** to the README workflow (explicitly tell users to open `gallery/index.html` in a browser).
+12. **Expand `AGENTS.md`** with Python version (3.10+), pointer to skill files, coverage threshold (85%), and security-sensitive files list (`auth.txt`, `tagging_config.json`).
 
-9. **Expand `AGENTS.md`** with Python version, pointer to skill files, coverage threshold, and security-sensitive files list.
+13. **Add `test_browser_extract.py`** to the testing strategy skill's file listing.
 
-10. **Add `test_browser_extract.py`** to the testing strategy skill's file listing.
+14. **Create `docs/adr/README.md`** to match the ADR skill's assumptions, or update the skill to note the directory must be created.
 
-11. **Create `docs/adr/README.md`** to match the ADR skill's assumptions, or update the skill to note the directory must be created.
+15. **Document `ARCHIVER_ASSUME_YES`** environment variable in README for CI/scripted use.
 
-12. **Document `ARCHIVER_ASSUME_YES`** environment variable in README for CI/scripted use.
+16. **Document gallery keyboard shortcuts and boolean search syntax** prominently — not just buried in prose. The UX review argues these are more impactful than originally rated (Low → Medium) because boolean search across 1 169 images is a key differentiating feature that is completely undiscoverable without documentation. *(Elevated from P3-level.)*
+
+17. **Add privacy/consent documentation for the `tag` command**. *(New — UX review: images are sent to OpenAI's vision API without notification; at minimum document this, ideally add a consent prompt.)*
 
 ### P3 — Nice to Have
 
-13. Add a troubleshooting entry for macOS Keychain access when using `extract-auth`.
-14. Add supported image formats list to README.
-15. Standardize docstring style (choose between Google-style Args/Returns and NumPy-style Parameters).
-16. Consider adding a CHANGELOG.md for version tracking.
-17. Remove or replace the API key value in `tagging_config.json` if it exists in the working tree (even though `.gitignore` prevents commits).
+18. Add macOS Keychain troubleshooting entry for `extract-auth`.
+19. Add supported image formats list to README.
+20. Standardize docstring style (choose between Google-style Args/Returns and NumPy-style Parameters).
+21. Consider adding a CHANGELOG.md for version tracking.
+22. Create `tagging_config.json.example` (analogous to `auth.txt.example`).
+23. Document minimum required API key permissions/scopes for both ChatGPT Bearer token and OpenAI API key.
+
+---
+
+## 15. Security-Preventing Documentation Gaps
+
+*New section — incorporated from the documentation synthesis which identified 12 documentation items that, if they existed, would prevent users from making dangerous misconfigurations.*
+
+Not all documentation gaps are equal. Some are convenience issues; others directly prevent security incidents. The most impactful security-preventing documentation items not already covered in §14:
+
+| Documentation Gap | Security Risk It Prevents | Priority |
+|-------------------|--------------------------|----------|
+| Document that `tagging_config.json` should have `600` permissions | World-readable API keys on shared systems | P1 (code fix preferred, but document until then) |
+| Warn against publicly hosting `metadata.json` | Exposes signed download URLs and internal file IDs | **P1 — in §14** |
+| Document API key rotation procedure + link to OpenAI key management | Users who leak keys don't know how to recover | P2 |
+| Document that Bearer tokens have broad scopes (including `organization.write`) | Users underestimate blast radius of a token leak | P2 |
+| Note that credentials follow HTTP redirects (until code fix lands) | Token leakage through proxies or corporate networks | P2 |
+| Note that `input()` echoes API keys to terminal | Exposure in shared sessions (tmux, pair programming) | P3 |
+
+The synthesis's framing is useful: when prioritizing documentation work, items that prevent security misconfigurations should be weighted above pure convenience gaps of the same estimated effort.
+
+---
+
+## 16. Cross-Review Assessment
+
+### Findings Incorporated
+
+The cross-reviews surfaced several genuinely valuable insights that improved this review:
+
+- **`extract-auth` priority elevation** (UX review): The 7-step-vs-1-command comparison and user-retention argument are compelling. Elevated to P0.
+- **`tagging_config.json` API key priority elevation** (synthesis): Correctly identified as Critical — a live key in the working tree is worse than a documentation gap. Elevated to P0.
+- **`file://` protocol troubleshooting** (UX review): A real gap this review missed entirely. First-time users who double-click `index.html` see a blank page with no error.
+- **Security-preventing documentation framing** (synthesis): A productive way to prioritize documentation work that this review didn't apply.
+- **Privacy consent for `tag` command** (UX review): Legitimate concern — sending user images to a third-party API without notification warrants at minimum documentation, ideally a prompt.
+- **Gallery search discoverability** (UX review): Boolean search (AND/OR/NOT/parentheses) is a differentiating feature that's completely hidden.
+
+### Findings Noted as Overstated or Imprecise
+
+- **The "63 gaps" count** (synthesis): While accurate, the number overstates urgency. Many items are Low severity and typical for a v0.1.0 project (no CHANGELOG, no issue templates, no PR templates, no contributing guide, no API reference). These are aspirational, not gaps.
+- **Missing "data flow diagram" and "module dependency diagram"** (synthesis D-5, D-6): Rated Medium, but for a project of this size (~14 modules) the README Architecture Overview already provides sufficient orientation. Diagrams become cost-effective at larger scales.
+- **Docstring style inconsistency** (synthesis E-5): Flagged in both reviews, but the actual inconsistency is one module (`thumbnails.py`) using NumPy-style while the rest use Google-style. This is a minor nit, not a meaningful consistency issue.
+- **`file://` link allowlist in `safeHref()`** (UX review §2.3): The UX review proposes adding `file:` to the URL scheme allowlist. While technically safe (no script injection), this gives `file://` a more "supported" status than warranted. The better approach is the UX review's own §4.2 recommendation: accept `file://` as a degraded experience and steer users to HTTP serving.
 
 ---
 
@@ -447,3 +530,16 @@ This review was conducted by reading:
 - `.gitignore` for credential file verification
 
 Cross-references were verified by searching for keywords (`httpx`, `chat.openai.com`, `chatgpt.com`, `extract-auth`) across the entire codebase.
+
+The cross-review update incorporated findings from:
+- `docs/reviews/cross-review-ux-perspective.md` — UX impact assessment of security and documentation findings
+- `docs/reviews/cross-review-documentation-synthesis.md` — Comprehensive synthesis of 63 deduplicated gaps across all 9 review reports
+
+---
+
+## Cross-Review Contributors
+
+| Contributor | Perspective | Key Contributions |
+|-------------|-------------|-------------------|
+| Gallery UX Designer | UX impact assessment (`cross-review-ux-perspective.md`) | Elevated `extract-auth` to highest-impact fix; identified `file://` protocol as insidious troubleshooting gap; proposed privacy consent for `tag` command; provided unified solutions for security×UX conflicts |
+| Documentation Specialist | Comprehensive synthesis (`cross-review-documentation-synthesis.md`) | Deduplicated 63 gaps across 9 reviews into 6 categories; identified 12 security-preventing documentation items; elevated `tagging_config.json` API key to Critical; provided cross-reference index for traceability |

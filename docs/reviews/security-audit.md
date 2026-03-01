@@ -4,6 +4,7 @@
 **Auditor:** Security Auditor (automated)
 **Scope:** Full codebase review of `src/chatgpt_library_archiver/` and supporting configuration files
 **Commit Range:** Current working tree (HEAD)
+**Updated:** 2026-03-01 — Incorporated cross-review findings from Architecture, UX, and AI integration perspectives
 
 ---
 
@@ -11,17 +12,21 @@
 
 The chatgpt-library-archiver is a local CLI tool that handles sensitive authentication tokens (ChatGPT Bearer tokens, session cookies) and OpenAI API keys. Overall, the project demonstrates **good security awareness** — credentials are masked in output, file permissions are considered, `.gitignore` covers sensitive files, and TLS verification is never disabled.
 
-However, several issues were identified ranging from **Critical** (live credentials committed to files, API key stored world-readable) to **Medium** (XSS via `innerHTML`, missing redirect credential stripping, no download size limits) to **Low/Informational** (API key used as dictionary key in memory, signed URLs persisted in metadata).
+However, several issues were identified ranging from **Critical** (live credentials committed to files, API key stored world-readable) to **High** (XSS via `innerHTML`, missing redirect credential stripping, no download size limits, non-atomic metadata writes) to **Medium** (path traversal, Pillow decompression bombs, OpenAI SDK debug logging, tagger batch abort) to **Low/Informational** (API key memcache, signed URLs in metadata, echoed credentials, missing Content-Type enforcement, symlink risks).
+
+Cross-review analysis also revealed AI-specific security concerns: the OpenAI SDK can log API keys at DEBUG level, base64-encoded user images persist in process memory/core dumps, and AI-generated tags create a chained XSS vector through `metadata.json` into the gallery's `innerHTML`.
 
 ### Severity Summary
 
 | Severity | Count |
 |----------|-------|
 | **Critical** | 2 |
-| **High** | 3 |
-| **Medium** | 5 |
-| **Low** | 5 |
+| **High** | 4 |
+| **Medium** | 6 |
+| **Low** | 6 |
 | **Informational** | 4 |
+
+*Changes from original audit: M-5 upgraded to High (H-4). Three new AI-specific findings added (M-5 Medium, M-6 Medium, L-6 Low).*
 
 ---
 
@@ -51,7 +56,7 @@ While `auth.txt` is correctly created with `0o600` permissions via `os.open()` w
 **Code creating the file without secure permissions:**
 
 ```python
-# src/chatgpt_library_archiver/tagger.py:29-31
+# src/chatgpt_library_archiver/tagger.py:42-43
 def _write_config(path: str) -> dict:
     # ...
     with open(path, "w", encoding="utf-8") as f:
@@ -69,6 +74,12 @@ def _write_config(path: str) -> dict:
        json.dump(cfg, f, indent=2)
    ```
 3. Fix permissions of the existing file: `chmod 600 tagging_config.json`
+
+#### Cross-Review Insights
+
+**Architecture perspective:** Rather than scattering `os.open()` with `0o600` across every module that writes sensitive files, extract a shared `write_secure_file()` helper in `utils.py`. Both `tagger._write_config()` and the auth-writing code should delegate to it. This centralizes the permission logic and prevents future modules from forgetting to set permissions. The helper can later be upgraded to atomic writes (see H-4), benefiting all callers at once.
+
+**AI perspective:** OpenAI API keys cannot be scoped to specific endpoints. A key valid for `responses.create` is also valid for fine-tuning, file uploads, and model management. Unlike the browser token in C-2 (which has specific scopes and expires), an API key remains valid until manually rotated. The financial exposure is effectively unlimited within the OpenAI platform. Consider adding an `sk-` prefix validation when reading the config to catch obviously malformed keys early.
 
 ---
 
@@ -145,6 +156,52 @@ function escapeHtml(str) {
 
 And apply it to all interpolated values: `escapeHtml(title)`, `escapeHtml(tagsSnippet)`, etc. For `href` attributes, validate that URLs start with `https://` or are `#`.
 
+#### Cross-Review Insights
+
+**Architecture perspective (preferred approach):** Since the gallery is a single-file bundled template with vanilla JS (no framework), the cleaner architectural approach is to build DOM nodes procedurally with `document.createElement()` and `textContent` assignments, eliminating `innerHTML` entirely for metadata-derived content. The `escapeHtml()` utility is a half-measure that still allows developers to accidentally skip it. A `buildCard(item)` function that returns a `DocumentFragment` makes the "safe by default" intent explicit. This is more verbose but eliminates the entire class of injection bugs. For `href` attributes, add a `safeHref()` helper:
+
+```javascript
+function safeHref(url) {
+  if (!url) return '#';
+  try { const u = new URL(url); return ['https:', 'http:'].includes(u.protocol) ? url : '#'; }
+  catch { return '#'; }
+}
+```
+
+**AI perspective (chained XSS vector):** The `response.output_text` from OpenAI's vision API is used unsanitized as tag data in `tagger.py` lines 109–110 and persisted to `metadata.json`. If the API returns unexpected content (model refusal text, prompt injection from a crafted image, or API error text), that content flows: **API response → tags → metadata.json → innerHTML → XSS**. The probability is low (it requires crafting an image that causes the model to output HTML), but the chain exists. Defense in depth: strip HTML-like content from tags at generation time AND escape at render time:
+
+```python
+import re
+tags = [re.sub(r'<[^>]+>', '', p) for p in parts if p]
+```
+
+**UX perspective (remediation has no UX downside):** The `createElement()`/`textContent` refactor produces identical visible output. Both approaches have no meaningful performance penalty for 1,000+ cards when batched via `DocumentFragment`. The refactor is also a natural moment to add semantic HTML (`<article>` wrappers), clickable tag chips, and accessible focus styling — turning a security fix into a UX improvement.
+
+**UX perspective (`conversation_link` display):** When a `conversation_link` URL is sanitized to `#`, clicking "View conversation" scrolls to the page top — confusing behavior. Better UX: hide the link entirely when the URL is invalid:
+
+```javascript
+if (safeHref(item.conversation_link) !== '#') {
+  // render the link
+}
+```
+
+**UX perspective (`file://` edge case):** If the gallery is opened via `file://`, the strict `safeHref()` allowlist (`['http:', 'https:']`) would block all image and conversation links. The `file:` protocol does not enable script injection, so it is safe to include. Alternatively, a blocklist approach (`javascript:`, `data:`, `vbscript:`) preserves broader compatibility:
+
+```javascript
+const BLOCKED_SCHEMES = new Set(['javascript:', 'data:', 'vbscript:']);
+function safeHref(url) {
+  if (!url || url === '#') return '#';
+  try {
+    const parsed = new URL(url, location.href);
+    if (BLOCKED_SCHEMES.has(parsed.protocol)) return '#';
+    return url;
+  } catch (e) {
+    if (url.startsWith('images/') || url.startsWith('thumbs/')) return url;
+    return '#';
+  }
+}
+```
+
 ---
 
 ### H-2: HTTP Client Does Not Strip Auth Headers on Redirects
@@ -166,12 +223,19 @@ No `allow_redirects=False` is set in `get_json()` or `stream_download()`.
 **Note:** The `browser_extract.py` module correctly uses `allow_redirects=False` for its token-exchange requests (lines 358, 430), demonstrating awareness of this risk — but the same protection is not applied to the main download client.
 
 **Remediation:**
-1. Configure `requests.Session` to not send auth headers on cross-domain redirects. The `requests` library (since 2.32.0+) has `session.trust_env` and redirect hooks, but the most reliable approach is:
-   ```python
-   # In HttpClient, override session to strip sensitive headers on domain change
-   session.max_redirects = 5  # Limit redirect chains
-   ```
+1. Configure `requests.Session` to not send auth headers on cross-domain redirects. The `requests` library (2.32+) supports `Session.rebuild_auth()` which is called automatically on redirects to strip `Authorization` when redirecting to a different host. However, this only covers `Authorization`, not `Cookie`. The most reliable fix requires manual handling.
 2. Or set `allow_redirects=False` and handle redirects manually, stripping `Authorization` and `Cookie` headers if the redirect target is a different origin.
+
+#### Cross-Review Insights
+
+**Architecture perspective (separated redirect strategies):** The cleanest architectural approach separates the two use cases:
+
+1. **For `get_json()` (API calls):** Set `allow_redirects=False`. The ChatGPT API should not redirect; a redirect is unexpected behavior and should be raised as an error.
+2. **For `stream_download()` (image downloads):** Image downloads from CDN URLs may legitimately redirect. Use a custom redirect loop that strips both `Authorization` and `Cookie` headers on cross-origin redirects.
+
+This separates the two use cases architecturally rather than applying a one-size-fits-all fix. Note: the originally proposed `session.max_redirects = 5` approach only limits chain length — it doesn't address credential leakage.
+
+**AI perspective:** This finding does not affect OpenAI API calls, which go through the SDK (not raw `requests`), so the redirect risk is correctly scoped to the ChatGPT backend API and CDN download paths only.
 
 ---
 
@@ -205,6 +269,67 @@ if bytes_downloaded > MAX_DOWNLOAD_SIZE:
     raise HttpError(url=url, reason="Download exceeds maximum size limit", ...)
 ```
 
+#### Cross-Review Insights
+
+**Architecture perspective:** The limit should be a parameter on `stream_download()` rather than a module-level constant:
+
+```python
+def stream_download(self, url, destination, *, max_bytes: int | None = None, ...):
+```
+
+This keeps `HttpClient` generic (it's also used for metadata fetches) and lets callers specify context-appropriate limits — image downloads would pass `100 * 1024 * 1024`, while metadata fetches might use `10 * 1024 * 1024`.
+
+**UX perspective:** The error message matters. When a download is rejected for size, the CLI should communicate clearly: "Skipped image X: download exceeded 100 MB limit." Users should not see a raw traceback or opaque `HttpError`. Consider a `--max-image-size` CLI flag so power users can override the default. DALL-E 3 images at maximum resolution can be 4–8 MB, so a 100 MB limit is safely generous.
+
+---
+
+### H-4: `metadata.json` Written Without Atomic Replacement
+
+**Severity:** High *(upgraded from Medium)*
+**File:** `src/chatgpt_library_archiver/metadata.py:206-210`
+
+```python
+def save_gallery_items(gallery_root, items):
+    path = metadata_path(gallery_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump([item.to_dict() for item in items], fh, indent=2)
+```
+
+If the process is interrupted during `json.dump()`, the file will be left in a corrupt state (partially written). Since `metadata.json` is the source of truth for the entire gallery, this could result in data loss.
+
+**Remediation:**
+Write to a temporary file and atomically rename:
+```python
+import tempfile
+tmp_fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+try:
+    with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+        json.dump([item.to_dict() for item in items], fh, indent=2)
+    os.replace(tmp_path, path)
+except:
+    os.unlink(tmp_path)
+    raise
+```
+
+#### Severity Upgrade Rationale
+
+This finding was originally rated Medium (M-5). Cross-review analysis from three independent perspectives supports upgrading to High:
+
+**Architecture perspective (strong advocate for upgrade):** `metadata.json` is the single source of truth for the entire gallery. The `json.dump()` directly into the target file means a `SIGKILL` during write loses all metadata. The downloader calls `save_gallery_items()` after downloading all images — if a batch download of 100 images completes but the metadata write is interrupted, the user loses the entire metadata record. The images exist on disk but the gallery has no record of them. This is a **data-loss scenario** more likely to occur than some security findings ranked above it.
+
+**AI perspective (compounding risk):** The AI tagger also writes to the same `metadata.json` via `save_gallery_items()` at the end of batch tagging. Implementing periodic saves during tagging (a recommended optimization) without fixing atomic writes first would *increase* the corruption window. The atomic write fix is a prerequisite for safe incremental saves.
+
+**UX perspective:** A corrupted `metadata.json` causes the gallery to show nothing — a blank page with no error indication. The atomic write fix (prevention) should be paired with gallery-side error handling (graceful degradation):
+
+```javascript
+try {
+  const items = await response.json();
+} catch (e) {
+  showError('metadata.json appears to be corrupted. Try re-running the download command.');
+}
+```
+
 ---
 
 ## Medium Findings
@@ -212,7 +337,7 @@ if bytes_downloaded > MAX_DOWNLOAD_SIZE:
 ### M-1: API Key Used as Dictionary Key in Memory Cache
 
 **Severity:** Medium
-**File:** `src/chatgpt_library_archiver/ai.py:23-28`
+**File:** `src/chatgpt_library_archiver/ai.py:18-41`
 
 ```python
 _CLIENT_CACHE: dict[str, OpenAI] = {}
@@ -234,6 +359,14 @@ import hashlib
 cache_key = hashlib.sha256(api_key.encode()).hexdigest()
 _CLIENT_CACHE[cache_key] = client
 ```
+
+#### Cross-Review Insights
+
+**AI perspective (limited practical impact):** The `OpenAI` client object *itself* holds the API key in memory as `client.api_key`, so hashing the cache key removes one copy but not the primary one. For a CLI tool with a single-process lifecycle, the practical risk is low. The benefit is more about code hygiene than substantive protection.
+
+**Architecture perspective (lightweight hash):** If implemented, prefer `hashlib.blake2b(api_key.encode(), digest_size=16).hexdigest()` rather than SHA-256 — faster and equally suitable for cache keying.
+
+**Architecture perspective (thread safety):** The `get_cached_client()` function reads and writes `_CLIENT_CACHE` without synchronization. The `tagger.py` module uses `ThreadPoolExecutor` and calls `get_cached_client()` from worker threads. Python's GIL makes dict operations thread-safe at the bytecode level, but this is an implementation detail, not a guarantee. A `threading.Lock` or `functools.lru_cache` would be more correct.
 
 ---
 
@@ -285,6 +418,21 @@ if not filepath.is_relative_to(images_dir.resolve()):
     raise ValueError(f"Path traversal detected in filename: {filename}")
 ```
 
+#### Cross-Review Insights
+
+**Architecture perspective:** The importer's `_slugify()` approach is the superior pattern because it prevents the problem at the source rather than detecting it after construction:
+
+```python
+import re
+def _safe_filename(image_id: str, ext: str) -> str:
+    clean = re.sub(r'[^\w\-.]', '_', image_id)
+    return f"{clean}{ext}"
+```
+
+Prefer defense in depth: sanitize the input *and* verify the resolved path. This is arguably under-rated at Medium.
+
+**UX perspective:** The error message "Path traversal detected in filename: {filename}" is too technical for end users. Prefer: "Skipped image: invalid filename." Security error messages visible to users should follow the pattern `Skipped {item}: {human-friendly reason}`, not `{SecurityException}: {technical detail}`.
+
 ---
 
 ### M-4: Pillow Decompression Bomb Protection Not Explicitly Configured
@@ -305,36 +453,67 @@ from PIL import Image
 Image.MAX_IMAGE_PIXELS = 200_000_000  # 200MP
 ```
 
+#### Cross-Review Insights
+
+**Architecture perspective:** Setting `MAX_IMAGE_PIXELS` at module scope in `thumbnails.py` is insufficient if `Image.open()` is ever called elsewhere (e.g., a future image-analysis module). Consider setting it in `__init__.py` or a shared constants module so it applies process-wide.
+
+**AI perspective (amplified risk):** A decompression bomb that expands to a huge pixel count would, if it survived thumbnail generation, also be base64-encoded at full resolution and sent to the vision API via `encode_image()`. A 40,000×40,000 pixel image would produce a ~4.3 GB base64 payload that would fail at the API level but only after consuming enormous memory and bandwidth. Setting `MAX_IMAGE_PIXELS` protects both the thumbnail and AI pipelines simultaneously.
+
 ---
 
-### M-5: `metadata.json` Written Without Atomic Replacement
+### M-5: OpenAI SDK Debug Logging Can Expose API Key
 
 **Severity:** Medium
-**File:** `src/chatgpt_library_archiver/metadata.py:175-179`
+**File:** `src/chatgpt_library_archiver/ai.py` (absence of logging configuration)
 
+The `openai` SDK uses Python's `logging` module. At `DEBUG` level, the SDK logs HTTP request headers — which include `Authorization: Bearer sk-...`. If a user sets `OPENAI_LOG=debug` or configures the root logger to DEBUG, the API key appears in logs. No code in the project sets logging levels for the `openai` logger.
+
+**Verification:** Confirmed — `ai.py` does not import `logging` or configure any logger levels.
+
+**Remediation:** Add at module scope in `ai.py`:
 ```python
-def save_gallery_items(gallery_root, items):
-    path = metadata_path(gallery_root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump([item.to_dict() for item in items], fh, indent=2)
+import logging
+logging.getLogger("openai").setLevel(logging.WARNING)
 ```
 
-If the process is interrupted during `json.dump()`, the file will be left in a corrupt state (partially written). Since `metadata.json` is the source of truth for the entire gallery, this could result in data loss.
+This prevents accidental key exposure if library-wide debug logging is enabled.
+
+*This finding was identified by the AI integration specialist during cross-review.*
+
+---
+
+### M-6: Tagger Batch Abort on Single Failure
+
+**Severity:** Medium
+**File:** `src/chatgpt_library_archiver/tagger.py:192`
+
+```python
+with ThreadPoolExecutor(max_workers=max_workers) as ex:
+    futures = [ex.submit(process, item) for item in to_tag]
+    for fut in as_completed(futures):
+        telemetry = fut.result()  # <-- unguarded, aborts batch on any error
+```
+
+The `fut.result()` call has no try/except. If any single image fails (rate limit exhaustion, API error, file I/O error), the entire batch aborts and all successfully generated tags for preceding images are lost — because `save_gallery_items()` is only called after the loop completes (line 211).
+
+**Verification:** Confirmed — `tagger.py` line 192 calls `fut.result()` without exception handling.
+
+This is the same pattern identified in the thumbnail pipeline by the image pipeline reviewer (`thumbnails.py` batch mode). Both should be fixed simultaneously for consistency.
 
 **Remediation:**
-Write to a temporary file and atomically rename:
 ```python
-import tempfile
-tmp_fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
-try:
-    with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
-        json.dump([item.to_dict() for item in items], fh, indent=2)
-    os.replace(tmp_path, path)
-except:
-    os.unlink(tmp_path)
-    raise
+errors: list[str] = []
+for fut in as_completed(futures):
+    try:
+        telemetry = fut.result()
+        # ... existing telemetry aggregation ...
+        updated += 1
+    except Exception as exc:
+        errors.append(str(exc))
+    reporter.advance()
 ```
+
+*This finding was identified by the AI integration specialist during cross-review.*
 
 ---
 
@@ -367,7 +546,7 @@ The `bootstrap.py` module runs subprocess commands. While `shell=False` is corre
 ### L-2: Interactive Credential Prompting Echoes Input
 
 **Severity:** Low
-**File:** `src/chatgpt_library_archiver/utils.py:65-72`, `src/chatgpt_library_archiver/tagger.py:24`
+**File:** `src/chatgpt_library_archiver/utils.py:65-72`, `src/chatgpt_library_archiver/tagger.py:37`
 
 ```python
 # utils.py
@@ -387,6 +566,19 @@ api_key = getpass.getpass("api_key = ").strip()
 ```
 
 For `auth.txt` header values like `authorization` and `cookie`, consider using `getpass` for those specific keys.
+
+#### Cross-Review Insights
+
+**UX perspective (paste verification concern):** Switching from `input()` to `getpass.getpass()` means users won't see what they're typing. For long bearer tokens and cookies (which are typically pasted, not typed), this is potentially confusing — users can't verify they pasted correctly. The security benefit outweighs this minor UX friction, but add a masked confirmation after accepting the input:
+
+```python
+from getpass import getpass
+api_key = getpass("api_key = ").strip()
+if api_key:
+    print(f"  ✓ API key set: {api_key[:8]}...")
+```
+
+This gives users confidence their paste worked without exposing the full credential.
 
 ---
 
@@ -417,12 +609,16 @@ But the `context` dict may be propagated by callers.
 
 **Remediation:** Strip query parameters from URLs in error context, or redact the `sig` parameter.
 
+#### Cross-Review Insights
+
+**Architecture perspective (interleaving concern):** In the downloader, `tqdm` progress bars and `StatusReporter` log messages can interleave on stderr. If error messages with context dicts (containing URLs with signed tokens) are printed during `tqdm` output, they may be harder for users to notice and could end up in shell scrollback unexpectedly.
+
 ---
 
 ### L-4: Content-Type Validation Skipped When Header Is Missing
 
 **Severity:** Low
-**File:** `src/chatgpt_library_archiver/http_client.py:212-219`
+**File:** `src/chatgpt_library_archiver/http_client.py:247-253`
 
 ```python
 if expected_content_prefixes and content_type:
@@ -444,6 +640,10 @@ if expected_content_prefixes:
         raise HttpError(url=url, reason="Missing Content-Type header", ...)
 ```
 
+#### Cross-Review Insights
+
+**UX perspective:** The error message "Missing Content-Type header" is opaque to non-developers. Prefer: "Server returned an unexpected response for image X — skipping."
+
 ---
 
 ### L-5: No Symlink Check on Downloaded/Imported Files
@@ -463,6 +663,21 @@ When the downloader writes `temp_path.replace(filepath)` or the importer does `s
 if filepath.is_symlink():
     raise ValueError(f"Refusing to overwrite symlink: {filepath}")
 ```
+
+---
+
+### L-6: Base64-Encoded Images Persist in Process Memory
+
+**Severity:** Low
+**File:** `src/chatgpt_library_archiver/ai.py:101-107`
+
+The `encode_image()` function loads the entire file into memory and base64-encodes it. For a batch of 500 images at 10 MB each, this creates ~13.3 MB base64 strings per concurrent worker. If the process crashes or produces a core dump, those base64 payloads (containing user images from a private ChatGPT library) persist in the dump.
+
+This is primarily a resource concern, but it has a privacy dimension given the nature of the images (personal AI-generated content). The risk is low for a CLI tool — core dumps are not generated by default on most systems — but is worth documenting for users running in environments where core dumps are enabled.
+
+**Remediation:** No immediate code change required. Document the memory behavior. The recommended image-resize optimization (pre-encoding resize to 1024px) would reduce memory footprint as a side effect.
+
+*This finding was identified by the AI integration specialist during cross-review.*
 
 ---
 
@@ -561,8 +776,9 @@ The OAI device ID and client version are **not** masked, which is acceptable as 
 - [x] File permissions set appropriately on `auth.txt` — **`600`** ✅
 - [ ] **File permissions set appropriately on `tagging_config.json`** — **`644` ❌ (C-1)**
 - [x] Credentials never logged or included in error messages (verified: no `print(token)` patterns)
+- [ ] **OpenAI SDK logger not suppressed** — could expose API key at DEBUG level ❌ (M-5)
 - [x] Credentials never written to `metadata.json` (verified: `to_dict()` does not include auth data)
-- [ ] **Environment variable fallbacks work correctly** — ✅ Verified: `resolve_config()` checks three env vars
+- [x] Environment variable fallbacks work correctly — ✅ Verified: `resolve_config()` checks three env vars
 
 ### Downloads
 - [ ] **Content-type validated before saving** — Partial ✅ / ❌ bypassed when header missing (L-4)
@@ -573,6 +789,11 @@ The OAI device ID and client version are **not** masked, which is acceptable as 
 
 ### Gallery
 - [ ] **HTML output escaped** — ❌ Uses `innerHTML` with unescaped values (H-1)
+
+### AI Integration
+- [ ] **AI-generated tags sanitized before storage** — ❌ Tags from API stored verbatim (H-1 chain)
+- [ ] **Batch failure isolation** — ❌ Single failure aborts entire tagging batch (M-6)
+- [ ] **SDK logging suppressed** — ❌ No logging configuration (M-5)
 
 ### Dependencies
 - [x] No known CVEs in current installed versions
@@ -585,23 +806,43 @@ The OAI device ID and client version are **not** masked, which is acceptable as 
 
 ### Immediate (Before Next Release)
 1. **Rotate the exposed API key** in `tagging_config.json` (C-1)
-2. **Fix `tagging_config.json` file permissions** to `0o600` (C-1)
-3. **Escape HTML in gallery viewer** to prevent XSS (H-1)
-4. **Add download size limit** (H-3)
+2. **Fix `tagging_config.json` file permissions** to `0o600` — extract `write_secure_file()` helper (C-1)
+3. **Escape HTML in gallery viewer** — prefer full `createElement()`/`textContent` refactor (H-1)
+4. **Add download size limit** as a parameter on `stream_download()` (H-3)
+5. **Implement atomic metadata writes** via `tempfile` + `os.replace()` (H-4)
 
 ### Short-Term (Next Sprint)
-5. **Strip/avoid forwarding auth headers on redirects** (H-2)
-6. **Validate downloaded filenames** against path traversal (M-3)
-7. **Use `getpass`** for sensitive interactive prompts (L-2)
-8. **Set explicit Pillow pixel limit** (M-4)
-9. **Implement atomic metadata writes** (M-5)
+6. **Strip/avoid forwarding auth headers on redirects** — separate `get_json()` (no redirects) from `stream_download()` (strip on cross-origin) (H-2)
+7. **Validate downloaded filenames** — sanitize + verify path (M-3)
+8. **Suppress OpenAI SDK logger** to WARNING level (M-5)
+9. **Fix tagger batch failure isolation** — try/except around `fut.result()` (M-6)
+10. **Strip HTML-like content from AI-generated tags** before persisting (defense in depth for H-1)
+11. **Use `getpass`** for sensitive interactive prompts with masked confirmation (L-2)
+12. **Set explicit Pillow pixel limit** process-wide (M-4)
 
 ### Long-Term
-10. **Hash API keys** for cache keys (M-1)
-11. **Strip signed URLs** from persisted metadata (M-2)
-12. **Add Content-Type requirement** when validation is requested (L-4)
-13. **Add symlink checks** before file writes (L-5)
-14. **Pin dependency versions** in a lock file (I-1)
+13. **Hash API keys** for cache keys (M-1)
+14. **Strip signed URLs** from persisted metadata (M-2)
+15. **Add Content-Type requirement** when validation is requested (L-4)
+16. **Add symlink checks** before file writes (L-5)
+17. **Pin dependency versions** in a lock file (I-1)
+
+---
+
+## Cross-Review Contributors
+
+The following reviewers provided additional perspectives that were incorporated into this audit:
+
+| Reviewer | Perspective | Key Contributions |
+|----------|-------------|-------------------|
+| **Architecture & Code Quality** | Architectural soundness of remediations | Centralized `write_secure_file()` helper, DOM construction over `escapeHtml()`, separated redirect strategies for API vs CDN, strengthened M-5→H-4 upgrade argument, identified thread safety gap in `_CLIENT_CACHE` |
+| **Gallery UX Designer** | User-facing security impact | Error message usability patterns, `getpass` paste verification UX, `file://` protocol edge cases for `safeHref()`, `conversation_link` display when sanitized to `#`, metadata corruption UX impact |
+| **OpenAI Integration Specialist** | AI-specific security concerns | SDK debug logging key exposure (M-5), base64 memory/core dump risk (L-6), API→tags→innerHTML chained XSS vector, tagger batch abort data loss (M-6), API key scope analysis for C-1 |
+
+**Source documents:**
+- `docs/reviews/cross-review-architecture-perspective.md`
+- `docs/reviews/cross-review-ux-perspective.md`
+- `docs/reviews/cross-review-ai-perspective.md`
 
 ---
 
@@ -616,3 +857,4 @@ This audit involved:
 6. Dependency version auditing via `pip list`
 7. Pattern-based code search for known anti-patterns (`verify=False`, `shell=True`, `innerHTML`, credential logging)
 8. Review of `.gitignore` coverage
+9. Cross-review integration: critical evaluation and source-code verification of findings from Architecture, UX, and AI specialist reviewers

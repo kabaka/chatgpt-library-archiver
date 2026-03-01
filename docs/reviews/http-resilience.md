@@ -14,7 +14,7 @@ The HTTP layer is **well-architected** overall. The `HttpClient` class provides 
 
 | Area | Risk Level | Notes |
 |------|-----------|-------|
-| Redirect credential leak | **High** | Bearer tokens forwarded on cross-domain redirects |
+| Redirect credential leak | **High** | All custom headers (auth, cookies, oai-* identifiers) forwarded on cross-domain redirects |
 | No download size limit | **Medium** | Disk exhaustion possible from malicious/huge responses |
 | No Retry-After support | **Medium** | Aggressive retry after 429 may trigger bans |
 | Single timeout value | **Low** | Connect and read share a 30s timeout |
@@ -179,46 +179,97 @@ The downloader's `download_image` function catches all exceptions and returns `(
 
 There is **no explicit redirect handling**. The code relies entirely on `requests` default behavior, which automatically follows up to 30 redirects.
 
-### Security Concern — Credential Forwarding
+### Security Concern — Credential & Header Forwarding
 
 The skill explicitly warns:
 
 > Bearer tokens and cookies are sent with every request — ensure redirects don't leak them to third-party domains.
 
-The `incremental_downloader.py` sends these headers on every request:
+The `incremental_downloader.py` `build_headers()` function sends **eight headers** on every request:
 
 ```python
 headers = {
     "Authorization": config["authorization"],
     "Cookie": config["cookie"],
-    ...
+    "User-Agent": config["user_agent"],
+    "Accept": "application/json",
+    "Referer": config["referer"],
+    "oai-client-version": config["oai_client_version"],
+    "oai-device-id": config["oai_device_id"],
+    "oai-language": config["oai_language"],
 }
 ```
 
-When `requests` follows a redirect (e.g., from `chatgpt.com` to a CDN like `oaidalleapiprodscus.blob.core.windows.net`), **these headers are forwarded to the redirect target**. This is the default `requests` behavior.
+When `requests` follows a redirect (e.g., from `chatgpt.com` to a CDN like `oaidalleapiprodscus.blob.core.windows.net`), **all of these headers are forwarded to the redirect target**. This is the default `requests` behavior.
 
 While ChatGPT's CDN is first-party infrastructure, the authorization header contains a bearer token that should not be sent to arbitrary domains. A server-side misconfiguration or open redirect could leak credentials.
 
+#### Severity breakdown by header
+
+| Header | Sensitivity | Risk on leak |
+| -------- | ------------ | -------- |
+| `Authorization` | **High** | Bearer JWT — session impersonation |
+| `Cookie` | **High** | Session token — potentially longer-lived than the JWT; accepted by any `chatgpt.com` subdomain |
+| `oai-device-id` | **Medium** | Persistent device identifier — correlatable to user's ChatGPT account |
+| `oai-client-version` | **Low** | Fingerprinting — reveals tool version |
+| `oai-language` | **Low** | Fingerprinting — reveals locale |
+| `Referer` | **Low** | Reveals that the request originates from the library tool |
+| `User-Agent` / `Accept` | **Minimal** | Standard HTTP headers, expected on any request |
+
+The original version of this review identified only `Authorization` and `Cookie` as at-risk headers. The security cross-review correctly observes that the `oai-device-id` and other ChatGPT-specific headers also create a fingerprintable profile that could be correlated to the user's session if logged by a redirect target.
+
+#### Both request paths are affected
+
+This vulnerability applies to **both** HTTP methods on `HttpClient`:
+
+- `stream_download()` — image downloads, where CDN redirects are most likely
+- `get_json()` — API metadata fetches, where API version migrations or load balancer redirects could occur
+
+The `browser_extract.py` module already uses `allow_redirects=False` for its token-exchange flows, showing awareness of this risk exists in the codebase but was not applied uniformly.
+
+#### Origin comparison must include scheme and port
+
+The original version of this review compared only hostnames. The security cross-review correctly notes that a **full origin comparison** (scheme + host + port) is necessary to also catch HTTPS→HTTP downgrades, which would transmit credentials in plaintext.
+
+> **Implementation note:** `urlparse()` returns `port=None` for URLs without an explicit port (e.g., `https://example.com`). This means `https://example.com` and `https://example.com:443` would be treated as different origins by a naive tuple comparison. In practice, all ChatGPT API and CDN URLs use standard ports without explicit specification, so this edge case is unlikely to cause false positives. A production-hardened version could normalize default ports (443 for HTTPS, 80 for HTTP), but this is not critical for the current use case.
+
 ### Recommendation
 
-1. **P1**: Strip sensitive headers on cross-origin redirects. This can be done by:
-   - Setting `session.max_redirects` to a lower value, or
-   - Using a custom `rebuild_auth` hook on the session to drop `Authorization` when the redirect crosses domains, or
-   - Handling redirects manually for download URLs.
-
-   The `requests` library calls `Session.rebuild_auth()` on redirects — overriding this method is the cleanest approach:
+1. **P1**: Strip all sensitive and ChatGPT-specific headers on cross-origin redirects. Override `Session.rebuild_auth()` to compare full origins:
 
    ```python
+   from urllib.parse import urlparse
+
    class SafeSession(Session):
+       """Session that strips sensitive headers on cross-origin redirects."""
+
+       _SENSITIVE_HEADERS = frozenset({
+           "Authorization", "Cookie",
+           "oai-client-version", "oai-device-id", "oai-language",
+           "Referer",
+       })
+
        def rebuild_auth(self, prepared_request, response):
-           original_host = urlparse(response.request.url).hostname
-           redirect_host = urlparse(prepared_request.url).hostname
-           if original_host != redirect_host:
-               prepared_request.headers.pop("Authorization", None)
-               prepared_request.headers.pop("Cookie", None)
+           original = urlparse(response.request.url)
+           redirect = urlparse(prepared_request.url)
+           original_origin = (original.scheme, original.hostname, original.port)
+           redirect_origin = (redirect.scheme, redirect.hostname, redirect.port)
+
+           if original_origin != redirect_origin:
+               for header in self._SENSITIVE_HEADERS:
+                   prepared_request.headers.pop(header, None)
            else:
                super().rebuild_auth(prepared_request, response)
    ```
+
+   Key properties of this fix vs. the original hostname-only approach:
+   - Strips **all** custom/sensitive headers, not just `Authorization` and `Cookie`
+   - Compares full origin (scheme + host + port), catching HTTPS→HTTP downgrades
+   - Uses `frozenset` for O(1) lookup and immutability
+   - `Referer` is included because it reveals tool usage to third parties
+   - `User-Agent` and `Accept` are left intact as standard HTTP headers
+
+2. **P2**: Set `session.max_redirects = 5` — the default of 30 is excessive for image downloads and API calls.
 
 ---
 
@@ -480,7 +531,7 @@ The concurrency model is **functional** but has several concerns:
 
 ### P1 — Security
 
-1. **Strip credentials on cross-domain redirects**: Override `Session.rebuild_auth()` to remove `Authorization` and `Cookie` headers when a redirect crosses origins. This prevents token leakage if ChatGPT's API redirects to a CDN or an unexpected domain.
+1. **Strip all sensitive headers on cross-origin redirects**: Override `Session.rebuild_auth()` to compare full origins (scheme + host + port) and remove `Authorization`, `Cookie`, `oai-device-id`, `oai-client-version`, `oai-language`, and `Referer` headers when a redirect crosses origins. This prevents token leakage and fingerprinting if ChatGPT's API or CDN redirects to an unexpected domain, and protects against HTTPS→HTTP credential exposure. Both `get_json()` and `stream_download()` are affected.
 
 ### P2 — Correctness & Robustness
 
@@ -511,3 +562,19 @@ The concurrency model is **functional** but has several concerns:
 12. **Use a single `ThreadPoolExecutor` for the entire session**: Avoid per-page pool creation overhead.
 
 13. **Add `respect_retry_after_header=True` explicitly**: Although it's the default, explicit is better than implicit for documentation purposes.
+
+---
+
+## Cross-Review Contributors
+
+This review was enhanced with findings from the following cross-review:
+
+| Reviewer | Report | Contributions |
+|----------|--------|---------------|
+| Security Auditor | [cross-review-security-perspective.md](cross-review-security-perspective.md) §2 | Identified that **all** custom headers (not just `Authorization`/`Cookie`) leak on redirects; enhanced `rebuild_auth()` fix to compare full origins (scheme+host+port) and strip `oai-*` identifiers; noted that `get_json()` is equally affected; flagged that missing download size limits compound with credential forwarding risk |
+
+### Findings evaluated but adjusted
+
+- The cross-review's enhanced `SafeSession` code omitted `Referer` from `_SENSITIVE_HEADERS`. This review adds it, since `Referer: https://chat.openai.com/library` reveals tool usage to third-party redirect targets.
+- The cross-review notes that `User-Agent` and `oai-*` values "create a fingerprint" — this is accurate but the practical risk depends on the redirect target logging headers, which is common for CDNs. The `oai-device-id` is the most identifying of the custom headers; `oai-client-version` and `oai-language` carry lower individual risk but are stripped as defense-in-depth.
+- The cross-review's observation that the backoff factor discussion is "overrated for security" (§2.3.1) is fair — the space allocated to Section 1 reflects its relevance as a *reliability* concern, not a security one. No changes were made to Section 1 as a result.
