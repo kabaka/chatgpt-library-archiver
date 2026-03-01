@@ -10,6 +10,7 @@ from chatgpt_library_archiver.utils import (
     load_auth_config,
     prompt_and_write_auth,
     prompt_yes_no,
+    write_secure_file,
 )
 
 EXPECTED_AUTH_MODE = 0o600
@@ -101,3 +102,27 @@ def test_prompt_yes_no_autoconfirm(monkeypatch):
     monkeypatch.setenv("ARCHIVER_ASSUME_YES", "1")
     # Should return True without prompting
     assert prompt_yes_no("skip?") is True
+
+
+def test_write_secure_file_sets_permissions(tmp_path):
+    path = tmp_path / "secret.json"
+    write_secure_file(path, '{"key": "value"}')
+    mode = stat.S_IMODE(os.stat(path).st_mode)
+    assert mode == EXPECTED_AUTH_MODE
+    assert path.read_text(encoding="utf-8") == '{"key": "value"}'
+
+
+def test_write_secure_file_overwrites_existing(tmp_path):
+    path = tmp_path / "overwrite.txt"
+    path.write_text("old content")
+    write_secure_file(path, "new content")
+    assert path.read_text(encoding="utf-8") == "new content"
+    mode = stat.S_IMODE(os.stat(path).st_mode)
+    assert mode == EXPECTED_AUTH_MODE
+
+
+def test_write_secure_file_custom_mode(tmp_path):
+    path = tmp_path / "custom.txt"
+    write_secure_file(path, "data", mode=0o640)
+    mode = stat.S_IMODE(os.stat(path).st_mode)
+    assert mode == 0o640

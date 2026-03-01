@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import os
+from pathlib import Path
 
 REQUIRED_AUTH_KEYS = [
     "url",
@@ -47,6 +50,25 @@ def prompt_yes_no(message: str, default: bool = True) -> bool:
         print("Please enter 'y' or 'n'.")
 
 
+def write_secure_file(path: str | Path, content: str, mode: int = 0o600) -> None:
+    """Write *content* to *path* with restricted file permissions.
+
+    Uses ``os.open`` with an explicit *mode* so the file is never
+    world-readable, even briefly.  The default mode ``0o600`` restricts
+    access to the file owner.  Permissions are also enforced on
+    pre-existing files via :func:`os.chmod`.
+    """
+
+    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        os.chmod(str(path), mode)
+    except BaseException:
+        # fd is already consumed by os.fdopen; nothing extra to close.
+        raise
+
+
 def load_auth_config(path: str = "auth.txt") -> dict:
     """Load key=value lines from auth.txt into a dict.
     Ignores lines without '=' and whitespace-only lines.
@@ -79,10 +101,8 @@ def prompt_and_write_auth(path: str = "auth.txt") -> dict:
             else:
                 print("This field is required. Please enter a value.")
 
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        for k in REQUIRED_AUTH_KEYS:
-            f.write(f"{k}={cfg[k]}\n")
+    lines = "".join(f"{k}={cfg[k]}\n" for k in REQUIRED_AUTH_KEYS)
+    write_secure_file(path, lines)
 
     print(f"\nSaved credentials to {path}.\n")
     return cfg

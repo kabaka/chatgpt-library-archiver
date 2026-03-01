@@ -400,6 +400,12 @@ function resolveThumbnails(item, fallback, fullSrc) {
   };
 }
 
+function safeHref(url) {
+  if (!url || url === '#') return '#';
+  if (/^\s*(javascript|data|vbscript)\s*:/i.test(url)) return '#';
+  return url;
+}
+
 async function loadImages() {
   const response = await fetch('metadata.json', { cache: 'no-store' });
   const data = await response.json();
@@ -434,22 +440,46 @@ async function loadImages() {
       : '';
     const tagsSnippet = tagsArr.slice(0, 5).join(', ');
     const extra = tagsArr.length > 5 ? '…' : '';
-    const tagsHtml =
-      tagsSnippet
-        ? '<span class="tags"><br>' + tagsSnippet + extra + '</span>'
-        : '';
-    card.innerHTML =
-      '<a href="' + imgPath + '" class="thumb">' +
-      '<img data-src="' + thumbPath + '" data-thumb-small="' + thumbPaths.small + '" data-thumb-medium="' + thumbPaths.medium + '" data-thumb-large="' + thumbPaths.large + '" data-thumb-full="' + thumbPaths.full + '" data-full="' + imgPath + '" alt="' + title + '" loading="lazy"></a>' +
-      '<div class="meta"><strong>' + (title || item.id) + '</strong>' +
-      '<span class="created"><br>' + created + '</span>' +
-      tagsHtml + '<br><a href="' +
-      (item.conversation_link || '#') +
-      '" target="_blank">View conversation</a></div>';
-    const tagsSpan = card.querySelector('.tags');
-    if (tagsSpan) {
+    // Build card with DOM API — safe from XSS (no innerHTML with user data)
+    const link = document.createElement('a');
+    link.href = imgPath;
+    link.className = 'thumb';
+    const img = document.createElement('img');
+    img.setAttribute('data-src', thumbPath);
+    img.setAttribute('data-thumb-small', thumbPaths.small);
+    img.setAttribute('data-thumb-medium', thumbPaths.medium);
+    img.setAttribute('data-thumb-large', thumbPaths.large);
+    img.setAttribute('data-thumb-full', thumbPaths.full);
+    img.setAttribute('data-full', imgPath);
+    img.alt = title || item.filename || item.id;
+    img.loading = 'lazy';
+    link.appendChild(img);
+    card.appendChild(link);
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    const strong = document.createElement('strong');
+    strong.textContent = title || item.id;
+    meta.appendChild(strong);
+    const createdSpan = document.createElement('span');
+    createdSpan.className = 'created';
+    createdSpan.appendChild(document.createElement('br'));
+    createdSpan.appendChild(document.createTextNode(created));
+    meta.appendChild(createdSpan);
+    if (tagsSnippet) {
+      const tagsSpan = document.createElement('span');
+      tagsSpan.className = 'tags';
+      tagsSpan.appendChild(document.createElement('br'));
+      tagsSpan.appendChild(document.createTextNode(tagsSnippet + extra));
       tagsSpan.title = tagsArr.join(', ');
+      meta.appendChild(tagsSpan);
     }
+    meta.appendChild(document.createElement('br'));
+    const convLink = document.createElement('a');
+    convLink.href = safeHref(item.conversation_link);
+    convLink.target = '_blank';
+    convLink.textContent = 'View conversation';
+    meta.appendChild(convLink);
+    card.appendChild(meta);
     const index =
       viewerData.push({
         src: imgPath,
@@ -459,7 +489,6 @@ async function loadImages() {
       }) - 1;
     card.dataset.index = String(index);
     gallery.appendChild(card);
-    const link = card.querySelector('a.thumb');
     link.addEventListener('click', e => {
       if (e.ctrlKey || e.metaKey) {
         return;
@@ -467,7 +496,6 @@ async function loadImages() {
       e.preventDefault();
       openViewer(index);
     });
-    const img = card.querySelector('img');
     observer.observe(img);
   });
   updateVisibleIndices();

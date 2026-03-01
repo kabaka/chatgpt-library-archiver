@@ -41,7 +41,7 @@ The `tagging_config.json` file contains a **real OpenAI API key** and has permis
 
 ```json
 {
-  "api_key": "sk-REDACTED",
+  "api_key": "sk-YOUR-KEY-HERE",
   "prompt": "Generate concise, comma-separated descriptive tags..."
 }
 ```

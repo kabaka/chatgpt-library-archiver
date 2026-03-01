@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import logging
 import mimetypes
 import os
 import time
@@ -12,6 +13,11 @@ from pathlib import Path
 from typing import Any
 
 from openai import OpenAI, RateLimitError
+
+# Suppress debug logging from the OpenAI SDK and its httpx transport to
+# prevent accidental API-key leakage through HTTP header logs.
+logging.getLogger("openai").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 DEFAULT_MODEL = "gpt-4.1-mini"
 

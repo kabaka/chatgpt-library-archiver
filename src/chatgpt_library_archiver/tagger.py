@@ -18,7 +18,7 @@ from .ai import (
 )
 from .metadata import GalleryItem, load_gallery_items, save_gallery_items
 from .status import StatusReporter
-from .utils import prompt_yes_no
+from .utils import prompt_yes_no, write_secure_file
 
 DEFAULT_PROMPT = (
     "Generate concise, comma-separated descriptive tags for this image in the style of"
@@ -37,8 +37,7 @@ def _write_config(path: str) -> dict:
     model = input("model [gpt-4.1-mini] = ").strip() or "gpt-4.1-mini"
     prompt = input("prompt [leave blank for default] = ").strip() or DEFAULT_PROMPT
     cfg = {"api_key": api_key, "model": model, "prompt": prompt}
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2)
+    write_secure_file(path, json.dumps(cfg, indent=2))
     print(f"\nSaved configuration to {path}.\n")
     return cfg
 

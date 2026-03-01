@@ -498,11 +498,11 @@ def write_auth_from_browser(
     The file is created with ``0o600`` permissions.  Returns the config
     dict that was written.
     """
+    from .utils import write_secure_file
+
     config = extract_auth_config(browser)
 
-    fd = os.open(auth_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        for key, value in config.items():
-            fh.write(f"{key}={value}\n")
+    lines = "".join(f"{key}={value}\n" for key, value in config.items())
+    write_secure_file(auth_path, lines)
 
     return config

@@ -48,8 +48,8 @@ def test_small_gallery_hides_date_and_tags():
     html = resources.read_text(
         "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
     )
-    assert '<span class="created"><br>' in html
-    assert '<span class="tags"><br>' in html
+    assert "createdSpan.className = 'created'" in html
+    assert "tagsSpan.className = 'tags'" in html
     css = re.search(
         r"\.gallery-small \.meta \.created,\s*\.gallery-small \.meta \.tags \{[^}]*\}",
         html,
@@ -112,7 +112,7 @@ def test_gallery_has_full_size_mode_with_preload_and_swipe():
     )
     assert 'option value="gallery-full"' in html
     assert ".gallery-full {" in html
-    assert "data-thumb-full=" in html
+    assert "setAttribute('data-thumb-full'" in html
     assert "rootMargin: '200px 0px'" in html
     assert "viewer.addEventListener('touchend'" in html
     assert "viewer.addEventListener('click'" in html
@@ -164,9 +164,9 @@ def test_generate_gallery_creates_single_index(tmp_path):
         "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
     )
     assert index.read_text() == expected
-    assert 'loading="lazy"' in expected
-    assert "data-src" in expected
-    assert "data-full" in expected
+    assert "img.loading = 'lazy'" in expected
+    assert "setAttribute('data-src'" in expected
+    assert "setAttribute('data-full'" in expected
     assert '<div class="layout">' in expected
 
     with open(gallery_root / "metadata.json", encoding="utf-8") as f:
@@ -274,9 +274,8 @@ def _extract_thumb_handler() -> str:
     html = resources.read_text(
         "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
     )
-    start = html.index("const link = card.querySelector('a.thumb');")
-    start = html.index("link.addEventListener", start)
-    end = html.index("const img = card.querySelector('img');", start)
+    start = html.index("link.addEventListener('click'")
+    end = html.index("observer.observe(img);", start)
     snippet = html[start:end]
     return "function attach(link, openViewer, index) {\n" + snippet + "}\n"
 

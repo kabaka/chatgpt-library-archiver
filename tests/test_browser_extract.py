@@ -386,9 +386,9 @@ def test_extract_cookies_temp_copy_permissions(tmp_path, monkeypatch):
     extract_cookies("test")
 
     # At least one chmod call should set 0o600 on a file named "Cookies"
-    assert any(
-        str(p).endswith("Cookies") and m == 0o600 for p, m in chmod_calls
-    ), f"Expected chmod 0o600 on Cookies copy, got: {chmod_calls}"
+    assert any(str(p).endswith("Cookies") and m == 0o600 for p, m in chmod_calls), (
+        f"Expected chmod 0o600 on Cookies copy, got: {chmod_calls}"
+    )
 
 
 # ===================================================================

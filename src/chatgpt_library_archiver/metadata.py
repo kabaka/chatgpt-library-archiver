@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
+import tempfile
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -201,9 +204,25 @@ def load_gallery_items(gallery_root: str | Path) -> list[GalleryItem]:
 
 
 def save_gallery_items(gallery_root: str | Path, items: Iterable[GalleryItem]) -> None:
-    """Persist ``items`` to ``metadata.json`` within ``gallery_root``."""
+    """Persist ``items`` to ``metadata.json`` within ``gallery_root``.
+
+    The write is atomic: data is flushed to a temporary file in the same
+    directory first, then moved into place with :func:`os.replace`.  This
+    prevents a crash or power loss from leaving a truncated metadata file.
+    """
 
     path = metadata_path(gallery_root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump([item.to_dict() for item in items], fh, indent=2)
+    gallery_dir = path.parent
+    gallery_dir.mkdir(parents=True, exist_ok=True)
+
+    payload = json.dumps([item.to_dict() for item in items], indent=2)
+
+    fd, tmp_path = tempfile.mkstemp(dir=str(gallery_dir), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(payload)
+        os.replace(tmp_path, str(path))
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
+        raise
