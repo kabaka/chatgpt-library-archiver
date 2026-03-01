@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *.pyo
 *.log
+.coverage
 
 # Virtual environments
 .venv/
@@ -12,10 +13,8 @@ __pycache__/
 Thumbs.db
 .env
 
-# Gallery content
-gallery/*/images/
-gallery/*/filtered/
-gallery/*/metadata_v*.json
+# Gallery output (local data — never commit)
+gallery/
 
 # Build artifacts
 dist/
@@ -24,3 +23,6 @@ build/
 
 # Auth credentials (never commit)
 auth.txt
+
+# Local configuration (may contain API keys)
+tagging_config.json
