@@ -35,7 +35,8 @@ dependencies = [
   "requests>=2.31.0",
   "tqdm>=4.66.0",
   "openai>=1.0.0",
-  "Pillow>=10.0.0"
+  "Pillow>=10.0.0",
+  "cryptography>=41.0.0"
 ]
 
 [project.optional-dependencies]
@@ -73,9 +74,13 @@ select = ["E", "F", "I", "B", "UP", "SIM", "PL", "RUF", "FURB"]
 "src/chatgpt_library_archiver/cli/app.py" = ["PLR0913"]
 "src/chatgpt_library_archiver/http_client.py" = ["PLR0913"]
 "src/chatgpt_library_archiver/importer.py" = ["PLR0912", "PLR0913", "PLR0915"]
-"src/chatgpt_library_archiver/incremental_downloader.py" = ["PLR0912", "PLR0915"]
+"src/chatgpt_library_archiver/incremental_downloader.py" = ["PLC0415", "PLR0912", "PLR0915"]
 "src/chatgpt_library_archiver/tagger.py" = ["PLR0912", "PLR0913", "PLR0915"]
 "src/chatgpt_library_archiver/thumbnails.py" = ["PLR0912", "PLR0915"]
+"src/chatgpt_library_archiver/browser_extract.py" = ["PLC0415", "PLR0913", "S603", "S607", "SLF001"]
+"src/chatgpt_library_archiver/cli/commands/extract_auth.py" = ["PLC0415"]
+
+"tests/*.py" = ["PLC0415", "PLR2004"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["chatgpt_library_archiver"]
@@ -88,6 +93,7 @@ indent-style = "space"
 source = ["chatgpt_library_archiver"]
 omit = [
   "*/chatgpt_library_archiver/bootstrap.py",
+  "*/chatgpt_library_archiver/browser_extract.py",
   "*/chatgpt_library_archiver/cli/*",
   "*/chatgpt_library_archiver/importer.py",
   "*/chatgpt_library_archiver/incremental_downloader.py",

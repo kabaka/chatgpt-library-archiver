@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 from .commands.bootstrap import BootstrapCommand
 from .commands.download import DownloadCommand
+from .commands.extract_auth import ExtractAuthCommand
 from .commands.gallery import GalleryCommand
 from .commands.import_command import ImportCommand
 from .commands.tag import TagCommand
@@ -39,6 +40,7 @@ def _register_commands(
     parser: argparse.ArgumentParser,
     bootstrap_cmd: BootstrapCommand,
     download_cmd: DownloadCommand,
+    extract_auth_cmd: ExtractAuthCommand,
     gallery_cmd: GalleryCommand,
     import_cmd: ImportCommand,
     tag_cmd: TagCommand,
@@ -49,6 +51,7 @@ def _register_commands(
     registered.append(bootstrap_cmd.register(subparsers))
     download_parser = download_cmd.register(subparsers)
     registered.append(download_parser)
+    registered.append(extract_auth_cmd.register(subparsers))
     registered.append(gallery_cmd.register(subparsers))
     registered.append(import_cmd.register(subparsers))
     registered.append(tag_cmd.register(subparsers))
@@ -62,7 +65,7 @@ def _register_commands(
 def create_app(
     *,
     bootstrap_runner: Callable[[bool], int | None],
-    download_runner: Callable[[bool], int | None],
+    download_runner: Callable[..., int | None],
     gallery_generator: Callable[[str], int],
     thumbnail_regenerator: Callable[[str, bool], Iterable[str]],
     import_runner: Callable[..., Iterable[dict]],
@@ -86,6 +89,7 @@ def create_app(
 
     bootstrap_cmd = BootstrapCommand(bootstrap_runner)
     download_cmd = DownloadCommand(download_runner)
+    extract_auth_cmd = ExtractAuthCommand(printer=printer)
     gallery_cmd = GalleryCommand(
         generate_gallery=gallery_generator,
         regenerate_thumbnails=thumbnail_regenerator,
@@ -102,6 +106,7 @@ def create_app(
         parser=parser,
         bootstrap_cmd=bootstrap_cmd,
         download_cmd=download_cmd,
+        extract_auth_cmd=extract_auth_cmd,
         gallery_cmd=gallery_cmd,
         import_cmd=import_cmd,
         tag_cmd=tag_cmd,

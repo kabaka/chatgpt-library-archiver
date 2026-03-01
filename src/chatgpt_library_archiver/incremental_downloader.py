@@ -44,9 +44,14 @@ def create_http_client() -> HttpClient:
     return HttpClient(timeout=30.0)
 
 
-def main(tag_new: bool = False) -> None:
-    # Load auth (prompt if missing)
-    config = ensure_auth_config("auth.txt")
+def main(tag_new: bool = False, browser: str | None = None) -> None:
+    # Load auth from browser (live) or auth.txt (file)
+    if browser:
+        from .browser_extract import extract_auth_config
+
+        config = extract_auth_config(browser)
+    else:
+        config = ensure_auth_config("auth.txt")
     base_url = config["url"]
     headers = build_headers(config)
 
@@ -126,12 +131,19 @@ def main(tag_new: bool = False) -> None:
                     context=exc.context,
                     exception=exc,
                 )
-                if exc.status_code in (401, 403) and prompt_yes_no(
-                    "Auth seems invalid/expired. Re-enter credentials now?"
-                ):
-                    config = ensure_auth_config("auth.txt")
-                    headers = build_headers(config)
-                    continue
+                if exc.status_code in (401, 403):
+                    if browser:
+                        from .browser_extract import extract_auth_config
+
+                        config = extract_auth_config(browser)
+                        headers = build_headers(config)
+                        continue
+                    elif prompt_yes_no(
+                        "Auth seems invalid/expired. Re-enter credentials now?"
+                    ):
+                        config = ensure_auth_config("auth.txt")
+                        headers = build_headers(config)
+                        continue
                 break
             except Exception as exc:  # pragma: no cover - safety net
                 progress.report_error(

@@ -149,8 +149,9 @@ def test_download_tag_new_flag(monkeypatch, tmp_path):
 
     called = {}
 
-    def fake_main(tag_new=False):
+    def fake_main(tag_new=False, browser=None):
         called["tag_new"] = tag_new
+        called["browser"] = browser
 
     monkeypatch.setattr(incremental_downloader, "main", fake_main)
     monkeypatch.setattr(
@@ -161,6 +162,59 @@ def test_download_tag_new_flag(monkeypatch, tmp_path):
     cli.main()
 
     assert called.get("tag_new") is True
+    assert called.get("browser") is None
+
+
+def test_download_browser_flag_edge(monkeypatch, tmp_path):
+    """download --browser edge sets browser='edge' and passes it to the runner."""
+    monkeypatch.chdir(tmp_path)
+
+    called = {}
+
+    def fake_main(tag_new=False, browser=None):
+        called["tag_new"] = tag_new
+        called["browser"] = browser
+
+    monkeypatch.setattr(incremental_downloader, "main", fake_main)
+    monkeypatch.setattr(
+        sys, "argv", ["chatgpt_library_archiver", "download", "--browser", "edge"]
+    )
+
+    cli = importlib.import_module("chatgpt_library_archiver.__main__")
+    cli.main()
+
+    assert called["browser"] == "edge"
+    assert called["tag_new"] is False
+
+
+def test_download_browser_flag_chrome(monkeypatch, tmp_path):
+    """download --browser chrome sets browser='chrome' and passes it to the runner."""
+    monkeypatch.chdir(tmp_path)
+
+    called = {}
+
+    def fake_main(tag_new=False, browser=None):
+        called["tag_new"] = tag_new
+        called["browser"] = browser
+
+    monkeypatch.setattr(incremental_downloader, "main", fake_main)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "chatgpt_library_archiver",
+            "download",
+            "--browser",
+            "chrome",
+            "--tag-new",
+        ],
+    )
+
+    cli = importlib.import_module("chatgpt_library_archiver.__main__")
+    cli.main()
+
+    assert called["browser"] == "chrome"
+    assert called["tag_new"] is True
 
 
 def test_import_subcommand(monkeypatch, tmp_path):
@@ -263,3 +317,143 @@ def test_console_script_help_via_built_wheel(tmp_path):
             shutil.rmtree(build_dir)
 
     assert "usage: chatgpt-archiver" in result.stdout
+
+
+# ===================================================================
+# extract-auth subcommand
+# ===================================================================
+
+
+def test_extract_auth_argument_parsing():
+    """Parser accepts --browser, --output, --dry-run, --no-verify."""
+    from chatgpt_library_archiver.cli.commands.extract_auth import ExtractAuthCommand
+
+    captured: list[str] = []
+    cmd = ExtractAuthCommand(printer=captured.append)
+
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers()
+    cmd.register(subparsers)
+
+    args = parser.parse_args(
+        [
+            "extract-auth",
+            "--browser",
+            "chrome",
+            "--output",
+            "out.txt",
+            "--dry-run",
+            "--no-verify",
+        ]
+    )
+    assert args.browser == "chrome"
+    assert args.output == "out.txt"
+    assert args.dry_run is True
+    assert args.no_verify is True
+
+
+def test_extract_auth_argument_defaults():
+    """Default values for browser, output, dry_run, no_verify."""
+    import argparse
+
+    from chatgpt_library_archiver.cli.commands.extract_auth import ExtractAuthCommand
+
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers()
+    cmd = ExtractAuthCommand(printer=lambda _: None)
+    cmd.register(subparsers)
+
+    args = parser.parse_args(["extract-auth"])
+    assert args.browser == "edge"
+    assert args.output == "auth.txt"
+    assert args.dry_run is False
+    assert args.no_verify is False
+
+
+def test_extract_auth_handle_writes_file(monkeypatch, tmp_path):
+    """handle() calls write_auth_from_browser and prints confirmation."""
+    from chatgpt_library_archiver.cli.commands.extract_auth import ExtractAuthCommand
+
+    fake_config = {"url": "https://example.com", "authorization": "Bearer tok"}
+    monkeypatch.setattr(
+        "chatgpt_library_archiver.browser_extract.write_auth_from_browser",
+        lambda browser, auth_path: fake_config,
+    )
+    # Stub out verification
+    monkeypatch.setattr(
+        "chatgpt_library_archiver.browser_extract.extract_auth_config",
+        lambda browser: fake_config,
+    )
+
+    captured: list[str] = []
+    cmd = ExtractAuthCommand(printer=captured.append)
+
+    output_path = str(tmp_path / "auth.txt")
+    args = SimpleNamespace(
+        browser="edge", output=output_path, dry_run=False, no_verify=True
+    )
+    result = cmd.handle(args)
+    assert result == 0
+    assert any("Credentials written" in s for s in captured)
+
+
+def test_extract_auth_handle_dry_run(monkeypatch):
+    """handle() with dry_run prints masked config without writing."""
+    from chatgpt_library_archiver.cli.commands.extract_auth import ExtractAuthCommand
+
+    fake_config = {
+        "url": "https://example.com",
+        "authorization": "Bearer long-token-value-here",
+        "cookie": "__Secure-next-auth.session-token=long-cookie-val",
+    }
+    monkeypatch.setattr(
+        "chatgpt_library_archiver.browser_extract.extract_auth_config",
+        lambda browser: fake_config,
+    )
+
+    captured: list[str] = []
+    cmd = ExtractAuthCommand(printer=captured.append)
+
+    args = SimpleNamespace(
+        browser="edge", output="auth.txt", dry_run=True, no_verify=True
+    )
+    result = cmd.handle(args)
+    assert result == 0
+    assert any("dry run" in s.lower() for s in captured)
+    # Sensitive keys should be masked (authorization, cookie)
+    joined = "\n".join(captured)
+    assert "long-token-value-here" not in joined
+    assert "long-cookie-val" not in joined
+
+
+def test_extract_auth_handle_error_returns_1(monkeypatch):
+    """handle() returns 1 and prints message on BrowserExtractError."""
+    from chatgpt_library_archiver.browser_extract import BrowserExtractError
+    from chatgpt_library_archiver.cli.commands.extract_auth import ExtractAuthCommand
+
+    def _fail(browser):
+        raise BrowserExtractError("simulated error")
+
+    def _fail2(browser, output):
+        raise BrowserExtractError("simulated error")
+
+    monkeypatch.setattr(
+        "chatgpt_library_archiver.browser_extract.extract_auth_config",
+        _fail,
+    )
+    monkeypatch.setattr(
+        "chatgpt_library_archiver.browser_extract.write_auth_from_browser",
+        _fail2,
+    )
+
+    captured: list[str] = []
+    cmd = ExtractAuthCommand(printer=captured.append)
+
+    args = SimpleNamespace(
+        browser="edge", output="auth.txt", dry_run=False, no_verify=True
+    )
+    result = cmd.handle(args)
+    assert result == 1
+    assert any("Error" in s for s in captured)

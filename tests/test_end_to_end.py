@@ -121,7 +121,7 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
     monkeypatch.setattr(
         incremental_downloader,
         "create_http_client",
-        lambda: FakeHttpClient(),
+        FakeHttpClient,
     )
 
     # Run the full download + gallery generation flow
@@ -151,3 +151,90 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
 
     html = html_path.read_text()
     assert "metadata.json" in html
+
+
+def test_incremental_download_with_browser_calls_extract_auth(monkeypatch, tmp_path):
+    """browser= passed → calls extract_auth_config, not ensure_auth_config."""
+    monkeypatch.chdir(tmp_path)
+
+    auth_calls = {"extract": 0, "ensure": 0}
+    fake_config = {
+        "url": "https://api.example.com?limit=1",
+        "authorization": "Bearer tok",
+        "cookie": "session=abc",
+        "referer": "https://chat.openai.com/library",
+        "user_agent": "agent",
+        "oai_client_version": "1",
+        "oai_device_id": "dev",
+        "oai_language": "en",
+    }
+
+    def fake_extract(browser):
+        auth_calls["extract"] += 1
+        assert browser == "edge"
+        return fake_config
+
+    def fake_ensure(path="auth.txt"):
+        auth_calls["ensure"] += 1
+        return fake_config
+
+    monkeypatch.setattr(
+        "chatgpt_library_archiver.browser_extract.extract_auth_config",
+        fake_extract,
+    )
+    monkeypatch.setattr(
+        incremental_downloader,
+        "ensure_auth_config",
+        fake_ensure,
+    )
+    monkeypatch.setattr(incremental_downloader, "prompt_yes_no", lambda msg: False)
+
+    (tmp_path / "gallery").mkdir()
+
+    incremental_downloader.main(browser="edge")
+
+    assert auth_calls["extract"] == 1
+    assert auth_calls["ensure"] == 0
+
+
+def test_incremental_download_without_browser_calls_ensure_auth(monkeypatch, tmp_path):
+    """browser= None (default) → calls ensure_auth_config."""
+    monkeypatch.chdir(tmp_path)
+
+    auth_calls = {"extract": 0, "ensure": 0}
+    fake_config = {
+        "url": "https://api.example.com?limit=1",
+        "authorization": "Bearer tok",
+        "cookie": "session=abc",
+        "referer": "https://chat.openai.com/library",
+        "user_agent": "agent",
+        "oai_client_version": "1",
+        "oai_device_id": "dev",
+        "oai_language": "en",
+    }
+
+    def fake_extract(browser):
+        auth_calls["extract"] += 1
+        return fake_config
+
+    def fake_ensure(path="auth.txt"):
+        auth_calls["ensure"] += 1
+        return fake_config
+
+    monkeypatch.setattr(
+        "chatgpt_library_archiver.browser_extract.extract_auth_config",
+        fake_extract,
+    )
+    monkeypatch.setattr(
+        incremental_downloader,
+        "ensure_auth_config",
+        fake_ensure,
+    )
+    monkeypatch.setattr(incremental_downloader, "prompt_yes_no", lambda msg: False)
+
+    (tmp_path / "gallery").mkdir()
+
+    incremental_downloader.main()
+
+    assert auth_calls["extract"] == 0
+    assert auth_calls["ensure"] == 1

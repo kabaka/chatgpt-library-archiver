@@ -118,7 +118,7 @@ def test_install_dependencies_invokes_expected_command(monkeypatch, tmp_path, to
     monkeypatch.setattr(
         bootstrap.subprocess,
         "check_call",
-        lambda cmd: called.append(cmd),
+        called.append,
     )
     bootstrap.install_dependencies(env, [str(requirement)])
     assert called == [expected_cmd]

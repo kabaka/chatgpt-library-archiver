@@ -45,9 +45,7 @@ oai_language=en-US
 
 
 def test_ensure_auth_config_raises_on_missing_when_user_declines(monkeypatch):
-    # Simulate user declining to create file
-    inputs = iter(["n"])
-    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    monkeypatch.setattr("builtins.input", lambda _: "n")
 
     with tempfile.TemporaryDirectory() as d:
         path = os.path.join(d, "auth.txt")
