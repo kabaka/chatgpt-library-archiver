@@ -7,6 +7,7 @@ from PIL import Image
 
 from chatgpt_library_archiver import incremental_downloader
 from chatgpt_library_archiver.http_client import DownloadResult
+from chatgpt_library_archiver.incremental_downloader import _sanitize_id
 
 
 def _sample_png() -> bytes:
@@ -238,3 +239,139 @@ def test_incremental_download_without_browser_calls_ensure_auth(monkeypatch, tmp
 
     assert auth_calls["extract"] == 0
     assert auth_calls["ensure"] == 1
+
+
+# -------------------------------------------------------------------
+# _sanitize_id tests
+# -------------------------------------------------------------------
+
+
+class TestSanitizeId:
+    def test_normal_hex_id_unchanged(self):
+        assert _sanitize_id("s_1ef6abc") == "s_1ef6abc"
+
+    def test_path_traversal_stripped(self):
+        result = _sanitize_id("../../etc/cron.d/evil")
+        assert "/" not in result
+        assert ".." not in result
+        assert result == "______etc_cron_d_evil"
+
+    def test_absolute_path_stripped(self):
+        result = _sanitize_id("/etc/passwd")
+        assert "/" not in result
+        assert result == "_etc_passwd"
+
+    def test_null_bytes_removed(self):
+        result = _sanitize_id("abc\x00def")
+        assert "\x00" not in result
+        assert result == "abcdef"
+
+    def test_empty_string_returns_fallback(self):
+        assert _sanitize_id("") == "unknown"
+
+    def test_only_unsafe_chars_returns_fallback(self):
+        assert _sanitize_id("../../../") == "unknown"
+
+    def test_unicode_normalized(self):
+        # e-acute (é) → stripped to e via NFKD + ascii encode
+        result = _sanitize_id("café")
+        assert result == "cafe"
+
+    def test_hyphens_and_underscores_preserved(self):
+        assert _sanitize_id("my-image_01") == "my-image_01"
+
+    def test_windows_path_separators(self):
+        result = _sanitize_id("..\\..\\windows\\system32")
+        assert "\\" not in result
+        assert result == "______windows_system32"
+
+    def test_spaces_replaced(self):
+        result = _sanitize_id("my image id")
+        assert " " not in result
+        assert result == "my_image_id"
+
+
+# -------------------------------------------------------------------
+# Path traversal integration test
+# -------------------------------------------------------------------
+
+
+def test_path_traversal_does_not_escape_gallery(monkeypatch, tmp_path):
+    """A malicious item.id with path traversal must not write outside gallery."""
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        incremental_downloader,
+        "ensure_auth_config",
+        lambda path="auth.txt": {
+            "url": "https://api.example.com?limit=1",
+            "authorization": "Bearer token",
+            "cookie": "session=abc",
+            "referer": "https://chat.openai.com/library",
+            "user_agent": "agent",
+            "oai_client_version": "1",
+            "oai_device_id": "dev",
+            "oai_language": "en",
+        },
+    )
+    monkeypatch.setattr(incremental_downloader, "prompt_yes_no", lambda msg: True)
+    monkeypatch.setattr(incremental_downloader.time, "sleep", lambda s: None)
+    monkeypatch.setattr(incremental_downloader.tagger, "tag_images", lambda **kw: 0)
+
+    images_dir = tmp_path / "gallery" / "images"
+    images_dir.mkdir(parents=True)
+    meta_path = tmp_path / "gallery" / "metadata.json"
+    meta_path.write_text("[]")
+
+    malicious_id = "../../escape"
+
+    class FakeHttpClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def close(self):
+            return None
+
+        def get_json(self, url, headers=None):
+            parsed = urlparse(url)
+            if parsed.netloc == "api.example.com":
+                return {
+                    "items": [
+                        {
+                            "id": malicious_id,
+                            "url": "https://img.local/bad.png",
+                            "created_at": 1,
+                        }
+                    ]
+                }
+            return {"items": []}
+
+        def stream_download(self, url, destination, headers=None, **kwargs):
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(PNG_BYTES)
+            return DownloadResult(
+                path=destination,
+                bytes_downloaded=len(PNG_BYTES),
+                checksum=hashlib.sha256(PNG_BYTES).hexdigest(),
+                content_type="image/png",
+            )
+
+    monkeypatch.setattr(
+        incremental_downloader,
+        "create_http_client",
+        FakeHttpClient,
+    )
+
+    incremental_downloader.main()
+
+    # The sanitised id should produce a safe filename inside images/
+    escaped_path = tmp_path / "escape.png"
+    assert not escaped_path.exists(), "File escaped gallery directory!"
+
+    # Verify the file landed safely inside gallery/images/
+    safe_files = list(images_dir.glob("*.png"))
+    assert len(safe_files) == 1
+    assert safe_files[0].parent == images_dir

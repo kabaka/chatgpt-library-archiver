@@ -5,9 +5,11 @@ import tempfile
 import pytest
 
 from chatgpt_library_archiver.utils import (
+    _SENSITIVE_AUTH_KEYS,
     REQUIRED_AUTH_KEYS,
     ensure_auth_config,
     load_auth_config,
+    mask_sensitive,
     prompt_and_write_auth,
     prompt_yes_no,
     write_secure_file,
@@ -70,8 +72,15 @@ def test_ensure_auth_config_rejects_partial_config(monkeypatch):
 
 
 def test_prompt_and_write_auth_sets_strict_permissions(monkeypatch):
-    values = iter([f"val_{k}" for k in REQUIRED_AUTH_KEYS])
-    monkeypatch.setattr("builtins.input", lambda _: next(values))
+    nonsensitive_keys = [k for k in REQUIRED_AUTH_KEYS if k not in _SENSITIVE_AUTH_KEYS]
+    sensitive_keys = [k for k in REQUIRED_AUTH_KEYS if k in _SENSITIVE_AUTH_KEYS]
+    nonsensitive_iter = iter([f"val_{k}" for k in nonsensitive_keys])
+    sensitive_iter = iter([f"val_{k}" for k in sensitive_keys])
+    monkeypatch.setattr("builtins.input", lambda _: next(nonsensitive_iter))
+    monkeypatch.setattr(
+        "chatgpt_library_archiver.utils.getpass.getpass",
+        lambda _: next(sensitive_iter),
+    )
 
     with tempfile.TemporaryDirectory() as d:
         path = os.path.join(d, "auth.txt")
@@ -126,3 +135,55 @@ def test_write_secure_file_custom_mode(tmp_path):
     write_secure_file(path, "data", mode=0o640)
     mode = stat.S_IMODE(os.stat(path).st_mode)
     assert mode == 0o640
+
+
+# --- mask_sensitive tests ---
+
+
+def test_mask_sensitive_truncates_long_value():
+    assert mask_sensitive("sk-Zpp16abcdef1234567890") == "sk-Zpp16..."
+
+
+def test_mask_sensitive_returns_short_value_unchanged():
+    assert mask_sensitive("short") == "short"
+    assert mask_sensitive("exactly8") == "exactly8"
+
+
+def test_mask_sensitive_custom_visible():
+    assert mask_sensitive("abcdefghij", visible=4) == "abcd..."
+
+
+# --- getpass usage for sensitive auth keys ---
+
+
+def test_prompt_and_write_auth_uses_getpass_for_sensitive_keys(monkeypatch, capsys):
+    """getpass.getpass must be called for authorization and cookie keys."""
+    getpass_calls = []
+
+    def fake_getpass(prompt):
+        getpass_calls.append(prompt)
+        return f"secret-for-{prompt.split()[0]}"
+
+    nonsensitive_iter = iter(
+        [f"val_{k}" for k in REQUIRED_AUTH_KEYS if k not in _SENSITIVE_AUTH_KEYS]
+    )
+    monkeypatch.setattr("builtins.input", lambda _: next(nonsensitive_iter))
+    monkeypatch.setattr("chatgpt_library_archiver.utils.getpass.getpass", fake_getpass)
+
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "auth.txt")
+        cfg = prompt_and_write_auth(path)
+
+    # Verify getpass was called for exactly the sensitive keys
+    assert len(getpass_calls) == len(_SENSITIVE_AUTH_KEYS)
+    for key in _SENSITIVE_AUTH_KEYS:
+        assert any(key in call for call in getpass_calls)
+
+    # Verify masked confirmation was printed
+    out = capsys.readouterr().out
+    for key in _SENSITIVE_AUTH_KEYS:
+        assert f"\u2713 {key} set:" in out
+
+    # Verify sensitive values were stored
+    assert cfg["authorization"].startswith("secret-for-")
+    assert cfg["cookie"].startswith("secret-for-")

@@ -9,6 +9,11 @@ from PIL import Image
 from chatgpt_library_archiver import thumbnails
 
 
+def test_max_image_pixels_is_set():
+    """Decompression bomb guard must be active at module scope (M-4)."""
+    assert Image.MAX_IMAGE_PIXELS == 200_000_000
+
+
 def _sample_png_bytes() -> bytes:
     buf = io.BytesIO()
     Image.new("RGB", (8, 8), color=(10, 20, 30)).save(buf, format="PNG")

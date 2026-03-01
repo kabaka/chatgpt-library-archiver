@@ -16,6 +16,13 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 
 from .status import StatusReporter
 
+# Guard against decompression bombs.  Pillow's default (~178 MP) is close
+# enough to be a risk when multiple ProcessPoolExecutor workers each open a
+# large image simultaneously.  200 MP is generous for any real photograph
+# while still rejecting pathological payloads.  See also the security audit
+# finding M-4 and the image-pipeline review §4.
+Image.MAX_IMAGE_PIXELS = 200_000_000
+
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from .metadata import GalleryItem
 

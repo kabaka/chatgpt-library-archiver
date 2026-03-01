@@ -7,8 +7,9 @@ import threading
 from collections.abc import Callable, Iterable, Mapping, MutableSet
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
-from requests import Response, Session
+from requests import PreparedRequest, Response, Session
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -57,6 +58,43 @@ class DownloadResult:
     content_type: str | None
 
 
+_SENSITIVE_HEADERS: frozenset[str] = frozenset(
+    {
+        "Authorization",
+        "Cookie",
+        "oai-client-version",
+        "oai-device-id",
+        "oai-language",
+        "Referer",
+    }
+)
+
+
+def _origin(url: str | None) -> tuple[str | None, str | None, int | None]:
+    """Return ``(scheme, host, port)`` for *url*."""
+
+    if not url:
+        return (None, None, None)
+    parsed = urlparse(url)
+    return (parsed.scheme, parsed.hostname, parsed.port)
+
+
+class SafeSession(Session):
+    """Session that strips sensitive headers on cross-origin redirects."""
+
+    def rebuild_auth(  # type: ignore[override]
+        self, prepared_request: PreparedRequest, response: Response
+    ) -> None:
+        original_origin = _origin(response.request.url)
+        redirect_origin = _origin(prepared_request.url)
+
+        if original_origin != redirect_origin:
+            for header in _SENSITIVE_HEADERS:
+                prepared_request.headers.pop(header, None)
+        else:
+            super().rebuild_auth(prepared_request, response)
+
+
 def _default_retry(
     *,
     retries: int,
@@ -92,7 +130,7 @@ class HttpClient:
             backoff_factor=backoff_factor,
             status_forcelist=status_forcelist or (429, 500, 502, 503, 504),
         )
-        self._session_factory = session_factory or Session
+        self._session_factory = session_factory or SafeSession
         self._sessions: MutableSet[Session] = set()
         self._lock = threading.Lock()
         self._local = threading.local()
@@ -207,6 +245,7 @@ class HttpClient:
         allow_empty: bool = False,
         expected_content_prefixes: Iterable[str] | None = None,
         expected_checksum: str | None = None,
+        max_bytes: int | None = None,
     ) -> DownloadResult:
         """Download ``url`` to ``destination`` streaming the payload.
 
@@ -256,17 +295,27 @@ class HttpClient:
                     fh.write(chunk)
                     hasher.update(chunk)
                     bytes_downloaded += len(chunk)
+                    if max_bytes is not None and bytes_downloaded > max_bytes:
+                        raise HttpError(
+                            url=url,
+                            status_code=response.status_code,
+                            reason="Download exceeds size limit",
+                            details={
+                                "content_type": content_type,
+                                "max_bytes": max_bytes,
+                                "bytes_downloaded": bytes_downloaded,
+                            },
+                            response=response,
+                        )
         except Exception:
-            if destination.exists():
-                destination.unlink()
+            destination.unlink(missing_ok=True)
             response.close()
             raise
         finally:
             response.close()
 
         if bytes_downloaded == 0 and not allow_empty:
-            if destination.exists():
-                destination.unlink()
+            destination.unlink(missing_ok=True)
             raise HttpError(
                 url=url,
                 status_code=response.status_code,
@@ -277,8 +326,7 @@ class HttpClient:
 
         checksum = hasher.hexdigest()
         if expected_checksum and checksum != expected_checksum:
-            if destination.exists():
-                destination.unlink()
+            destination.unlink(missing_ok=True)
             raise HttpError(
                 url=url,
                 status_code=response.status_code,

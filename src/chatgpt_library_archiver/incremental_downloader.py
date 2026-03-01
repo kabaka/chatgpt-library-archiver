@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import mimetypes
+import re
 import time
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import quote
@@ -23,6 +25,22 @@ from .status import StatusReporter
 from .utils import ensure_auth_config, prompt_yes_no
 
 MAX_EMPTY_PAGE_RETRIES = 2
+
+
+def _sanitize_id(image_id: str) -> str:
+    """Sanitize an image ID to prevent path traversal.
+
+    Strips null bytes, normalizes unicode, and removes any characters that
+    are not alphanumeric, hyphens, or underscores.  Matches the approach
+    used by ``importer._slugify()``.
+    """
+    text = image_id.replace("\x00", "")
+    normalized = unicodedata.normalize("NFKD", text)
+    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
+    clean = re.sub(r"[^a-zA-Z0-9_\-]", "_", ascii_text)
+    if not re.search(r"[a-zA-Z0-9]", clean):
+        return "unknown"
+    return clean or "unknown"
 
 
 def build_headers(config: dict) -> dict:
@@ -86,17 +104,23 @@ def main(tag_new: bool = False, browser: str | None = None) -> None:
             try:
                 if not item.url:
                     raise ValueError("Missing URL for gallery item")
-                temp_path = images_dir / f"{item.id}.download"
+                safe_id = _sanitize_id(item.id)
+                temp_path = images_dir / f"{safe_id}.download"
                 result = client.stream_download(
                     item.url,
                     temp_path,
                     headers=headers,
                     expected_content_prefixes=("image/",),
+                    max_bytes=100 * 1024 * 1024,
                 )
                 raw_type = (result.content_type or "").split(";", 1)[0].strip()
                 ext = mimetypes.guess_extension(raw_type) or ".jpg"
-                filename = f"{item.id}{ext}"
-                filepath = images_dir / filename
+                filename = f"{safe_id}{ext}"
+                filepath = (images_dir / filename).resolve()
+                if not filepath.is_relative_to(images_dir.resolve()):
+                    raise ValueError(
+                        f"Skipped image: invalid filename derived from id '{item.id}'"
+                    )
                 if filepath.exists():
                     filepath.unlink()
                 temp_path.replace(filepath)

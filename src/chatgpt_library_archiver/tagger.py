@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import os
+import re
 import sys
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -18,7 +20,7 @@ from .ai import (
 )
 from .metadata import GalleryItem, load_gallery_items, save_gallery_items
 from .status import StatusReporter
-from .utils import prompt_yes_no, write_secure_file
+from .utils import mask_sensitive, prompt_yes_no, write_secure_file
 
 DEFAULT_PROMPT = (
     "Generate concise, comma-separated descriptive tags for this image in the style of"
@@ -33,7 +35,9 @@ def _load_config(path: str) -> dict:
 
 def _write_config(path: str) -> dict:
     print("\nTagging configuration not found. Let's create it.\n")
-    api_key = input("api_key = ").strip()
+    api_key = getpass.getpass("api_key = ").strip()
+    if api_key:
+        print(f"  \u2713 API key set: {mask_sensitive(api_key)}")
     model = input("model [gpt-4.1-mini] = ").strip() or "gpt-4.1-mini"
     prompt = input("prompt [leave blank for default] = ").strip() or DEFAULT_PROMPT
     cfg = {"api_key": api_key, "model": model, "prompt": prompt}
@@ -104,8 +108,14 @@ def generate_tags(
         on_retry=on_retry,
     )
     parts = [p.strip() for p in text.replace("\n", ",").split(",")]
-    tags = [p for p in parts if p]
-    return tags, telemetry
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for p in parts:
+        tag = re.sub(r"<[^>]+>", "", p).strip().lower()
+        if tag and tag not in seen:
+            seen.add(tag)
+            cleaned.append(tag)
+    return cleaned, telemetry
 
 
 def tag_images(

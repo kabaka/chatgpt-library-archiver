@@ -29,6 +29,17 @@ def test_viewer_image_css_preserves_aspect_ratio():
     assert "height: auto" in block
 
 
+def test_gallery_has_csp_meta_tag():
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    assert 'http-equiv="Content-Security-Policy"' in html
+    assert "default-src 'self'" in html
+    assert "script-src 'unsafe-inline'" in html
+    assert "style-src 'unsafe-inline'" in html
+    assert "img-src 'self' data:" in html
+
+
 def test_gallery_prefers_color_scheme():
     html = resources.read_text(
         "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"

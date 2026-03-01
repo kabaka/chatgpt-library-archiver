@@ -1,8 +1,135 @@
 import hashlib
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
-from chatgpt_library_archiver.http_client import HttpClient, HttpError
+from chatgpt_library_archiver.http_client import (
+    _SENSITIVE_HEADERS,
+    HttpClient,
+    HttpError,
+    SafeSession,
+    _origin,
+)
+
+# ---------------------------------------------------------------------------
+# SafeSession / redirect credential stripping (2.1)
+# ---------------------------------------------------------------------------
+
+
+class TestOriginHelper:
+    """Tests for the ``_origin()`` helper."""
+
+    def test_returns_scheme_host_port(self) -> None:
+        assert _origin("https://example.com:8443/path") == (
+            "https",
+            "example.com",
+            8443,
+        )
+
+    def test_default_port_is_none(self) -> None:
+        assert _origin("https://example.com/path") == ("https", "example.com", None)
+
+    def test_none_url(self) -> None:
+        assert _origin(None) == (None, None, None)
+
+    def test_empty_string(self) -> None:
+        assert _origin("") == (None, None, None)
+
+
+class TestSafeSession:
+    """Tests for ``SafeSession.rebuild_auth()``."""
+
+    @staticmethod
+    def _make_args(
+        original_url: str, redirect_url: str, headers: dict[str, str]
+    ) -> tuple[MagicMock, MagicMock]:
+        """Return ``(prepared_request, response)`` fakes for rebuild_auth."""
+        prepared = MagicMock()
+        prepared.url = redirect_url
+        prepared.headers = dict(headers)
+
+        response = MagicMock()
+        response.request = SimpleNamespace(url=original_url)
+        return prepared, response
+
+    def test_strips_sensitive_headers_on_cross_origin(self) -> None:
+        session = SafeSession()
+        headers = {
+            "Authorization": "Bearer tok",
+            "Cookie": "sess=abc",
+            "oai-device-id": "dev-1",
+            "oai-client-version": "v1",
+            "oai-language": "en",
+            "Referer": "https://chatgpt.com/",
+            "User-Agent": "archiver/1.0",
+            "Accept": "image/png",
+        }
+        prepared, response = self._make_args(
+            "https://chatgpt.com/api/img/1",
+            "https://cdn.example.com/img/1",
+            headers,
+        )
+        session.rebuild_auth(prepared, response)
+
+        # Sensitive headers removed
+        for h in _SENSITIVE_HEADERS:
+            assert h not in prepared.headers, f"{h} was not stripped"
+
+        # Non-sensitive headers preserved
+        assert prepared.headers["User-Agent"] == "archiver/1.0"
+        assert prepared.headers["Accept"] == "image/png"
+
+    def test_preserves_headers_on_same_origin(self) -> None:
+        session = SafeSession()
+        headers = {
+            "Authorization": "Bearer tok",
+            "Cookie": "sess=abc",
+        }
+        prepared, response = self._make_args(
+            "https://chatgpt.com/api/img/1",
+            "https://chatgpt.com/api/img/2",
+            headers,
+        )
+        session.rebuild_auth(prepared, response)
+        assert prepared.headers["Authorization"] == "Bearer tok"
+        assert prepared.headers["Cookie"] == "sess=abc"
+
+    def test_strips_on_scheme_downgrade(self) -> None:
+        """HTTPS → HTTP is a cross-origin redirect (different scheme)."""
+        session = SafeSession()
+        headers = {"Authorization": "Bearer tok"}
+        prepared, response = self._make_args(
+            "https://example.com/a",
+            "http://example.com/b",
+            headers,
+        )
+        session.rebuild_auth(prepared, response)
+        assert "Authorization" not in prepared.headers
+
+    def test_strips_on_port_change(self) -> None:
+        session = SafeSession()
+        headers = {"Authorization": "Bearer tok"}
+        prepared, response = self._make_args(
+            "https://example.com:443/a",
+            "https://example.com:8443/b",
+            headers,
+        )
+        session.rebuild_auth(prepared, response)
+        assert "Authorization" not in prepared.headers
+
+
+def test_http_client_uses_safe_session_by_default() -> None:
+    """``HttpClient`` creates ``SafeSession`` instances when no factory given."""
+    client = HttpClient()
+    session = client._get_session()
+    assert isinstance(session, SafeSession)
+    client.close()
+
+
+# ---------------------------------------------------------------------------
+# Fake helpers for HttpClient tests
+# ---------------------------------------------------------------------------
 
 
 class FakeResponse:
@@ -177,3 +304,78 @@ def test_http_client_close_releases_sessions():
 
     client.close()
     assert session.closed is True
+
+
+# ---------------------------------------------------------------------------
+# Download size limit (2.2)
+# ---------------------------------------------------------------------------
+
+
+def test_stream_download_exceeds_max_bytes(tmp_path):
+    """When payload exceeds ``max_bytes``, the download is aborted and the
+    partial file is cleaned up."""
+    url = "https://example.test/big"
+    payload = b"x" * 2048
+    responses = {
+        url: FakeResponse(
+            headers={"Content-Type": "image/png"},
+            body=payload,
+        )
+    }
+    client = make_client(responses)
+    destination = tmp_path / "big.download"
+    with pytest.raises(HttpError) as exc:
+        client.stream_download(url, destination, max_bytes=1024)
+    assert exc.value.reason == "Download exceeds size limit"
+    assert exc.value.details["max_bytes"] == 1024
+    assert not destination.exists(), "partial file should be removed"
+
+
+def test_stream_download_within_max_bytes(tmp_path):
+    """A download smaller than ``max_bytes`` succeeds normally."""
+    url = "https://example.test/small"
+    payload = b"ok" * 100  # 200 bytes
+    responses = {
+        url: FakeResponse(
+            headers={"Content-Type": "image/png"},
+            body=payload,
+        )
+    }
+    client = make_client(responses)
+    destination = tmp_path / "small.download"
+    result = client.stream_download(url, destination, max_bytes=1024)
+    assert result.bytes_downloaded == len(payload)
+    assert destination.read_bytes() == payload
+
+
+def test_stream_download_max_bytes_none_means_unlimited(tmp_path):
+    """When ``max_bytes`` is ``None`` (default), no limit is enforced."""
+    url = "https://example.test/huge"
+    payload = b"y" * 5000
+    responses = {
+        url: FakeResponse(
+            headers={"Content-Type": "image/png"},
+            body=payload,
+        )
+    }
+    client = make_client(responses)
+    destination = tmp_path / "huge.download"
+    result = client.stream_download(url, destination)
+    assert result.bytes_downloaded == len(payload)
+
+
+def test_stream_download_max_bytes_exact_boundary(tmp_path):
+    """Payload exactly equal to ``max_bytes`` should succeed (limit is
+    exclusive, i.e. we raise only when bytes_downloaded > max_bytes)."""
+    url = "https://example.test/exact"
+    payload = b"z" * 1024
+    responses = {
+        url: FakeResponse(
+            headers={"Content-Type": "image/png"},
+            body=payload,
+        )
+    }
+    client = make_client(responses)
+    destination = tmp_path / "exact.download"
+    result = client.stream_download(url, destination, max_bytes=1024)
+    assert result.bytes_downloaded == 1024

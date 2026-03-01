@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import getpass
 import os
 from pathlib import Path
 
@@ -13,6 +14,8 @@ REQUIRED_AUTH_KEYS = [
     "oai_device_id",
     "oai_language",
 ]
+
+_SENSITIVE_AUTH_KEYS: frozenset[str] = frozenset({"authorization", "cookie"})
 
 
 # Environment variable to automatically answer yes to prompts
@@ -48,6 +51,17 @@ def prompt_yes_no(message: str, default: bool = True) -> bool:
         if choice in ("n", "no"):
             return False
         print("Please enter 'y' or 'n'.")
+
+
+def mask_sensitive(value: str, visible: int = 8) -> str:
+    """Return a masked version of *value* showing only the first *visible* chars.
+
+    Used to provide a confirmation hint after accepting sensitive input
+    without exposing the full secret.
+    """
+    if len(value) <= visible:
+        return value
+    return value[:visible] + "..."
 
 
 def write_secure_file(path: str | Path, content: str, mode: int = 0o600) -> None:
@@ -93,10 +107,16 @@ def prompt_and_write_auth(path: str = "auth.txt") -> dict:
 
     cfg = {}
     for key in REQUIRED_AUTH_KEYS:
+        sensitive = key in _SENSITIVE_AUTH_KEYS
         while True:
-            val = input(f"{key} = ").strip()
+            if sensitive:
+                val = getpass.getpass(f"{key} = ").strip()
+            else:
+                val = input(f"{key} = ").strip()
             if val:
                 cfg[key] = val
+                if sensitive:
+                    print(f"  \u2713 {key} set: {mask_sensitive(val)}")
                 break
             else:
                 print("This field is required. Please enter a value.")
