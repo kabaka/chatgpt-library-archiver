@@ -50,6 +50,12 @@ _CBC_IV = b" " * 16
 _DOMAIN_HASH_LENGTH = 32
 _MIN_COOKIE_DB_VERSION_WITH_HASH = 24
 
+_DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0"
+)
+
 
 @dataclass(slots=True)
 class BrowserProfile:
@@ -344,11 +350,7 @@ def fetch_access_token(session_cookie: str) -> str:
     with HttpClient() as client:
         headers = {
             "Cookie": f"{_SESSION_COOKIE_NAME}={session_cookie}",
-            "User-Agent": (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0"
-            ),
+            "User-Agent": _DEFAULT_USER_AGENT,
         }
         session = client._get_session()
         resp = session.get(
@@ -415,11 +417,7 @@ def _scrape_client_version(session_cookie: str) -> str:
     with HttpClient() as client:
         headers = {
             "Cookie": f"{_SESSION_COOKIE_NAME}={session_cookie}",
-            "User-Agent": (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0"
-            ),
+            "User-Agent": _DEFAULT_USER_AGENT,
         }
         try:
             session = client._get_session()
@@ -473,11 +471,7 @@ def extract_auth_config(browser: str = "edge") -> dict[str, str]:
     device_id = cookies.get(_OAI_DID_COOKIE_NAME)
     oai_headers = fetch_oai_headers(session_cookie, device_id=device_id)
 
-    user_agent = (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0"
-    )
+    user_agent = _DEFAULT_USER_AGENT
 
     return {
         "url": _AUTH_URL_DEFAULT,

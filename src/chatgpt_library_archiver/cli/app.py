@@ -69,7 +69,7 @@ def create_app(
     gallery_generator: Callable[[str], int],
     thumbnail_regenerator: Callable[[str, bool], Iterable[str]],
     import_runner: Callable[..., Iterable[dict]],
-    tag_runner: Callable[[argparse.Namespace], int],
+    tag_runner: Callable[..., int],
     printer: Callable[[str], None] = print,
 ) -> CLI:
     """Construct the CLI with the provided dependencies."""

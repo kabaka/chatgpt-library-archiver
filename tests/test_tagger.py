@@ -4,7 +4,7 @@ from unittest.mock import Mock
 import pytest
 
 from chatgpt_library_archiver import tagger
-from chatgpt_library_archiver.ai import AIRequestTelemetry
+from chatgpt_library_archiver.ai import AIRequestTelemetry, TaggingConfig
 
 TAGGING_WORKERS = 2
 EXPECTED_TAGGED_ITEMS = 2
@@ -23,7 +23,7 @@ def test_tag_missing_only(monkeypatch, tmp_path, write_metadata):
 
     mock_config = Mock(
         spec=tagger.ensure_tagging_config,
-        return_value={"api_key": "k", "model": "m", "prompt": "p"},
+        return_value=TaggingConfig(api_key="k", model="m", prompt="p"),
     )
     monkeypatch.setattr(tagger, "ensure_tagging_config", mock_config)
     telemetry = AIRequestTelemetry("tag", "file", 0.1, 2, 1, 1, 0)
@@ -49,7 +49,7 @@ def test_retag_all(monkeypatch, tmp_path, write_metadata):
 
     mock_config = Mock(
         spec=tagger.ensure_tagging_config,
-        return_value={"api_key": "k", "model": "m", "prompt": "p"},
+        return_value=TaggingConfig(api_key="k", model="m", prompt="p"),
     )
     monkeypatch.setattr(tagger, "ensure_tagging_config", mock_config)
     telemetry = AIRequestTelemetry("tag", "file", 0.1, 1, 1, 0, 0)
@@ -75,7 +75,7 @@ def test_tag_specific_ids(monkeypatch, tmp_path, write_metadata):
 
     mock_config = Mock(
         spec=tagger.ensure_tagging_config,
-        return_value={"api_key": "k", "model": "m", "prompt": "p"},
+        return_value=TaggingConfig(api_key="k", model="m", prompt="p"),
     )
     monkeypatch.setattr(tagger, "ensure_tagging_config", mock_config)
     telemetry = AIRequestTelemetry("tag", "file", 0.1, 1, 1, 0, 0)
@@ -135,7 +135,7 @@ def test_progress_and_tokens(monkeypatch, capsys, tmp_path, write_metadata):
 
     mock_config = Mock(
         spec=tagger.ensure_tagging_config,
-        return_value={"api_key": "k", "model": "m", "prompt": "p"},
+        return_value=TaggingConfig(api_key="k", model="m", prompt="p"),
     )
     monkeypatch.setattr(tagger, "ensure_tagging_config", mock_config)
 
@@ -167,8 +167,8 @@ def test_ensure_tagging_config_respects_env(monkeypatch, tmp_path):
 
     cfg = tagger.ensure_tagging_config(str(config_path), allow_interactive=False)
 
-    assert cfg["api_key"] == "env-key"
-    assert cfg["prompt"] == tagger.DEFAULT_PROMPT
+    assert cfg.api_key == "env-key"
+    assert cfg.prompt == tagger.DEFAULT_PROMPT
     assert not config_path.exists()
 
 
@@ -303,7 +303,7 @@ def test_tag_images_single_failure_does_not_abort_batch(
 
     mock_config = Mock(
         spec=tagger.ensure_tagging_config,
-        return_value={"api_key": "k", "model": "m", "prompt": "p"},
+        return_value=TaggingConfig(api_key="k", model="m", prompt="p"),
     )
     monkeypatch.setattr(tagger, "ensure_tagging_config", mock_config)
 

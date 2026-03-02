@@ -11,7 +11,7 @@ from dataclasses import dataclass
 class TagCommand:
     """Command that manages image tags via OpenAI."""
 
-    tag_runner: Callable[[Namespace], int]
+    tag_runner: Callable[..., int]
     printer: Callable[[str], None]
 
     def register(self, subparsers: _SubParsersAction[ArgumentParser]) -> ArgumentParser:
@@ -54,7 +54,19 @@ class TagCommand:
         return parser
 
     def handle(self, args: Namespace) -> None:
-        count = self.tag_runner(args)
+        re_tag = getattr(args, "all", False) or bool(getattr(args, "ids", None))
+        count = self.tag_runner(
+            gallery_root=getattr(args, "gallery", "gallery"),
+            ids=getattr(args, "ids", None),
+            re_tag=re_tag,
+            remove=getattr(args, "remove_all", False),
+            remove_ids=getattr(args, "remove_ids", None),
+            config_path=getattr(args, "config", "tagging_config.json"),
+            prompt=getattr(args, "prompt", None),
+            model=getattr(args, "model", None),
+            max_workers=int(getattr(args, "workers", 4)),
+            allow_interactive=not bool(getattr(args, "no_config_prompt", False)),
+        )
         if count:
             self.printer(f"Updated tags for {count} images.")
         else:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 import getpass
 import json
 import os
@@ -13,7 +12,9 @@ from pathlib import Path
 from openai import OpenAI
 
 from .ai import (
+    DEFAULT_MODEL,
     AIRequestTelemetry,
+    TaggingConfig,
     call_image_endpoint,
     get_cached_client,
     resolve_config,
@@ -40,7 +41,7 @@ def _write_config(path: str) -> dict:
     api_key = getpass.getpass("api_key = ").strip()
     if api_key:
         print(f"  \u2713 API key set: {mask_sensitive(api_key)}")
-    model = input("model [gpt-4.1-mini] = ").strip() or "gpt-4.1-mini"
+    model = input(f"model [{DEFAULT_MODEL}] = ").strip() or DEFAULT_MODEL
     prompt = input("prompt [leave blank for default] = ").strip() or DEFAULT_PROMPT
     cfg = {"api_key": api_key, "model": model, "prompt": prompt}
     write_secure_file(path, json.dumps(cfg, indent=2))
@@ -55,7 +56,7 @@ def ensure_tagging_config(
     prompt: str | None = None,
     rename_prompt: str | None = None,
     allow_interactive: bool | None = None,
-) -> dict:
+) -> TaggingConfig:
     if allow_interactive is None:
         allow_interactive = sys.stdin is not None and sys.stdin.isatty()
 
@@ -79,7 +80,8 @@ def ensure_tagging_config(
             else:
                 raise
 
-    resolved.setdefault("prompt", DEFAULT_PROMPT)
+    if not resolved.prompt:
+        resolved.prompt = DEFAULT_PROMPT
     return resolved
 
 
@@ -151,9 +153,9 @@ def tag_images(
             config_path,
             allow_interactive=allow_interactive,
         )
-        client = get_cached_client(cfg["api_key"])
-        use_prompt = prompt or cfg.get("prompt", DEFAULT_PROMPT)
-        use_model = model or cfg.get("model", "gpt-4.1-mini")
+        client = get_cached_client(cfg.api_key)
+        use_prompt = prompt or cfg.prompt
+        use_model = model or cfg.model
         to_tag = []
         for item in items:
             if ids_set and item.id not in ids_set:
@@ -236,50 +238,3 @@ def tag_images(
 
     save_gallery_items(gallery_root, items)
     return updated
-
-
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Tag images with OpenAI")
-    parser.add_argument("--gallery", default="gallery")
-    parser.add_argument("--config", default="tagging_config.json")
-    parser.add_argument("--all", action="store_true", help="Re-tag all images")
-    parser.add_argument("--ids", nargs="+", help="Tag only specific image IDs")
-    parser.add_argument("--remove-all", action="store_true", help="Remove all tags")
-    parser.add_argument("--remove-ids", nargs="+", help="Remove tags for specific IDs")
-    parser.add_argument("--prompt", help="Override tagging prompt")
-    parser.add_argument("--model", help="Override model ID")
-    parser.add_argument(
-        "--no-config-prompt",
-        action="store_true",
-        help="Fail if configuration is missing instead of prompting",
-    )
-    parser.add_argument(
-        "--workers",
-        type=int,
-        default=4,
-        help="Number of parallel workers",
-    )
-    return parser.parse_args(argv)
-
-
-def main(args: argparse.Namespace | None = None) -> int:
-    if args is None:
-        args = parse_args()
-    re_tag = args.all or bool(args.ids)
-    return tag_images(
-        gallery_root=args.gallery,
-        ids=args.ids,
-        re_tag=re_tag,
-        remove=args.remove_all,
-        remove_ids=args.remove_ids,
-        config_path=args.config,
-        prompt=args.prompt,
-        model=args.model,
-        max_workers=args.workers,
-        allow_interactive=not getattr(args, "no_config_prompt", False),
-    )
-
-
-if __name__ == "__main__":
-    count = main()
-    print(f"Updated {count} images.")

@@ -3,6 +3,7 @@ from __future__ import annotations
 import getpass
 import os
 from pathlib import Path
+from typing import TypedDict
 
 REQUIRED_AUTH_KEYS = [
     "url",
@@ -16,6 +17,19 @@ REQUIRED_AUTH_KEYS = [
 ]
 
 _SENSITIVE_AUTH_KEYS: frozenset[str] = frozenset({"authorization", "cookie"})
+
+
+class AuthConfig(TypedDict):
+    """Typed dictionary for authentication configuration values."""
+
+    url: str
+    authorization: str
+    cookie: str
+    referer: str
+    user_agent: str
+    oai_client_version: str
+    oai_device_id: str
+    oai_language: str
 
 
 # Environment variable to automatically answer yes to prompts
@@ -83,7 +97,7 @@ def write_secure_file(path: str | Path, content: str, mode: int = 0o600) -> None
         raise
 
 
-def load_auth_config(path: str = "auth.txt") -> dict:
+def load_auth_config(path: str = "auth.txt") -> AuthConfig:
     """Load key=value lines from auth.txt into a dict.
     Ignores lines without '=' and whitespace-only lines.
     """
@@ -100,7 +114,7 @@ def load_auth_config(path: str = "auth.txt") -> dict:
     return config
 
 
-def prompt_and_write_auth(path: str = "auth.txt") -> dict:
+def prompt_and_write_auth(path: str = "auth.txt") -> AuthConfig:
     print("\nAuth file not found or invalid. Let's create it.\n")
     print("Instructions: In your browser, open Developer Tools → Network,")
     print("find a request to 'image_gen', and copy these exact header values.\n")
@@ -128,7 +142,7 @@ def prompt_and_write_auth(path: str = "auth.txt") -> dict:
     return cfg
 
 
-def ensure_auth_config(path: str = "auth.txt") -> dict:
+def ensure_auth_config(path: str = "auth.txt") -> AuthConfig:
     try:
         cfg = load_auth_config(path)
     except FileNotFoundError:

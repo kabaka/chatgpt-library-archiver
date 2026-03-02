@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 import mimetypes
 import re
 import shutil
@@ -107,9 +106,9 @@ def _prepare_ai_client(
         model=model,
         allow_interactive=allow_interactive,
     )
-    client = get_cached_client(cfg["api_key"])
-    use_model = model or cfg.get("model", "gpt-4.1-mini")
-    rename_prompt = cfg.get("rename_prompt", DEFAULT_RENAME_PROMPT)
+    client = get_cached_client(cfg.api_key)
+    use_model = model or cfg.model
+    rename_prompt = cfg.rename_prompt or DEFAULT_RENAME_PROMPT
     return client, use_model, rename_prompt
 
 
@@ -306,118 +305,6 @@ def import_images(
     return imported
 
 
-def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Import images into the gallery")
-    parser.add_argument("inputs", nargs="*", help="Files or directories to import")
-    parser.add_argument("--gallery", default="gallery", help="Gallery root path")
-    parser.add_argument(
-        "--copy",
-        action="store_true",
-        help="Copy files instead of moving them",
-    )
-    parser.add_argument(
-        "--recursive",
-        action="store_true",
-        help="Recurse into directories when importing",
-    )
-    parser.add_argument(
-        "--tag",
-        dest="tags",
-        action="append",
-        default=[],
-        help="Add tag(s) to imported images. Can be repeated or comma-separated.",
-    )
-    parser.add_argument("--title", help="Override title for all imported images")
-    parser.add_argument(
-        "--conversation-link",
-        dest="conversation_links",
-        action="append",
-        help="Conversation link for corresponding direct file inputs.",
-    )
-    parser.add_argument(
-        "--tag-new",
-        action="store_true",
-        help="Tag imported images using OpenAI",
-    )
-    parser.add_argument(
-        "--config",
-        default="tagging_config.json",
-        help="Path to tagging/AI configuration",
-    )
-    parser.add_argument(
-        "--ai-rename",
-        action="store_true",
-        help="Use OpenAI to generate descriptive filenames",
-    )
-    parser.add_argument("--rename-model", help="Model to use for AI renaming")
-    parser.add_argument("--rename-prompt", help="Prompt override for AI renaming")
-    parser.add_argument(
-        "--tag-prompt",
-        help="Prompt override for tagging imported images",
-    )
-    parser.add_argument(
-        "--tag-model",
-        help="Model override for tagging imported images",
-    )
-    parser.add_argument(
-        "--tag-workers",
-        type=int,
-        default=4,
-        help="Parallel workers when tagging imported images",
-    )
-    parser.add_argument(
-        "--no-config-prompt",
-        action="store_true",
-        help="Fail if tagging configuration is missing instead of prompting",
-    )
-    parser.add_argument(
-        "--regenerate-thumbnails",
-        action="store_true",
-        help="Regenerate thumbnails for the entire gallery and exit",
-    )
-    parser.add_argument(
-        "--force-thumbnails",
-        action="store_true",
-        help="When regenerating thumbnails, overwrite existing files",
-    )
-    return parser.parse_args(argv)
-
-
-def main(args: argparse.Namespace | None = None) -> int:
-    if args is None:
-        args = parse_args()
-    if args.regenerate_thumbnails and not args.inputs:
-        regenerated = regenerate_thumbnails(
-            gallery_root=args.gallery, force=args.force_thumbnails
-        )
-        return len(regenerated)
-
-    if not args.inputs:
-        raise ValueError("No inputs supplied for import.")
-
-    imported = import_images(
-        inputs=args.inputs,
-        gallery_root=args.gallery,
-        copy_files=args.copy,
-        recursive=args.recursive,
-        tags=args.tags,
-        title=args.title,
-        conversation_links=args.conversation_links,
-        tag_new=args.tag_new,
-        config_path=args.config,
-        ai_rename=args.ai_rename,
-        rename_model=args.rename_model,
-        rename_prompt=args.rename_prompt,
-        tag_prompt=args.tag_prompt,
-        tag_model=args.tag_model,
-        tag_workers=args.tag_workers,
-        allow_interactive=not getattr(args, "no_config_prompt", False),
-    )
-    if args.regenerate_thumbnails:
-        regenerate_thumbnails(gallery_root=args.gallery, force=args.force_thumbnails)
-    return len(imported)
-
-
 def regenerate_thumbnails(*, gallery_root: str, force: bool = False) -> list[str]:
     gallery_path = Path(gallery_root)
     data = load_gallery_items(gallery_path)
@@ -432,8 +319,3 @@ def regenerate_thumbnails(*, gallery_root: str, force: bool = False) -> list[str
     if updated:
         save_gallery_items(gallery_path, data)
     return processed
-
-
-if __name__ == "__main__":
-    count = main()
-    print(f"Imported {count} images.")

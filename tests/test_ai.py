@@ -94,8 +94,8 @@ def test_resolve_config_prefers_env_and_model_override(monkeypatch):
         overrides={"model": "override"},
     )
 
-    assert cfg["api_key"] == "env"
-    assert cfg["model"] == "override"
+    assert cfg.api_key == "env"
+    assert cfg.model == "override"
 
 
 def test_resolve_config_rejects_api_key_override(monkeypatch):

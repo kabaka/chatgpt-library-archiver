@@ -43,7 +43,7 @@ def _sanitize_id(image_id: str) -> str:
     return clean or "unknown"
 
 
-def build_headers(config: dict) -> dict:
+def build_headers(config: dict[str, str]) -> dict[str, str]:
     return {
         "Authorization": config["authorization"],
         "Cookie": config["cookie"],

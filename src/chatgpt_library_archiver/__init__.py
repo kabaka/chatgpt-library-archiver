@@ -1,5 +1,7 @@
 """Top-level package for ChatGPT Library Archiver."""
 
+from __future__ import annotations
+
 __all__ = [
     "bootstrap",
     "gallery",

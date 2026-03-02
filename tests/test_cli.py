@@ -125,12 +125,11 @@ def test_tag_subcommand(monkeypatch, tmp_path):
 
     called = {}
 
-    def fake_main(args):
-        called["gallery"] = args.gallery
-        called["remove_all"] = args.remove_all
+    def fake_tag_images(**kwargs):
+        called.update(kwargs)
         return 0
 
-    monkeypatch.setattr(tagger, "main", fake_main)
+    monkeypatch.setattr(tagger, "tag_images", fake_tag_images)
     monkeypatch.setattr(
         sys, "argv", ["chatgpt_library_archiver", "tag", "--remove-all"]
     )
@@ -138,8 +137,8 @@ def test_tag_subcommand(monkeypatch, tmp_path):
     cli = importlib.import_module("chatgpt_library_archiver.__main__")
     cli.main()
 
-    assert called["remove_all"] is True
-    assert called["gallery"] == "gallery"
+    assert called["remove"] is True
+    assert called["gallery_root"] == "gallery"
 
 
 def test_download_tag_new_flag(monkeypatch, tmp_path):

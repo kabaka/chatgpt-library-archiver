@@ -45,6 +45,16 @@ class AIRequestTelemetry:
     retries: int
 
 
+@dataclass(slots=True)
+class TaggingConfig:
+    """Resolved configuration for AI tagging and renaming operations."""
+
+    api_key: str
+    model: str = DEFAULT_MODEL
+    prompt: str = ""
+    rename_prompt: str | None = None
+
+
 def get_cached_client(api_key: str) -> OpenAI:
     """Return a cached ``OpenAI`` client for ``api_key``.
 
@@ -78,7 +88,7 @@ def resolve_config(
     *,
     source: dict[str, Any] | None,
     overrides: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+) -> TaggingConfig:
     """Merge configuration from file, environment variables, and overrides."""
 
     if overrides and overrides.get("api_key") is not None:
@@ -114,8 +124,12 @@ def resolve_config(
     if not merged.get("api_key"):
         raise ValueError("tagging config missing 'api_key'")
 
-    merged.setdefault("model", DEFAULT_MODEL)
-    return merged
+    return TaggingConfig(
+        api_key=merged["api_key"],
+        model=merged.get("model", DEFAULT_MODEL),
+        prompt=merged.get("prompt", ""),
+        rename_prompt=merged.get("rename_prompt"),
+    )
 
 
 def encode_image(image_path: Path) -> tuple[str, str]:
