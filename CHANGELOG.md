@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Mobile thumbnail sizing: selecting Medium or Large sizes now loads appropriately
+  sized images instead of always showing small thumbnails.
+
 ## [0.1.0] — 2026-03-01
 
 ### Added

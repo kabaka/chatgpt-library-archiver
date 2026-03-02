@@ -561,6 +561,11 @@ const sizeClassToKey = {
   'gallery-large': 'large',
   'gallery-full': 'full',
 };
+const sizeKeyToWidth = { small: 150, medium: 250, large: 400, full: 400 };
+function sizesAttrForKey(sizeKey) {
+  var px = sizeKeyToWidth[sizeKey] || 250;
+  return px + 'px';
+}
 
 /* === State === */
 let allItems = [];
@@ -738,7 +743,7 @@ function createCard(item, filteredIndex) {
   img.setAttribute('data-thumb-full', thumbPaths.full);
   img.setAttribute('data-full', imgPath);
   img.setAttribute('srcset', thumbPaths.small + ' 150w, ' + thumbPaths.medium + ' 250w, ' + thumbPaths.large + ' 400w');
-  img.setAttribute('sizes', '(max-width: 680px) 150px, (max-width: 960px) 250px, 400px');
+  img.setAttribute('sizes', sizesAttrForKey(thumbKey));
   img.alt = title || filenameStem(item.filename) || item.id;
   img.loading = 'lazy';
   img.addEventListener('error', function() {
@@ -955,12 +960,19 @@ function toggleDarkMode() {
 
 /* === Thumbnail Size Change === */
 function updateThumbnailsForSize(sizeKey) {
+  var newSizes = sizesAttrForKey(sizeKey);
   var images = document.querySelectorAll('.image-card img');
   images.forEach(function(img) {
     var nextSrc = img.dataset['thumb' + sizeKey.charAt(0).toUpperCase() + sizeKey.slice(1)];
     if (!nextSrc) nextSrc = img.dataset.src;
     if (!nextSrc) return;
     img.dataset.src = nextSrc;
+    // Update srcset + sizes so the browser picks the correct source
+    img.setAttribute('srcset',
+      (img.dataset.thumbSmall || '') + ' 150w, ' +
+      (img.dataset.thumbMedium || '') + ' 250w, ' +
+      (img.dataset.thumbLarge || '') + ' 400w');
+    img.setAttribute('sizes', newSizes);
     if (img.hasAttribute('src')) {
       img.src = nextSrc;
     }
