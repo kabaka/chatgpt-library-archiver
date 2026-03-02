@@ -105,9 +105,23 @@ body.dark {
 .meta a { color: #fff; text-decoration: underline; }
 .meta .tags {
   font-size: 0.7em;
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+}
+.tag-pill {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.2);
+  padding: 1px 6px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 1em;
+  margin: 1px 2px;
+  border: none;
+  color: #fff;
+  font-family: inherit;
+  line-height: 1.4;
+}
+.tag-pill:hover, .tag-pill:focus-visible {
+  background: rgba(255, 255, 255, 0.4);
 }
 header.top-bar {
   position: sticky;
@@ -134,7 +148,7 @@ header.top-bar h1 {
   margin: 0;
   grid-area: controls;
 }
-.toggle, .size-select {
+.toggle, .size-select, .sort-select {
   background: var(--control-bg);
   border-radius: 5px;
   padding: 6px 10px;
@@ -220,6 +234,15 @@ header.top-bar .search-bar {
   white-space: nowrap;
   border: 0;
 }
+.result-count {
+  padding: 4px var(--space);
+  font-size: 0.85em;
+  color: var(--meta-color);
+}
+.scroll-sentinel {
+  height: 1px;
+  width: 100%;
+}
 @media (prefers-color-scheme: dark) {
   body:not(.light) {
     --bg: #111;
@@ -236,7 +259,7 @@ header.top-bar .search-bar {
   header.top-bar h1 {
     font-size: 1.1em;
   }
-  .toggle, .size-select, .search-bar button {
+  .toggle, .size-select, .sort-select, .search-bar button {
     padding: 6px 8px;
     font-size: 0.9em;
   }
@@ -292,7 +315,7 @@ header.top-bar .search-bar {
   .date-range input {
     min-width: 0;
   }
-  .toggle, .size-select {
+  .toggle, .size-select, .sort-select {
     font-size: 0.95em;
   }
   .reset-button {
@@ -371,7 +394,8 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 .thumb:focus-visible,
-.help-icon:focus-visible {
+.help-icon:focus-visible,
+.tag-pill:focus-visible {
   outline: 2px solid #4A90D9;
   outline-offset: 2px;
 }
@@ -409,10 +433,19 @@ button.toggle {
           <button type="button" id="resetFilters" class="reset-button" title="Reset filters">⟲<span class="sr-only">Reset filters</span></button>
         </div>
       </div>
-      <div class="controls">
+      <nav class="controls" aria-label="Gallery controls">
+        <div class="sort-select">
+          <label for="sortSelector">Sort:</label>
+          <select id="sortSelector">
+            <option value="date-desc">Date (newest)</option>
+            <option value="date-asc">Date (oldest)</option>
+            <option value="title-asc">Title (A–Z)</option>
+            <option value="title-desc">Title (Z–A)</option>
+          </select>
+        </div>
         <div class="size-select">
-          <strong>Select Image Size: </strong>
-          <select id="sizeSelector" aria-label="Select image size">
+          <label for="sizeSelector">Size:</label>
+          <select id="sizeSelector">
             <option value="gallery-small">Small</option>
             <option value="gallery-medium" selected>Medium</option>
             <option value="gallery-large">Large</option>
@@ -424,23 +457,51 @@ button.toggle {
           <svg role="img" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.387.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.758-1.333-1.758-1.09-.744.083-.729.083-.729 1.205.084 1.84 1.236 1.84 1.236 1.07 1.835 2.807 1.305 3.492.998.108-.776.418-1.305.762-1.605-2.665-.305-5.466-1.332-5.466-5.93 0-1.31.467-2.381 1.235-3.221-.124-.303-.535-1.523.117-3.176 0 0 1.008-.322 3.3 1.23a11.52 11.52 0 0 1 3-.405c1.02.005 2.045.138 3 .405 2.29-1.552 3.296-1.23 3.296-1.23.653 1.653.242 2.873.118 3.176.77.84 1.233 1.911 1.233 3.221 0 4.61-2.807 5.624-5.479 5.921.43.37.823 1.102.823 2.222 0 1.606-.014 2.898-.014 3.293 0 .319.218.694.825.576C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
           <span class="sr-only">GitHub project</span>
         </a>
-      </div>
+      </nav>
   </header>
-  <div class="layout">
+  <div class="result-count" id="resultCount" aria-live="polite"></div>
+  <main class="layout">
     <div class="gallery gallery-grid gallery-medium" id="gallery"></div>
-  </div>
+    <div class="scroll-sentinel" id="scrollSentinel" aria-hidden="true"></div>
+  </main>
 <div id="viewer" role="dialog" aria-modal="true" aria-label="Image viewer" tabindex="-1">
   <button id="viewerClose" class="viewer-close" type="button" aria-label="Close viewer">&times;</button>
   <img id="viewerImg" src="" alt="">
   <div class="viewer-meta"><a id="viewerRaw" href="" target="_blank">Raw file</a></div>
 </div>
 <script>
+/* === Constants === */
+const INITIAL_BATCH = 100;
+const SCROLL_BATCH = 50;
 const sizeClassToKey = {
   'gallery-small': 'small',
   'gallery-medium': 'medium',
   'gallery-large': 'large',
   'gallery-full': 'full',
 };
+
+/* === State === */
+let allItems = [];
+let filteredItems = [];
+let renderedCount = 0;
+let viewerData = [];
+let visibleIndices = [];
+let currentIndex = 0;
+let justSwiped = false;
+let touchStartX = 0;
+let touchStartY = 0;
+let viewerTrigger = null;
+
+/* === Utilities === */
+function debounce(fn, delay) {
+  let timer;
+  return function() {
+    const args = arguments;
+    const ctx = this;
+    clearTimeout(timer);
+    timer = setTimeout(function() { fn.apply(ctx, args); }, delay);
+  };
+}
 
 function currentSizeKey() {
   const selector = document.getElementById('sizeSelector');
@@ -464,168 +525,7 @@ function safeHref(url) {
   return url;
 }
 
-async function loadImages() {
-  const response = await fetch('metadata.json', { cache: 'no-store' });
-  if (!response.ok) throw new Error('Failed to load metadata: ' + response.status);
-  const data = await response.json();
-  const gallery = document.getElementById('gallery');
-  const observer = new IntersectionObserver((entries, obs) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        const img = entry.target;
-        img.src = img.dataset.src;
-        obs.unobserve(img);
-      }
-    });
-  }, { rootMargin: '200px 0px' });
-  data.forEach(item => {
-    const card = document.createElement('div');
-    card.className = 'image-card';
-    const title = item.title || '';
-    card.dataset.title = title.toLowerCase();
-    card.dataset.created = item.created_at ? String(item.created_at * 1000) : '';
-    const tagsArr = item.tags || [];
-    card.dataset.tags = tagsArr.map(t => t.toLowerCase()).join('\n');
-    const imgPath = 'images/' + item.filename;
-    const fallbackThumb = item.thumbnail ? item.thumbnail : imgPath;
-    const thumbPaths = resolveThumbnails(item, fallbackThumb, imgPath);
-    const thumbKey = currentSizeKey();
-    const thumbPath = thumbPaths[thumbKey];
-    const created = item.created_at
-      ? new Date(item.created_at * 1000)
-          .toISOString()
-          .replace('T', ' ')
-          .split('.')[0]
-      : '';
-    const tagsSnippet = tagsArr.slice(0, 5).join(', ');
-    const extra = tagsArr.length > 5 ? '…' : '';
-    // Build card with DOM API — safe from XSS (no innerHTML with user data)
-    const link = document.createElement('a');
-    link.href = imgPath;
-    link.className = 'thumb';
-    const img = document.createElement('img');
-    img.setAttribute('data-src', thumbPath);
-    img.setAttribute('data-thumb-small', thumbPaths.small);
-    img.setAttribute('data-thumb-medium', thumbPaths.medium);
-    img.setAttribute('data-thumb-large', thumbPaths.large);
-    img.setAttribute('data-thumb-full', thumbPaths.full);
-    img.setAttribute('data-full', imgPath);
-    img.alt = title || item.filename || item.id;
-    img.loading = 'lazy';
-    link.appendChild(img);
-    card.appendChild(link);
-    const meta = document.createElement('div');
-    meta.className = 'meta';
-    const strong = document.createElement('strong');
-    strong.textContent = title || item.id;
-    meta.appendChild(strong);
-    const createdSpan = document.createElement('span');
-    createdSpan.className = 'created';
-    createdSpan.appendChild(document.createElement('br'));
-    createdSpan.appendChild(document.createTextNode(created));
-    meta.appendChild(createdSpan);
-    if (tagsSnippet) {
-      const tagsSpan = document.createElement('span');
-      tagsSpan.className = 'tags';
-      tagsSpan.appendChild(document.createElement('br'));
-      tagsSpan.appendChild(document.createTextNode(tagsSnippet + extra));
-      tagsSpan.title = tagsArr.join(', ');
-      meta.appendChild(tagsSpan);
-    }
-    meta.appendChild(document.createElement('br'));
-    const convLink = document.createElement('a');
-    convLink.href = safeHref(item.conversation_link);
-    convLink.target = '_blank';
-    convLink.textContent = 'View conversation';
-    meta.appendChild(convLink);
-    card.appendChild(meta);
-    const index =
-      viewerData.push({
-        src: imgPath,
-        thumb: thumbPath,
-        thumbs: thumbPaths,
-        title: title || item.id,
-      }) - 1;
-    card.dataset.index = String(index);
-    gallery.appendChild(card);
-    link.addEventListener('click', e => {
-      if (e.ctrlKey || e.metaKey) {
-        return;
-      }
-      e.preventDefault();
-      openViewer(index);
-    });
-    observer.observe(img);
-  });
-  updateVisibleIndices();
-}
-function toggleDarkMode() {
-  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  const isDark =
-    document.body.classList.contains('dark') ||
-    (!document.body.classList.contains('light') && prefersDark);
-  if (isDark) {
-    document.body.classList.remove('dark');
-    document.body.classList.add('light');
-    if (typeof sessionStorage !== 'undefined') {
-      sessionStorage.setItem('theme', 'light');
-    }
-  } else {
-    document.body.classList.remove('light');
-    document.body.classList.add('dark');
-    if (typeof sessionStorage !== 'undefined') {
-      sessionStorage.setItem('theme', 'dark');
-    }
-  }
-}
-const savedTheme = sessionStorage.getItem('theme');
-if (savedTheme === 'dark') {
-  document.body.classList.add('dark');
-} else if (savedTheme === 'light') {
-  document.body.classList.add('light');
-}
-const savedSize = sessionStorage.getItem('size');
-if (savedSize) {
-  document.getElementById('sizeSelector').value = savedSize;
-  if (savedSize === 'gallery-full') {
-    document.getElementById('gallery').className = 'gallery gallery-full';
-  } else {
-    document.getElementById('gallery').className = 'gallery gallery-grid ' + savedSize;
-  }
-}
-const savedText = sessionStorage.getItem('filter-text') || '';
-const savedStart = sessionStorage.getItem('filter-start') || '';
-const savedEnd = sessionStorage.getItem('filter-end') || '';
-document.getElementById('searchBox').value = savedText;
-document.getElementById('startDate').value = savedStart;
-document.getElementById('endDate').value = savedEnd;
-function filterGallery() {
-  const textEl = document.getElementById('searchBox');
-  const startEl = document.getElementById('startDate');
-  const endEl = document.getElementById('endDate');
-  const text = textEl.value.toLowerCase();
-  const start = startEl.value;
-  const end = endEl.value;
-  if (typeof sessionStorage !== 'undefined') {
-    sessionStorage.setItem('filter-text', textEl.value);
-    sessionStorage.setItem('filter-start', start);
-    sessionStorage.setItem('filter-end', end);
-  }
-  const startMs = start ? new Date(start).getTime() : null;
-  const endMs = end ? new Date(end).getTime() : null;
-  const cards = document.querySelectorAll('.image-card');
-  const searchFn = text ? makeSearchFn(text) : () => true;
-  cards.forEach(card => {
-    const created = card.dataset.created ? parseInt(card.dataset.created) : null;
-    const matchesText = searchFn(card);
-    const matchesStart = startMs === null || (created && created >= startMs);
-    const matchesEnd = endMs === null || (created && created <= endMs);
-    card.style.display =
-      matchesText && matchesStart && matchesEnd ? '' : 'none';
-  });
-  updateVisibleIndices();
-}
-
+/* === Search / Filter === */
 function tokenize(expr) {
   const tokens = [];
   const re = /\s*(\(|\)|AND|OR|NOT|[^()\s]+)\s*/gi;
@@ -645,7 +545,7 @@ function makeSearchFn(expr) {
       i++;
       const rhs = parseTerm();
       const lhs = node;
-      node = card => lhs(card) || rhs(card);
+      node = function(item) { return lhs(item) || rhs(item); };
     }
     return node;
   }
@@ -655,7 +555,7 @@ function makeSearchFn(expr) {
       i++;
       const rhs = parseFactor();
       const lhs = node;
-      node = card => lhs(card) && rhs(card);
+      node = function(item) { return lhs(item) && rhs(item); };
     }
     return node;
   }
@@ -663,7 +563,7 @@ function makeSearchFn(expr) {
     const token = tokens[i++];
     if (token === 'not') {
       const fn = parseFactor();
-      return card => !fn(card);
+      return function(item) { return !fn(item); };
     }
     if (token === '(') {
       const fn = parseExpr();
@@ -671,85 +571,331 @@ function makeSearchFn(expr) {
       return fn;
     }
     if (token && token !== ')' && token !== 'and' && token !== 'or') {
-      return card =>
-        (card.dataset.title && card.dataset.title.includes(token)) ||
-        (card.dataset.tags && card.dataset.tags.includes(token));
+      return function(item) {
+        return (item._searchTitle && item._searchTitle.includes(token)) ||
+               (item._searchTags && item._searchTags.includes(token));
+      };
     }
-    return () => true;
+    return function() { return true; };
   }
   return parseExpr();
 }
-function updateThumbnailsForSize(sizeKey) {
-  const images = document.querySelectorAll('.image-card img');
-  images.forEach(img => {
-    let nextSrc = img.dataset[`thumb${sizeKey.charAt(0).toUpperCase() + sizeKey.slice(1)}`];
-    if (!nextSrc) {
-      nextSrc = img.dataset.src;
+
+/* === Sorting === */
+function sortItems(items, sortKey) {
+  var sorted = items.slice();
+  switch (sortKey) {
+    case 'date-desc':
+      sorted.sort(function(a, b) { return (b.created_at || 0) - (a.created_at || 0); });
+      break;
+    case 'date-asc':
+      sorted.sort(function(a, b) { return (a.created_at || 0) - (b.created_at || 0); });
+      break;
+    case 'title-asc':
+      sorted.sort(function(a, b) { return (a.title || '').localeCompare(b.title || ''); });
+      break;
+    case 'title-desc':
+      sorted.sort(function(a, b) { return (b.title || '').localeCompare(a.title || ''); });
+      break;
+  }
+  return sorted;
+}
+
+/* === Lazy Loading Observer === */
+const lazyObserver = new IntersectionObserver(function(entries, obs) {
+  entries.forEach(function(entry) {
+    if (entry.isIntersecting) {
+      var img = entry.target;
+      img.src = img.dataset.src;
+      obs.unobserve(img);
     }
+  });
+}, { rootMargin: '200px 0px' });
+
+/* === Infinite Scroll Sentinel Observer === */
+const scrollObserver = new IntersectionObserver(function(entries) {
+  entries.forEach(function(entry) {
+    if (entry.isIntersecting && renderedCount < filteredItems.length) {
+      renderBatch(SCROLL_BATCH);
+    }
+  });
+}, { rootMargin: '400px 0px' });
+
+/* === Card Creation (11.4 uses <article>, 11.7 clickable tags) === */
+function createCard(item, filteredIndex) {
+  var card = document.createElement('article');
+  card.className = 'image-card';
+  var title = item.title || '';
+  var imgPath = 'images/' + item.filename;
+  var fallbackThumb = item.thumbnail || imgPath;
+  var thumbPaths = resolveThumbnails(item, fallbackThumb, imgPath);
+  var thumbKey = currentSizeKey();
+  var thumbPath = thumbPaths[thumbKey];
+  var tagsArr = item.tags || [];
+  var created = item.created_at
+    ? new Date(item.created_at * 1000)
+        .toISOString()
+        .replace('T', ' ')
+        .split('.')[0]
+    : '';
+  // Build link and image
+  var link = document.createElement('a');
+  link.href = imgPath;
+  link.className = 'thumb';
+  var img = document.createElement('img');
+  img.setAttribute('data-src', thumbPath);
+  img.setAttribute('data-thumb-small', thumbPaths.small);
+  img.setAttribute('data-thumb-medium', thumbPaths.medium);
+  img.setAttribute('data-thumb-large', thumbPaths.large);
+  img.setAttribute('data-thumb-full', thumbPaths.full);
+  img.setAttribute('data-full', imgPath);
+  img.alt = title || item.filename || item.id;
+  img.loading = 'lazy';
+  link.appendChild(img);
+  card.appendChild(link);
+  // Build metadata overlay
+  var meta = document.createElement('div');
+  meta.className = 'meta';
+  var strong = document.createElement('strong');
+  strong.textContent = title || item.id;
+  meta.appendChild(strong);
+  var createdSpan = document.createElement('span');
+  createdSpan.className = 'created';
+  createdSpan.appendChild(document.createElement('br'));
+  createdSpan.appendChild(document.createTextNode(created));
+  meta.appendChild(createdSpan);
+  // Clickable tag pills (11.7)
+  if (tagsArr.length > 0) {
+    var tagsSpan = document.createElement('span');
+    tagsSpan.className = 'tags';
+    tagsSpan.appendChild(document.createElement('br'));
+    var displayTags = tagsArr.slice(0, 5);
+    for (var ti = 0; ti < displayTags.length; ti++) {
+      (function(tag) {
+        var pill = document.createElement('button');
+        pill.type = 'button';
+        pill.className = 'tag-pill';
+        pill.textContent = tag;
+        pill.title = 'Filter by: ' + tag;
+        pill.addEventListener('click', function(e) {
+          e.stopPropagation();
+          e.preventDefault();
+          document.getElementById('searchBox').value = tag;
+          applyFiltersAndSort();
+        });
+        tagsSpan.appendChild(pill);
+      })(displayTags[ti]);
+    }
+    if (tagsArr.length > 5) {
+      tagsSpan.appendChild(document.createTextNode(' \u2026'));
+    }
+    tagsSpan.title = tagsArr.join(', ');
+    meta.appendChild(tagsSpan);
+  }
+  meta.appendChild(document.createElement('br'));
+  var convLink = document.createElement('a');
+  convLink.href = safeHref(item.conversation_link);
+  convLink.target = '_blank';
+  convLink.textContent = 'View conversation';
+  meta.appendChild(convLink);
+  card.appendChild(meta);
+  card.dataset.index = String(filteredIndex);
+  link.addEventListener('click', function(e) {
+    if (e.ctrlKey || e.metaKey) return;
+    e.preventDefault();
+    openViewer(filteredIndex);
+  });
+  return { card: card, img: img };
+}
+
+/* === Batch Rendering (11.1 infinite scroll + 11.3 DocumentFragment) === */
+function renderBatch(count) {
+  var gallery = document.getElementById('gallery');
+  var start = renderedCount;
+  var end = Math.min(start + count, filteredItems.length);
+  if (start >= end) return;
+  var fragment = document.createDocumentFragment();
+  for (var i = start; i < end; i++) {
+    var result = createCard(filteredItems[i], i);
+    fragment.appendChild(result.card);
+    lazyObserver.observe(result.img);
+  }
+  gallery.appendChild(fragment);
+  renderedCount = end;
+}
+
+function resetRender() {
+  var gallery = document.getElementById('gallery');
+  gallery.innerHTML = '';
+  renderedCount = 0;
+}
+
+/* === Viewer Data Rebuild === */
+function rebuildViewerData() {
+  var thumbKey = currentSizeKey();
+  viewerData = [];
+  visibleIndices = [];
+  for (var i = 0; i < filteredItems.length; i++) {
+    var item = filteredItems[i];
+    var imgPath = 'images/' + item.filename;
+    var fallbackThumb = item.thumbnail || imgPath;
+    var thumbPaths = resolveThumbnails(item, fallbackThumb, imgPath);
+    viewerData.push({
+      src: imgPath,
+      thumb: thumbPaths[thumbKey],
+      thumbs: thumbPaths,
+      title: item.title || item.id,
+    });
+    visibleIndices.push(i);
+  }
+}
+
+/* === Result Count (11.6) === */
+function updateResultCount() {
+  var el = document.getElementById('resultCount');
+  var total = allItems.length;
+  var shown = filteredItems.length;
+  if (total === 0) {
+    el.textContent = '';
+  } else if (shown === total) {
+    el.textContent = 'Showing all ' + total + ' images';
+  } else {
+    el.textContent = 'Showing ' + shown + ' of ' + total + ' images';
+  }
+}
+
+/* === Filter + Sort + Render Pipeline === */
+function applyFiltersAndSort() {
+  var textEl = document.getElementById('searchBox');
+  var startEl = document.getElementById('startDate');
+  var endEl = document.getElementById('endDate');
+  var sortEl = document.getElementById('sortSelector');
+  var text = textEl.value.toLowerCase();
+  var start = startEl.value;
+  var end = endEl.value;
+  var sortKey = sortEl.value;
+  // Persist filter state
+  try {
+    sessionStorage.setItem('filter-text', textEl.value);
+    sessionStorage.setItem('filter-start', start);
+    sessionStorage.setItem('filter-end', end);
+    sessionStorage.setItem('sort', sortKey);
+  } catch (e) { /* private browsing */ }
+  var startMs = start ? new Date(start).getTime() : null;
+  var endMs = end ? new Date(end).getTime() : null;
+  var searchFn = text ? makeSearchFn(text) : function() { return true; };
+  // Filter data
+  filteredItems = [];
+  for (var i = 0; i < allItems.length; i++) {
+    var item = allItems[i];
+    var created = item.created_at ? item.created_at * 1000 : null;
+    if (!searchFn(item)) continue;
+    if (startMs !== null && (!created || created < startMs)) continue;
+    if (endMs !== null && (!created || created > endMs)) continue;
+    filteredItems.push(item);
+  }
+  // Sort (11.5)
+  filteredItems = sortItems(filteredItems, sortKey);
+  // Rebuild viewer data for lightbox
+  rebuildViewerData();
+  // Re-render with infinite scroll
+  resetRender();
+  renderBatch(INITIAL_BATCH);
+  updateResultCount();
+}
+
+/* === Metadata Loading === */
+async function loadImages() {
+  var response = await fetch('metadata.json', { cache: 'no-store' });
+  if (!response.ok) throw new Error('Failed to load metadata: ' + response.status);
+  var data = await response.json();
+  // Pre-compute search fields on each item
+  allItems = [];
+  for (var i = 0; i < data.length; i++) {
+    var item = data[i];
+    item._searchTitle = (item.title || '').toLowerCase();
+    item._searchTags = (item.tags || []).map(function(t) { return t.toLowerCase(); }).join('\n');
+    allItems.push(item);
+  }
+  // Start observing the infinite scroll sentinel
+  var sentinel = document.getElementById('scrollSentinel');
+  scrollObserver.observe(sentinel);
+  // Apply initial filters and render first batch
+  applyFiltersAndSort();
+}
+
+/* === Dark Mode === */
+function toggleDarkMode() {
+  var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  var isDark =
+    document.body.classList.contains('dark') ||
+    (!document.body.classList.contains('light') && prefersDark);
+  if (isDark) {
+    document.body.classList.remove('dark');
+    document.body.classList.add('light');
+    try { sessionStorage.setItem('theme', 'light'); } catch (e) {}
+  } else {
+    document.body.classList.remove('light');
+    document.body.classList.add('dark');
+    try { sessionStorage.setItem('theme', 'dark'); } catch (e) {}
+  }
+}
+
+/* === Thumbnail Size Change === */
+function updateThumbnailsForSize(sizeKey) {
+  var images = document.querySelectorAll('.image-card img');
+  images.forEach(function(img) {
+    var nextSrc = img.dataset['thumb' + sizeKey.charAt(0).toUpperCase() + sizeKey.slice(1)];
+    if (!nextSrc) nextSrc = img.dataset.src;
     if (!nextSrc) return;
     img.dataset.src = nextSrc;
     if (img.hasAttribute('src')) {
       img.src = nextSrc;
     }
   });
-  viewerData = viewerData.map(item => {
-    if (!item.thumbs) return item;
-    const updated = { ...item };
-    updated.thumb = item.thumbs[sizeKey] || item.thumb;
-    return updated;
-  });
+  for (var i = 0; i < viewerData.length; i++) {
+    if (viewerData[i].thumbs) {
+      viewerData[i].thumb = viewerData[i].thumbs[sizeKey] || viewerData[i].thumb;
+    }
+  }
 }
 
 function changeSize() {
-  const gallery = document.getElementById('gallery');
-  const size = document.getElementById('sizeSelector').value;
+  var gallery = document.getElementById('gallery');
+  var size = document.getElementById('sizeSelector').value;
   if (size === 'gallery-full') {
     gallery.className = 'gallery gallery-full';
   } else {
     gallery.className = 'gallery gallery-grid ' + size;
   }
-  if (typeof sessionStorage !== 'undefined') {
-    sessionStorage.setItem('size', size);
-  }
-  const sizeKey = sizeClassToKey[size] || 'medium';
+  try { sessionStorage.setItem('size', size); } catch (e) {}
+  var sizeKey = sizeClassToKey[size] || 'medium';
   updateThumbnailsForSize(sizeKey);
 }
+
+/* === Reset Filters === */
 function resetFilters() {
-  const textEl = document.getElementById('searchBox');
-  const startEl = document.getElementById('startDate');
-  const endEl = document.getElementById('endDate');
-  textEl.value = '';
-  startEl.value = '';
-  endEl.value = '';
-  if (typeof sessionStorage !== 'undefined') {
+  document.getElementById('searchBox').value = '';
+  document.getElementById('startDate').value = '';
+  document.getElementById('endDate').value = '';
+  document.getElementById('sortSelector').value = 'date-desc';
+  try {
     sessionStorage.removeItem('filter-text');
     sessionStorage.removeItem('filter-start');
     sessionStorage.removeItem('filter-end');
-  }
-  filterGallery();
-}
-let viewerData = [];
-let visibleIndices = [];
-let currentIndex = 0;
-let justSwiped = false;
-let touchStartX = 0;
-let touchStartY = 0;
-let viewerTrigger = null;
-
-function updateVisibleIndices() {
-  const cards = document.querySelectorAll('.image-card');
-  visibleIndices = Array.from(cards)
-    .filter(card => card.style.display !== 'none')
-    .map(card => parseInt(card.dataset.index));
+    sessionStorage.removeItem('sort');
+  } catch (e) {}
+  applyFiltersAndSort();
 }
 
+/* === Viewer === */
 function showViewerAt(pos) {
   currentIndex = pos;
-  const index = visibleIndices[pos];
-  const item = viewerData[index];
-  const viewer = document.getElementById('viewer');
-  const img = document.getElementById('viewerImg');
-  const raw = document.getElementById('viewerRaw');
+  var index = visibleIndices[pos];
+  var item = viewerData[index];
+  var viewer = document.getElementById('viewer');
+  var img = document.getElementById('viewerImg');
+  var raw = document.getElementById('viewerRaw');
   viewer.style.display = 'flex';
   img.src = item.src;
   img.alt = item.title;
@@ -758,13 +904,13 @@ function showViewerAt(pos) {
 }
 
 function openViewer(index) {
-  const card = document.querySelector('.image-card[data-index="' + index + '"] a.thumb');
+  var card = document.querySelector('.image-card[data-index="' + index + '"] a.thumb');
   viewerTrigger = card || document.activeElement;
-  updateVisibleIndices();
-  const pos = visibleIndices.indexOf(index);
+  var pos = visibleIndices.indexOf(index);
   if (pos === -1) return;
   showViewerAt(pos);
 }
+
 function closeViewer() {
   document.getElementById('viewer').style.display = 'none';
   justSwiped = false;
@@ -773,14 +919,57 @@ function closeViewer() {
     viewerTrigger = null;
   }
 }
+
 function showNext(delta) {
-  const total = visibleIndices.length;
+  var total = visibleIndices.length;
   if (!total) return;
-  const nextPos = (currentIndex + delta + total) % total;
+  var nextPos = (currentIndex + delta + total) % total;
   showViewerAt(nextPos);
 }
-document.addEventListener('keydown', e => {
-  const viewer = document.getElementById('viewer');
+
+/* === Initialization === */
+// Restore saved preferences
+try {
+  var savedTheme = sessionStorage.getItem('theme');
+  if (savedTheme === 'dark') document.body.classList.add('dark');
+  else if (savedTheme === 'light') document.body.classList.add('light');
+  var savedSize = sessionStorage.getItem('size');
+  if (savedSize) {
+    document.getElementById('sizeSelector').value = savedSize;
+    var gallery = document.getElementById('gallery');
+    gallery.className = savedSize === 'gallery-full'
+      ? 'gallery gallery-full'
+      : 'gallery gallery-grid ' + savedSize;
+  }
+  var savedSort = sessionStorage.getItem('sort');
+  if (savedSort) document.getElementById('sortSelector').value = savedSort;
+  document.getElementById('searchBox').value = sessionStorage.getItem('filter-text') || '';
+  document.getElementById('startDate').value = sessionStorage.getItem('filter-start') || '';
+  document.getElementById('endDate').value = sessionStorage.getItem('filter-end') || '';
+} catch (e) {}
+
+// Debounced search handler (11.2 — 200ms debounce on text input only)
+var debouncedFilter = debounce(applyFiltersAndSort, 200);
+
+/* === Event Listeners === */
+document.getElementById('searchBox').addEventListener('input', debouncedFilter);
+document.getElementById('startDate').addEventListener('change', applyFiltersAndSort);
+document.getElementById('endDate').addEventListener('change', applyFiltersAndSort);
+document.getElementById('resetFilters').addEventListener('click', resetFilters);
+document.getElementById('sizeSelector').addEventListener('change', changeSize);
+document.getElementById('sortSelector').addEventListener('change', applyFiltersAndSort);
+document.querySelector('button.toggle').addEventListener('click', toggleDarkMode);
+document.getElementById('searchHelp').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    e.target.click();
+  }
+});
+document.getElementById('viewerClose').addEventListener('click', closeViewer);
+
+// Keyboard navigation
+document.addEventListener('keydown', function(e) {
+  var viewer = document.getElementById('viewer');
   if (viewer.style.display !== 'flex') return;
   if (e.key === 'Escape') {
     closeViewer();
@@ -789,10 +978,10 @@ document.addEventListener('keydown', e => {
   } else if (e.key === 'ArrowLeft') {
     showNext(-1);
   } else if (e.key === 'Tab') {
-    const focusable = viewer.querySelectorAll('button, a[href]');
+    var focusable = viewer.querySelectorAll('button, a[href]');
     if (focusable.length === 0) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
+    var first = focusable[0];
+    var last = focusable[focusable.length - 1];
     if (e.shiftKey) {
       if (document.activeElement === first || document.activeElement === viewer) {
         e.preventDefault();
@@ -806,60 +995,42 @@ document.addEventListener('keydown', e => {
     }
   }
 });
-const viewer = document.getElementById('viewer');
-viewer.addEventListener('click', e => {
-  if (justSwiped) {
-    justSwiped = false;
-    return;
-  }
-  if (e.target.closest('#viewer .viewer-meta a')) {
-    return;
-  }
+
+// Viewer click/touch handlers
+var viewerEl = document.getElementById('viewer');
+viewerEl.addEventListener('click', function(e) {
+  if (justSwiped) { justSwiped = false; return; }
+  if (e.target.closest('#viewer .viewer-meta a')) return;
   e.preventDefault();
   e.stopPropagation();
   closeViewer();
 });
-viewer.addEventListener('touchstart', e => {
+viewerEl.addEventListener('touchstart', function(e) {
   if (e.touches.length !== 1) return;
-  const touch = e.touches[0];
-  touchStartX = touch.clientX;
-  touchStartY = touch.clientY;
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
   justSwiped = false;
 });
-viewer.addEventListener('touchend', e => {
+viewerEl.addEventListener('touchend', function(e) {
   if (e.changedTouches.length !== 1) return;
-  const touch = e.changedTouches[0];
-  const dx = touch.clientX - touchStartX;
-  const dy = touch.clientY - touchStartY;
-  const absDx = Math.abs(dx);
-  const absDy = Math.abs(dy);
-  const swipeThreshold = 50;
-  if (absDx > swipeThreshold && absDx > absDy) {
+  var touch = e.changedTouches[0];
+  var dx = touch.clientX - touchStartX;
+  var dy = touch.clientY - touchStartY;
+  var absDx = Math.abs(dx);
+  var absDy = Math.abs(dy);
+  if (absDx > 50 && absDx > absDy) {
     showNext(dx < 0 ? 1 : -1);
     justSwiped = true;
   } else if (!e.target.closest('#viewer .viewer-meta a')) {
     closeViewer();
   }
-  if (!e.target.closest('#viewer .viewer-meta a')) {
-    e.preventDefault();
-  }
+  if (!e.target.closest('#viewer .viewer-meta a')) e.preventDefault();
 }, { passive: false });
-document.getElementById('searchBox').addEventListener('input', filterGallery);
-document.getElementById('startDate').addEventListener('change', filterGallery);
-document.getElementById('endDate').addEventListener('change', filterGallery);
-document.getElementById('resetFilters').addEventListener('click', resetFilters);
-document.getElementById('sizeSelector').addEventListener('change', changeSize);
-document.querySelector('button.toggle').addEventListener('click', toggleDarkMode);
-document.getElementById('searchHelp').addEventListener('keydown', e => {
-  if (e.key === 'Enter' || e.key === ' ') {
-    e.preventDefault();
-    e.target.click();
-  }
-});
-document.getElementById('viewerClose').addEventListener('click', closeViewer);
-loadImages().then(filterGallery).catch(err => {
+
+// Load gallery
+loadImages().catch(function(err) {
   console.error('Failed to load gallery metadata:', err);
-  const gallery = document.getElementById('gallery');
+  var gallery = document.getElementById('gallery');
   gallery.innerHTML = '<p style="padding:20px;text-align:center;color:var(--text);">Unable to load gallery. Make sure <strong>metadata.json</strong> is available and the gallery is served over HTTP.</p>';
 });
 </script>
