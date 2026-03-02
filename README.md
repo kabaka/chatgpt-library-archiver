@@ -35,7 +35,7 @@ tagging_config.json ← OpenAI API key, model, and prompt for tagging
 
 - Python 3.10+
 - Internet connection
-- Your browser access to [chat.openai.com](https://chat.openai.com)
+- Your browser access to [chatgpt.com](https://chatgpt.com)
 
 ### 🔹 Install Dependencies
 
@@ -93,21 +93,56 @@ test coverage.
 
 ## 🛠 2. `auth.txt` — Setup Your Authentication
 
-This file is required for authenticated API access. You can either let the tool prompt you interactively on first run, or create it manually. Here's what it must contain if creating manually:
+This file is required for authenticated API access.
+
+### Option A — Automatic extraction (macOS)
+
+On macOS you can pull credentials directly from Edge or Chrome with a single
+command:
+
+```bash
+python -m chatgpt_library_archiver extract-auth
+```
+
+This reads your browser's cookie jar and local storage, assembles the required
+headers, verifies the token with a test API call, and writes `auth.txt` with
+secure `600` permissions.
+
+Available flags:
+
+| Flag | Description |
+|------|-------------|
+| `--browser edge\|chrome` | Browser to extract from (default: `edge`) |
+| `--output PATH` | Write credentials to a custom path (default: `auth.txt`) |
+| `--dry-run` | Print extracted values (sensitive fields masked) without writing |
+| `--no-verify` | Skip the test API call that confirms the token is valid |
+
+Example — extract from Chrome and preview without saving:
+
+```bash
+python -m chatgpt_library_archiver extract-auth --browser chrome --dry-run
+```
+
+### Option B — Manual extraction (all platforms)
+
+If you are not on macOS, or prefer to extract headers yourself, create
+`auth.txt` manually. You can also let the tool prompt you interactively on
+first run. Here is the required format:
 
 ```
-url=https://chat.openai.com/backend-api/my/recent/image_gen?limit=100
+url=https://chatgpt.com/backend-api/my/recent/image_gen?limit=100
 authorization=Bearer <your_token_here>
 cookie=__Secure-next-auth.session-token=<your_cookie_here>
-referer=https://chat.openai.com/library
+referer=https://chatgpt.com/library
 user_agent=Mozilla/5.0 (...)
 oai_client_version=...
 oai_device_id=...
 oai_language=...
 ```
 
-### How to Get These:
-1. Log into [https://chat.openai.com/library](https://chat.openai.com/library)
+#### How to get these headers:
+
+1. Log into [https://chatgpt.com/library](https://chatgpt.com/library)
 2. Open Developer Tools (in Chrome, by pressing F12) → Network tab → Fetch/XHR
 3. Scroll down the page to load new images in the library
 4. Find any request to `image_gen` : they should look like `image_gen?limit=6&after...`. Click on one of them
@@ -225,6 +260,21 @@ python -m chatgpt_library_archiver import <files_or_directories...> [options]
 
 Use the `-y/--yes` flag with any command to bypass confirmation prompts.
 
+6. **View your gallery**
+
+After downloading, serve the gallery over HTTP to view it in your browser:
+
+```bash
+cd gallery && python -m http.server 8000
+```
+
+Then open [http://localhost:8000/](http://localhost:8000/).
+
+> **Note:** Opening `gallery/index.html` by double-clicking (i.e. via the
+> `file://` protocol) will show a blank page because the gallery uses
+> `fetch()` to load `metadata.json`, and most browsers block `fetch()` over
+> `file://`. Always use an HTTP server.
+
 ---
 
 ## 🧱 Architecture Overview
@@ -256,7 +306,7 @@ independently while sharing common infrastructure.
 - `chatgpt_library_archiver/thumbnails.py` – resizes images into the
   `thumbs/<size>/` directories and tracks where thumbnails land so metadata can
   reference them.
-- `chatgpt_library_archiver/http_client.py` – wraps `httpx` with checksums,
+- `chatgpt_library_archiver/http_client.py` – wraps `requests` with checksums,
   strict content-type validation, and streaming support that the downloader and
   importer reuse.
 - `chatgpt_library_archiver/metadata.py` – defines the `GalleryItem` data class,
@@ -305,6 +355,11 @@ the array mirrors `GalleryItem` and may include:
 Avoid editing `metadata.json` manually—use the CLI workflows so helper fields
 such as `thumbnails` and `checksum` stay in sync.
 
+> **⚠️ Do not publicly host `metadata.json`.** It contains signed download
+> URLs and internal file IDs from the ChatGPT API. If the gallery directory
+> is served on a public web server, exclude `metadata.json` from the publicly
+> accessible files or strip the `url` field from each entry first.
+
 ## 💡 Notes
 
 - No old data is overwritten. All images are saved with unique filenames and metadata is appended.
@@ -341,9 +396,21 @@ General estimate:
 
 ## ❓ Troubleshooting
 
-- If you get a `403` or `401`, your token or cookie may have expired. Refresh `auth.txt` by copying headers again from your browser.
-- During downloads, if a `401/403` occurs, the downloader now offers to re-enter credentials interactively.
+- If you get a `403` or `401`, your token or cookie may have expired. Refresh
+  `auth.txt` by re-running `extract-auth` (macOS) or copying headers again
+  from your browser.
+- During downloads, if a `401/403` occurs, the downloader now offers to
+  re-enter credentials interactively.
 - If no new images are found, the downloader simply exits without changes.
+- **Gallery shows a blank page when opened by double-clicking** —
+  `gallery/index.html` loads `metadata.json` via `fetch()`, which most
+  browsers block under the `file://` protocol. Serve the gallery over HTTP
+  instead:
+
+  ```bash
+  cd gallery && python -m http.server 8000
+  # Open http://localhost:8000/
+  ```
 
 ---
 
