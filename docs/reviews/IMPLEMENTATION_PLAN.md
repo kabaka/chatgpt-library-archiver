@@ -39,7 +39,7 @@
 | 10 | Test Coverage Expansion | 7 | Done | Batch 3 (conftest.py), Batch 4 (error recovery) |
 | 11 | Gallery UX — Navigation & Performance | 7 | Not Started | Batch 6 (accessibility base) |
 | 12 | Function Decomposition & Data Flow | 5 | Done | Batch 8 (typed configs) |
-| 13 | Image Pipeline & AI Cost Optimization | 6 | Not Started | Batch 4 (error recovery) |
+| 13 | Image Pipeline & AI Cost Optimization | 6 | Done | Batch 4 (error recovery) |
 | 14 | Pyright Expansion & Linting | 5 | Not Started | Batch 8 (typed configs) |
 | 15 | Documentation & Skill File Updates | 8 | Not Started | Batch 5 (P0 docs), Batch 7 (API changes) |
 | 16 | Gallery Visual Polish | 8 | Not Started | Batch 6 + 11 (gallery infrastructure) |
@@ -236,12 +236,12 @@
 
 | # | Title | Description | Agent(s) | Reference | Depends On | Complexity | Status |
 |---|-------|-------------|----------|-----------|------------|------------|--------|
-| 13.1 | Resize images before AI encoding | Enhance `encode_image()` in `ai.py` to use Pillow (already a dependency) to resize images >500KB to ≤1024px before base64 encoding. Apply EXIF transpose. Convert BMP/TIFF to JPEG. Estimated 60–80% token cost savings. | @openai-specialist, @image-processing-specialist | [openai-integration.md](openai-integration.md) §8, [image-pipeline.md](image-pipeline.md) §12 | 2.4 (MAX_IMAGE_PIXELS) | Medium | Not Started |
-| 13.2 | Cap `max_workers` in ProcessPoolExecutor | Default to `min(os.cpu_count(), 8)` when `max_workers` is None, to prevent excessive memory usage on large machines. | @image-processing-specialist | [image-pipeline.md](image-pipeline.md) §3 | — | Small | Not Started |
-| 13.3 | Add mtime-based freshness check | Compare source image `st_mtime` against thumbnail `st_mtime` in `regenerate_thumbnails()`. Regenerate if source is newer. | @image-processing-specialist | [image-pipeline.md](image-pipeline.md) §8 | — | Small | Not Started |
-| 13.4 | RGBA → RGB white background compositing | When converting RGBA to JPEG, composite onto a white background instead of defaulting to black. Benefits both thumbnails and AI encoding. | @image-processing-specialist | [image-pipeline.md](image-pipeline.md) §6 | — | Small | Not Started |
-| 13.5 | Explicitly close intermediate images | Close `thumb` and `prepared` images explicitly after saving in `create_thumbnails()` to reduce peak memory in the process pool. | @image-processing-specialist | [image-pipeline.md](image-pipeline.md) §9 | — | Small | Not Started |
-| 13.6 | Make download `max_workers` configurable | Expose as a CLI argument for `download` command. Lower default from 14 to 6. | @python-developer | [http-resilience.md](http-resilience.md) §11 | — | Small | Not Started |
+| 13.1 | Resize images before AI encoding | Enhance `encode_image()` in `ai.py` to use Pillow (already a dependency) to resize images >500KB to ≤1024px before base64 encoding. Apply EXIF transpose. Convert BMP/TIFF to JPEG. Estimated 60–80% token cost savings. | @openai-specialist, @image-processing-specialist | [openai-integration.md](openai-integration.md) §8, [image-pipeline.md](image-pipeline.md) §12 | 2.4 (MAX_IMAGE_PIXELS) | Medium | Done |
+| 13.2 | Cap `max_workers` in ProcessPoolExecutor | Default to `min(os.cpu_count(), 8)` when `max_workers` is None, to prevent excessive memory usage on large machines. | @image-processing-specialist | [image-pipeline.md](image-pipeline.md) §3 | — | Small | Done |
+| 13.3 | Add mtime-based freshness check | Compare source image `st_mtime` against thumbnail `st_mtime` in `regenerate_thumbnails()`. Regenerate if source is newer. | @image-processing-specialist | [image-pipeline.md](image-pipeline.md) §8 | — | Small | Done |
+| 13.4 | RGBA → RGB white background compositing | When converting RGBA to JPEG, composite onto a white background instead of defaulting to black. Benefits both thumbnails and AI encoding. | @image-processing-specialist | [image-pipeline.md](image-pipeline.md) §6 | — | Small | Done |
+| 13.5 | Explicitly close intermediate images | Close `thumb` and `prepared` images explicitly after saving in `create_thumbnails()` to reduce peak memory in the process pool. | @image-processing-specialist | [image-pipeline.md](image-pipeline.md) §9 | — | Small | Done |
+| 13.6 | Make download `max_workers` configurable | Expose as a CLI argument for `download` command. Lower default from 14 to 6. | @python-developer | [http-resilience.md](http-resilience.md) §11 | — | Small | Done |
 
 ---
 
