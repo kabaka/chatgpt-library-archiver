@@ -128,6 +128,41 @@ def test_http_client_uses_safe_session_by_default() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Defaults and configuration (7.6, 7.7)
+# ---------------------------------------------------------------------------
+
+
+def test_default_backoff_factor_is_one() -> None:
+    """7.6 — default backoff_factor should be 1.0 for polite retry."""
+    client = HttpClient()
+    adapter = client._create_session().get_adapter("https://")
+    assert adapter.max_retries.backoff_factor == 1.0
+    client.close()
+
+
+def test_custom_backoff_factor() -> None:
+    """Caller can override the backoff_factor."""
+    client = HttpClient(backoff_factor=2.0)
+    adapter = client._create_session().get_adapter("https://")
+    assert adapter.max_retries.backoff_factor == 2.0
+    client.close()
+
+
+def test_default_timeout_is_connect_read_tuple() -> None:
+    """7.7 — default timeout should be ``(10.0, 60.0)``."""
+    client = HttpClient()
+    assert client.timeout == (10.0, 60.0)
+    client.close()
+
+
+def test_custom_connect_and_read_timeouts() -> None:
+    """7.7 — caller can set connect_timeout and read_timeout separately."""
+    client = HttpClient(connect_timeout=5.0, read_timeout=120.0)
+    assert client.timeout == (5.0, 120.0)
+    client.close()
+
+
+# ---------------------------------------------------------------------------
 # Fake helpers for HttpClient tests
 # ---------------------------------------------------------------------------
 
@@ -180,6 +215,78 @@ class FakeSession:
 
 def make_client(responses: dict[str, FakeResponse]) -> HttpClient:
     return HttpClient(session_factory=lambda: FakeSession(responses))
+
+
+# ---------------------------------------------------------------------------
+# Timeout tuple forwarding (7.7)
+# ---------------------------------------------------------------------------
+
+
+class _TimeoutCapture:
+    """Fake session that records the timeout passed to ``get()``."""
+
+    captured_timeouts: list[object]
+
+    def __init__(self) -> None:
+        self.captured_timeouts = []
+
+    def mount(self, prefix: str, adapter) -> None:
+        return None
+
+    def get(self, url: str, **kwargs):
+        self.captured_timeouts.append(kwargs.get("timeout"))
+        return FakeResponse(json_data={"ok": True})
+
+    def close(self) -> None:
+        return None
+
+
+def test_timeout_tuple_passed_to_get_json() -> None:
+    """7.7 — ``get_json`` should pass the ``(connect, read)`` tuple."""
+    capture = _TimeoutCapture()
+    client = HttpClient(
+        connect_timeout=3.0,
+        read_timeout=45.0,
+        session_factory=lambda: capture,
+    )
+    client.get_json("https://example.test/data")
+    assert capture.captured_timeouts == [(3.0, 45.0)]
+    client.close()
+
+
+def test_timeout_tuple_passed_to_stream_download(tmp_path) -> None:
+    """7.7 — ``stream_download`` should pass the ``(connect, read)`` tuple."""
+
+    class _StreamCapture:
+        captured_timeouts: list[object]
+
+        def __init__(self) -> None:
+            self.captured_timeouts = []
+
+        def mount(self, prefix: str, adapter) -> None:
+            return None
+
+        def get(self, url: str, **kwargs):
+            self.captured_timeouts.append(kwargs.get("timeout"))
+            return FakeResponse(headers={"Content-Type": "image/png"}, body=b"img")
+
+        def close(self) -> None:
+            return None
+
+    capture = _StreamCapture()
+    client = HttpClient(
+        connect_timeout=7.0,
+        read_timeout=90.0,
+        session_factory=lambda: capture,
+    )
+    client.stream_download("https://example.test/img", tmp_path / "out.png")
+    assert capture.captured_timeouts == [(7.0, 90.0)]
+    client.close()
+
+
+# ---------------------------------------------------------------------------
+# get_json tests
+# ---------------------------------------------------------------------------
 
 
 def test_get_json_success():

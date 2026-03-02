@@ -341,7 +341,7 @@ def fetch_access_token(session_cookie: str) -> str:
     """
     from .http_client import HttpClient
 
-    with HttpClient(timeout=30.0) as client:
+    with HttpClient() as client:
         headers = {
             "Cookie": f"{_SESSION_COOKIE_NAME}={session_cookie}",
             "User-Agent": (
@@ -412,7 +412,7 @@ def _scrape_client_version(session_cookie: str) -> str:
     """Best-effort extraction of the OAI client version from the page."""
     from .http_client import HttpClient
 
-    with HttpClient(timeout=30.0) as client:
+    with HttpClient() as client:
         headers = {
             "Cookie": f"{_SESSION_COOKIE_NAME}={session_cookie}",
             "User-Agent": (

@@ -59,7 +59,7 @@ def build_headers(config: dict) -> dict:
 def create_http_client() -> HttpClient:
     """Factory for the shared HTTP client used by downloads."""
 
-    return HttpClient(timeout=30.0)
+    return HttpClient()
 
 
 def main(tag_new: bool = False, browser: str | None = None) -> None:

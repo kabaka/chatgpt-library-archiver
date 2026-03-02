@@ -87,7 +87,7 @@ class ExtractAuthCommand:
         url = config["url"]
         headers = build_headers(config)
 
-        with HttpClient(timeout=30.0) as client:
+        with HttpClient() as client:
             try:
                 data = client.get_json(url, headers=headers)
                 items = data.get("items") if isinstance(data, dict) else None

@@ -33,7 +33,7 @@
 | 4 | Batch Error Recovery & Resilience | 5 | Not Started | Batch 3 (ThumbnailError, conftest.py) |
 | 5 | Documentation P0 — Accuracy & Onboarding | 6 | Not Started | — |
 | 6 | Gallery Accessibility — Critical & High | 7 | Done | Batch 2 (XSS fix provides refactoring base) |
-| 7 | API & HTTP Resilience Improvements | 7 | Not Started | — |
+| 7 | API & HTTP Resilience Improvements | 7 | Done | — |
 | 8 | Code Architecture & Type Safety | 6 | Not Started | — |
 | 9 | CI/CD Pipeline Hardening | 7 | Not Started | — |
 | 10 | Test Coverage Expansion | 7 | Not Started | Batch 3 (conftest.py), Batch 4 (error recovery) |
@@ -143,13 +143,13 @@
 
 | # | Title | Description | Agent(s) | Reference | Depends On | Complexity | Status |
 |---|-------|-------------|----------|-----------|------------|------------|--------|
-| 7.1 | Catch transient OpenAI errors in retry loop | Add `APIConnectionError`, `APITimeoutError`, and `InternalServerError` to the retry catch in `call_image_endpoint()`. Extract a `_is_transient(exc)` helper for testability. | @openai-specialist | [openai-integration.md](openai-integration.md) §2 & §4 | — | Small | Not Started |
-| 7.2 | Set `max_retries=0` on OpenAI SDK client | Prevent double-retry (SDK default 2 × code's 3 = 6). Set in `get_cached_client()`. | @openai-specialist | [openai-integration.md](openai-integration.md) §1 | — | Small | Not Started |
-| 7.3 | Add `AuthenticationError` / `BadRequestError` handling | Catch `AuthenticationError` early with a clear "Invalid API key" message. Catch `BadRequestError` to skip content-filtered images gracefully. | @openai-specialist | [openai-integration.md](openai-integration.md) §4 | — | Small | Not Started |
-| 7.4 | Validate `response.output_text` before accessing | Guard against `output_text=None` (content-filtered response) which currently raises `AttributeError`. Return a clear error or empty result. | @openai-specialist | [openai-integration.md](openai-integration.md) §4, [test-coverage-strategy.md](test-coverage-strategy.md) §6 item 6 | — | Small | Not Started |
-| 7.5 | Set `max_tokens` on API calls | Set `max_tokens=300` for tagging, `max_tokens=50` for renaming in `call_image_endpoint()`. | @openai-specialist | [openai-integration.md](openai-integration.md) §5 | — | Small | Not Started |
-| 7.6 | Increase HTTP backoff factor to 1.0 | Change `backoff_factor=0.5` to `1.0` in `HttpClient._create_session()` to match the skill and provide more respectful retry behavior for 429 responses. | @python-developer | [http-resilience.md](http-resilience.md) §1, §12 | — | Small | Not Started |
-| 7.7 | Split connect/read timeouts | Change `HttpClient.__init__` to accept `connect_timeout` and `read_timeout` separately. Use `timeout=(10.0, 60.0)` as default. | @python-developer | [http-resilience.md](http-resilience.md) §3 | — | Small | Not Started |
+| 7.1 | Catch transient OpenAI errors in retry loop | Add `APIConnectionError`, `APITimeoutError`, and `InternalServerError` to the retry catch in `call_image_endpoint()`. Extract a `_is_transient(exc)` helper for testability. | @openai-specialist | [openai-integration.md](openai-integration.md) §2 & §4 | — | Small | Done |
+| 7.2 | Set `max_retries=0` on OpenAI SDK client | Prevent double-retry (SDK default 2 × code's 3 = 6). Set in `get_cached_client()`. | @openai-specialist | [openai-integration.md](openai-integration.md) §1 | — | Small | Done |
+| 7.3 | Add `AuthenticationError` / `BadRequestError` handling | Catch `AuthenticationError` early with a clear "Invalid API key" message. Catch `BadRequestError` to skip content-filtered images gracefully. | @openai-specialist | [openai-integration.md](openai-integration.md) §4 | — | Small | Done |
+| 7.4 | Validate `response.output_text` before accessing | Guard against `output_text=None` (content-filtered response) which currently raises `AttributeError`. Return a clear error or empty result. | @openai-specialist | [openai-integration.md](openai-integration.md) §4, [test-coverage-strategy.md](test-coverage-strategy.md) §6 item 6 | — | Small | Done |
+| 7.5 | Set `max_tokens` on API calls | Set `max_tokens=300` for tagging, `max_tokens=50` for renaming in `call_image_endpoint()`. | @openai-specialist | [openai-integration.md](openai-integration.md) §5 | — | Small | Done |
+| 7.6 | Increase HTTP backoff factor to 1.0 | Change `backoff_factor=0.5` to `1.0` in `HttpClient._create_session()` to match the skill and provide more respectful retry behavior for 429 responses. | @python-developer | [http-resilience.md](http-resilience.md) §1, §12 | — | Small | Done |
+| 7.7 | Split connect/read timeouts | Change `HttpClient.__init__` to accept `connect_timeout` and `read_timeout` separately. Use `timeout=(10.0, 60.0)` as default. | @python-developer | [http-resilience.md](http-resilience.md) §3 | — | Small | Done |
 
 ---
 

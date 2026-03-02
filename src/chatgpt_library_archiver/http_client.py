@@ -118,13 +118,14 @@ class HttpClient:
     def __init__(
         self,
         *,
-        timeout: float = 30.0,
+        connect_timeout: float = 10.0,
+        read_timeout: float = 60.0,
         retries: int = 3,
-        backoff_factor: float = 0.5,
+        backoff_factor: float = 1.0,
         status_forcelist: Iterable[int] | None = None,
         session_factory: Callable[[], Session] | None = None,
     ) -> None:
-        self.timeout = timeout
+        self.timeout: tuple[float, float] = (connect_timeout, read_timeout)
         self._retry = _default_retry(
             retries=retries,
             backoff_factor=backoff_factor,

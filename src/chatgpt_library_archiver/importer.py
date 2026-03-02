@@ -136,6 +136,7 @@ def _generate_ai_slug(
         operation="rename",
         subject=image_path.name,
         on_retry=on_retry,
+        max_output_tokens=50,
     )
     slug = _slugify(text)
     return (slug or None), telemetry

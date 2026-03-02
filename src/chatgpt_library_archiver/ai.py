@@ -12,7 +12,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from openai import OpenAI, RateLimitError
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AuthenticationError,
+    BadRequestError,
+    InternalServerError,
+    OpenAI,
+    RateLimitError,
+)
 
 # Suppress debug logging from the OpenAI SDK and its httpx transport to
 # prevent accidental API-key leakage through HTTP header logs.
@@ -38,11 +46,16 @@ class AIRequestTelemetry:
 
 
 def get_cached_client(api_key: str) -> OpenAI:
-    """Return a cached ``OpenAI`` client for ``api_key``."""
+    """Return a cached ``OpenAI`` client for ``api_key``.
+
+    The client is created with ``max_retries=0`` so that the SDK does not
+    perform its own retries on top of the application-level retry loop in
+    :func:`call_image_endpoint`.
+    """
 
     client = _CLIENT_CACHE.get(api_key)
     if client is None:
-        client = OpenAI(api_key=api_key)
+        client = OpenAI(api_key=api_key, max_retries=0)
         _CLIENT_CACHE[api_key] = client
     return client
 
@@ -128,6 +141,15 @@ def _extract_usage(usage: Any | None) -> tuple[int | None, int | None, int | Non
     return total, prompt, completion
 
 
+def _is_transient(exc: Exception) -> bool:
+    """Return ``True`` if *exc* is a transient OpenAI error worth retrying."""
+
+    return isinstance(
+        exc,
+        (RateLimitError, APIConnectionError, APITimeoutError, InternalServerError),
+    )
+
+
 def call_image_endpoint(
     *,
     client: OpenAI,
@@ -138,8 +160,23 @@ def call_image_endpoint(
     subject: str | None = None,
     on_retry: Callable[[int, float], None] | None = None,
     max_retries: int = 3,
+    max_output_tokens: int = 300,
 ) -> tuple[str, AIRequestTelemetry, Any | None]:
-    """Invoke ``client.responses.create`` with retries and telemetry."""
+    """Invoke ``client.responses.create`` with retries and telemetry.
+
+    Parameters
+    ----------
+    max_output_tokens:
+        Cap the number of completion tokens the model may generate.  Use
+        ``300`` (default) for tagging and ``50`` for renaming.
+
+    Raises
+    ------
+    AuthenticationError
+        When the API key is invalid.  Not retried.
+    BadRequestError
+        When the request is rejected (e.g. content filter).  Not retried.
+    """
 
     _, data_url = encode_image(image_path)
     retries = 0
@@ -158,9 +195,14 @@ def call_image_endpoint(
                         ],
                     }
                 ],
+                max_output_tokens=max_output_tokens,
             )
             break
-        except RateLimitError:
+        except (AuthenticationError, BadRequestError):
+            raise
+        except Exception as exc:
+            if not _is_transient(exc):
+                raise
             if retries >= max_retries:
                 raise
             if on_retry:
@@ -170,6 +212,10 @@ def call_image_endpoint(
             delay *= 2
 
     latency = time.perf_counter() - start
+
+    output_text = getattr(response, "output_text", None)
+    text = "" if output_text is None else output_text.strip()
+
     usage = getattr(response, "usage", None)
     total, prompt_tokens, completion_tokens = _extract_usage(usage)
     telemetry = AIRequestTelemetry(
@@ -181,4 +227,4 @@ def call_image_endpoint(
         completion_tokens=completion_tokens,
         retries=retries,
     )
-    return response.output_text.strip(), telemetry, usage
+    return text, telemetry, usage
