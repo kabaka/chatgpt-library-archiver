@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import shutil
+import json
 from importlib import resources
 from pathlib import Path
 
@@ -16,10 +16,28 @@ def _created_at_key(item: GalleryItem) -> float:
     return created_at_sort_key(item.created_at)
 
 
-def generate_gallery(gallery_root: str = "gallery") -> int:
-    """Write ``metadata.json`` and copy bundled ``index.html`` for the gallery.
+def _safe_json_for_html(items: list[GalleryItem]) -> str:
+    """Serialize gallery items to JSON escaped for safe ``<script>`` embedding.
 
-    The bundled viewer supports filtering by title and date range.
+    After ``json.dumps`` the output is post-processed to replace ``<``, ``>``,
+    and ``&`` with their Unicode escape sequences so that sequences like
+    ``</script>`` cannot break out of the script block (XSS prevention).
+    This follows the same approach used by Django's ``json_script`` filter.
+    """
+    raw = json.dumps(
+        [item.to_dict() for item in items],
+        ensure_ascii=True,
+        separators=(",", ":"),
+    )
+    return raw.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+
+
+def generate_gallery(gallery_root: str = "gallery") -> int:
+    """Write ``metadata.json`` and embed metadata into ``index.html``.
+
+    ``metadata.json`` is still written for CLI tools that read it directly.
+    The gallery viewer reads from a ``GALLERY_DATA`` variable injected into
+    the HTML ``<head>`` so no runtime ``fetch()`` is required.
     """
     Path(gallery_root).mkdir(parents=True, exist_ok=True)
     items = load_gallery_items(gallery_root)
@@ -36,9 +54,13 @@ def generate_gallery(gallery_root: str = "gallery") -> int:
     )
     save_gallery_items(gallery_root, items)
 
-    index_src = resources.open_binary("chatgpt_library_archiver", "gallery_index.html")
-    with index_src as src, (Path(gallery_root) / "index.html").open("wb") as dst:
-        shutil.copyfileobj(src, dst)
+    template = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    escaped_json = _safe_json_for_html(items)
+    data_script = f"<script>var GALLERY_DATA = {escaped_json};</script>"
+    html = template.replace("</head>", f"{data_script}\n</head>", 1)
+    (Path(gallery_root) / "index.html").write_text(html, encoding="utf-8")
 
     return len(items)
 

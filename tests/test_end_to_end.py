@@ -142,7 +142,7 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path, sample_png_byte
         assert item["thumbnails"]["medium"].startswith("thumbs/medium/")
 
     html = html_path.read_text()
-    assert "metadata.json" in html
+    assert "var GALLERY_DATA = " in html
 
 
 @pytest.mark.integration

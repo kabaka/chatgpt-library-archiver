@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src * data:;">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Image Gallery</title>
 <style>
@@ -911,7 +911,7 @@ function applyFiltersAndSort() {
   // Show/hide empty message
   var emptyEl = document.getElementById('emptyMessage');
   if (allItems.length === 0) {
-    emptyEl.textContent = 'No images found. Make sure metadata.json contains image data.';
+    emptyEl.textContent = 'No images found. Run the gallery generator to populate this page.';
     emptyEl.style.display = 'block';
   } else if (filteredItems.length === 0) {
     emptyEl.textContent = 'No matching images. Try adjusting your search or date filters.';
@@ -922,10 +922,13 @@ function applyFiltersAndSort() {
 }
 
 /* === Metadata Loading === */
-async function loadImages() {
-  var response = await fetch('metadata.json', { cache: 'no-store' });
-  if (!response.ok) throw new Error('Failed to load metadata: ' + response.status);
-  var data = await response.json();
+function loadImages() {
+  if (typeof GALLERY_DATA === 'undefined' || !Array.isArray(GALLERY_DATA)) {
+    var gallery = document.getElementById('gallery');
+    gallery.innerHTML = '<p style="padding:20px;text-align:center;color:var(--text);">Gallery data not found. Run <strong>chatgpt-library-archiver gallery</strong> to generate this page.</p>';
+    return;
+  }
+  var data = GALLERY_DATA;
   // Pre-compute search fields on each item
   allItems = [];
   for (var i = 0; i < data.length; i++) {
@@ -1167,11 +1170,13 @@ viewerEl.addEventListener('touchend', function(e) {
 }, { passive: false });
 
 // Load gallery
-loadImages().catch(function(err) {
-  console.error('Failed to load gallery metadata:', err);
+try {
+  loadImages();
+} catch (err) {
+  console.error('Failed to load gallery data:', err);
   var gallery = document.getElementById('gallery');
-  gallery.innerHTML = '<p style="padding:20px;text-align:center;color:var(--text);">Unable to load gallery. Make sure <strong>metadata.json</strong> is available and the gallery is served over HTTP.</p>';
-});
+  gallery.innerHTML = '<p style="padding:20px;text-align:center;color:var(--text);">Unable to load gallery. Run <strong>chatgpt-library-archiver gallery</strong> to regenerate this page.</p>';
+}
 })();
 </script>
 </body></html>

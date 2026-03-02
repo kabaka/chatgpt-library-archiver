@@ -27,10 +27,10 @@ def test_gallery_has_csp_meta_tag():
         "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
     )
     assert 'http-equiv="Content-Security-Policy"' in html
-    assert "default-src 'self'" in html
+    assert "default-src 'none'" in html
     assert "script-src 'unsafe-inline'" in html
     assert "style-src 'unsafe-inline'" in html
-    assert "img-src 'self' data:" in html
+    assert "img-src * data:" in html
 
 
 def test_gallery_prefers_color_scheme():
@@ -160,14 +160,15 @@ def test_generate_gallery_creates_single_index(tmp_path, write_metadata):
     index = gallery_root / "index.html"
     assert index.exists()
     assert not any(gallery_root.glob("page_*.html"))
-    expected = resources.read_text(
-        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
-    )
-    assert index.read_text() == expected
-    assert "img.loading = 'lazy'" in expected
-    assert "setAttribute('data-src'" in expected
-    assert "setAttribute('data-full'" in expected
-    assert '<main class="layout">' in expected
+    html = index.read_text(encoding="utf-8")
+    # Metadata is embedded as a GALLERY_DATA variable in the HTML head
+    assert "<script>var GALLERY_DATA = [" in html
+    assert ";</script>\n</head>" in html
+    # Template structure is preserved
+    assert "img.loading = 'lazy'" in html
+    assert "setAttribute('data-src'" in html
+    assert "setAttribute('data-full'" in html
+    assert '<main class="layout">' in html
 
     with open(gallery_root / "metadata.json", encoding="utf-8") as f:
         data = json.load(f)
@@ -250,6 +251,91 @@ def test_generate_gallery_handles_mixed_created_at_types(tmp_path, write_metadat
 
     assert [item["id"] for item in sorted_data] == ["recent", "old", "invalid"]
     assert all(isinstance(item["created_at"], float) for item in sorted_data)
+
+
+# -- XSS security tests for embedded metadata JSON --
+
+
+def test_safe_json_for_html_escapes_dangerous_sequences():
+    """Unit test: _safe_json_for_html escapes <, >, and & in serialized JSON."""
+    from chatgpt_library_archiver.gallery import _safe_json_for_html
+    from chatgpt_library_archiver.metadata import GalleryItem
+
+    items = [
+        GalleryItem(
+            id="xss-1",
+            filename="evil.png",
+            title='</script><script>alert("xss")</script>',
+            tags=["<script>", "<!--", "tag&amp;"],
+            prompt='<img onerror="alert(1)">',
+            created_at=1.0,
+        ),
+    ]
+
+    result = _safe_json_for_html(items)
+
+    # No raw angle brackets or ampersands in the output
+    assert "</script>" not in result
+    assert "<script>" not in result
+    assert "<!--" not in result
+    assert "&amp;" not in result
+    assert "<" not in result
+    assert ">" not in result
+    assert "&" not in result
+
+    # The escaped sequences ARE present
+    assert "\\u003c" in result
+    assert "\\u003e" in result
+    assert "\\u0026" in result
+
+    # Round-trip: the JSON can be parsed back and recovers original data
+    recovered = json.loads(result)
+    assert len(recovered) == 1
+    assert recovered[0]["title"] == '</script><script>alert("xss")</script>'
+    assert recovered[0]["tags"] == ["<script>", "<!--", "tag&amp;"]
+    assert recovered[0]["prompt"] == '<img onerror="alert(1)">'
+
+
+def test_generate_gallery_xss_payloads_escaped_in_html(tmp_path, write_metadata):
+    """Integration test: XSS payloads in metadata are escaped in generated HTML."""
+    gallery_root = tmp_path / "gallery"
+    gallery_root.mkdir()
+
+    xss_payloads = {
+        "id": "xss-int",
+        "filename": "payload.jpg",
+        "title": '</script><script>alert("xss")</script>',
+        "tags": ["<script>", "<!--", "&amp;injection"],
+        "prompt": '<img src=x onerror="alert(document.cookie)">',
+        "created_at": 1.0,
+    }
+    write_metadata(gallery_root, [xss_payloads])
+    (gallery_root / "images" / "payload.jpg").write_text("img")
+
+    generate_gallery(str(gallery_root))
+
+    html = (gallery_root / "index.html").read_text(encoding="utf-8")
+
+    # Extract the embedded JSON from the script block
+    marker_start = "<script>var GALLERY_DATA = "
+    marker_end = ";</script>"
+    start_idx = html.index(marker_start) + len(marker_start)
+    end_idx = html.index(marker_end, start_idx)
+    embedded_json_str = html[start_idx:end_idx]
+
+    # None of the dangerous raw sequences appear in the embedded JSON
+    assert "</script>" not in embedded_json_str
+    assert "<script>" not in embedded_json_str
+    assert "<!--" not in embedded_json_str
+    assert "&amp;" not in embedded_json_str
+
+    # The JSON is valid and round-trips to recover the original payloads
+    recovered = json.loads(embedded_json_str)
+    assert len(recovered) == 1
+    item = recovered[0]
+    assert item["title"] == '</script><script>alert("xss")</script>'
+    assert item["tags"] == ["<script>", "<!--", "&amp;injection"]
+    assert item["prompt"] == '<img src=x onerror="alert(document.cookie)">'
 
 
 def _extract_search_fn() -> str:
