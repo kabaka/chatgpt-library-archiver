@@ -3,15 +3,8 @@ import re
 import subprocess
 import textwrap
 from importlib import resources
-from pathlib import Path
 
 from chatgpt_library_archiver.gallery import generate_gallery
-
-
-def write_metadata(root: Path, items):
-    (root / "images").mkdir(parents=True, exist_ok=True)
-    with open(root / "metadata.json", "w", encoding="utf-8") as f:
-        json.dump(items, f)
 
 
 def test_gallery_template_packaged():
@@ -160,7 +153,7 @@ def test_gallery_persists_theme_size_and_filter():
     assert "sessionStorage.getItem('filter-text')" in html
 
 
-def test_generate_gallery_creates_single_index(tmp_path):
+def test_generate_gallery_creates_single_index(tmp_path, write_metadata):
     gallery_root = tmp_path / "gallery"
     gallery_root.mkdir()
 
@@ -193,7 +186,7 @@ def test_generate_gallery_creates_single_index(tmp_path):
     assert [item["id"] for item in sorted_data] == ["2", "1"]
 
 
-def test_generate_gallery_handles_empty_metadata(tmp_path):
+def test_generate_gallery_handles_empty_metadata(tmp_path, write_metadata):
     gallery_root = tmp_path / "gallery"
     gallery_root.mkdir()
 
@@ -205,7 +198,7 @@ def test_generate_gallery_handles_empty_metadata(tmp_path):
     assert not (gallery_root / "index.html").exists()
 
 
-def test_generate_gallery_backfills_missing_created_at(tmp_path):
+def test_generate_gallery_backfills_missing_created_at(tmp_path, write_metadata):
     gallery_root = tmp_path / "gallery"
     gallery_root.mkdir()
 
@@ -231,7 +224,7 @@ def test_generate_gallery_backfills_missing_created_at(tmp_path):
     assert data[0]["created_at"] == 0.0
 
 
-def test_generate_gallery_handles_mixed_created_at_types(tmp_path):
+def test_generate_gallery_handles_mixed_created_at_types(tmp_path, write_metadata):
     gallery_root = tmp_path / "gallery"
     gallery_root.mkdir()
 

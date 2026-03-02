@@ -1,25 +1,13 @@
 import hashlib
-import io
 import json
 from urllib.parse import urlparse
-
-from PIL import Image
 
 from chatgpt_library_archiver import incremental_downloader
 from chatgpt_library_archiver.http_client import DownloadResult
 from chatgpt_library_archiver.incremental_downloader import _sanitize_id
 
 
-def _sample_png() -> bytes:
-    buf = io.BytesIO()
-    Image.new("RGB", (6, 6), color=(50, 120, 200)).save(buf, format="PNG")
-    return buf.getvalue()
-
-
-PNG_BYTES = _sample_png()
-
-
-def test_incremental_download_and_gallery(monkeypatch, tmp_path):
+def test_incremental_download_and_gallery(monkeypatch, tmp_path, sample_png_bytes):
     # Operate within a temporary working directory
     monkeypatch.chdir(tmp_path)
 
@@ -62,7 +50,7 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
     # Seed existing data
     images_dir = tmp_path / "gallery" / "images"
     images_dir.mkdir(parents=True)
-    (images_dir / "1.png").write_bytes(PNG_BYTES)
+    (images_dir / "1.png").write_bytes(sample_png_bytes)
     meta_path = tmp_path / "gallery" / "metadata.json"
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump([{"id": "1", "filename": "1.png", "created_at": 1}], f)
@@ -107,11 +95,11 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
         def stream_download(self, url, destination, headers=None, **kwargs):
             if url == "https://img.local/2.png":
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                destination.write_bytes(PNG_BYTES)
-                checksum = hashlib.sha256(PNG_BYTES).hexdigest()
+                destination.write_bytes(sample_png_bytes)
+                checksum = hashlib.sha256(sample_png_bytes).hexdigest()
                 return DownloadResult(
                     path=destination,
-                    bytes_downloaded=len(PNG_BYTES),
+                    bytes_downloaded=len(sample_png_bytes),
                     checksum=checksum,
                     content_type="image/png",
                 )
@@ -145,7 +133,7 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path):
     for item in data:
         if item["id"] == "2":
             assert item.get("tags") == ["t"]
-            assert item.get("checksum") == hashlib.sha256(PNG_BYTES).hexdigest()
+            assert item.get("checksum") == hashlib.sha256(sample_png_bytes).hexdigest()
             assert item.get("content_type") == "image/png"
         assert item["thumbnail"].startswith("thumbs/medium/")
         assert item["thumbnails"]["medium"].startswith("thumbs/medium/")
@@ -296,7 +284,9 @@ class TestSanitizeId:
 # -------------------------------------------------------------------
 
 
-def test_path_traversal_does_not_escape_gallery(monkeypatch, tmp_path):
+def test_path_traversal_does_not_escape_gallery(
+    monkeypatch, tmp_path, sample_png_bytes
+):
     """A malicious item.id with path traversal must not write outside gallery."""
     monkeypatch.chdir(tmp_path)
 
@@ -351,11 +341,11 @@ def test_path_traversal_does_not_escape_gallery(monkeypatch, tmp_path):
 
         def stream_download(self, url, destination, headers=None, **kwargs):
             destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(PNG_BYTES)
+            destination.write_bytes(sample_png_bytes)
             return DownloadResult(
                 path=destination,
-                bytes_downloaded=len(PNG_BYTES),
-                checksum=hashlib.sha256(PNG_BYTES).hexdigest(),
+                bytes_downloaded=len(sample_png_bytes),
+                checksum=hashlib.sha256(sample_png_bytes).hexdigest(),
                 content_type="image/png",
             )
 

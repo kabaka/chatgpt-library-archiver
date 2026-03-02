@@ -16,6 +16,11 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 
 from .status import StatusReporter
 
+
+class ThumbnailError(RuntimeError):
+    """An image failed thumbnail generation."""
+
+
 # Guard against decompression bombs.  Pillow's default (~178 MP) is close
 # enough to be a risk when multiple ProcessPoolExecutor workers each open a
 # large image simultaneously.  200 MP is generous for any real photograph
@@ -171,7 +176,7 @@ def create_thumbnails(
         if reporter is not None:
             reporter.log_status("Finished generating thumbnails for", source.name)
     except (FileNotFoundError, UnidentifiedImageError, OSError) as exc:
-        raise RuntimeError(f"Failed to create thumbnail for {source}: {exc}") from exc
+        raise ThumbnailError(f"Failed to create thumbnail for {source}: {exc}") from exc
 
 
 def _create_thumbnails_worker(

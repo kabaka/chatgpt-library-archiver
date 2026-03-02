@@ -59,7 +59,7 @@ Repository = "https://github.com/kabaka/chatgpt-library-archiver"
 Issues = "https://github.com/kabaka/chatgpt-library-archiver/issues"
 
 [tool.pytest.ini_options]
-addopts = "-q"
+addopts = "-q -m 'not slow'"
 testpaths = ["tests"]
 
 [tool.ruff]

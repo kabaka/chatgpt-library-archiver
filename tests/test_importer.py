@@ -1,19 +1,9 @@
-import io
 import json
 
 import pytest
-from PIL import Image
 
 from chatgpt_library_archiver import importer, thumbnails
 
-
-def _sample_png() -> bytes:
-    buf = io.BytesIO()
-    Image.new("RGB", (8, 8), color=(200, 100, 50)).save(buf, format="PNG")
-    return buf.getvalue()
-
-
-PNG_BYTES = _sample_png()
 EXPECTED_IMPORTED_COUNT = 2
 EXPECTED_METADATA_COUNT = 3
 
@@ -22,11 +12,11 @@ def always_yes(*_args, **_kwargs):
     return True
 
 
-def test_import_single_file_move(monkeypatch, tmp_path):
+def test_import_single_file_move(monkeypatch, tmp_path, sample_png_bytes):
     monkeypatch.setattr(importer, "prompt_yes_no", always_yes)
 
     src = tmp_path / "sample.png"
-    src.write_bytes(PNG_BYTES)
+    src.write_bytes(sample_png_bytes)
 
     gallery_root = tmp_path / "gallery"
 
@@ -42,7 +32,7 @@ def test_import_single_file_move(monkeypatch, tmp_path):
 
     dest = gallery_root / "images" / imported[0].filename
     assert dest.exists()
-    assert dest.read_bytes() == PNG_BYTES
+    assert dest.read_bytes() == sample_png_bytes
 
     for size in thumbnails.THUMBNAIL_SIZES:
         thumb = gallery_root / "thumbs" / size / imported[0].filename
@@ -62,11 +52,11 @@ def test_import_single_file_move(monkeypatch, tmp_path):
     assert isinstance(metadata[0]["created_at"], float)
 
 
-def test_import_copy_keeps_source(monkeypatch, tmp_path):
+def test_import_copy_keeps_source(monkeypatch, tmp_path, sample_png_bytes):
     monkeypatch.setattr(importer, "prompt_yes_no", always_yes)
 
     src = tmp_path / "copyme.jpg"
-    src.write_bytes(PNG_BYTES)
+    src.write_bytes(sample_png_bytes)
 
     gallery_root = tmp_path / "gallery"
 
@@ -84,7 +74,7 @@ def test_import_copy_keeps_source(monkeypatch, tmp_path):
         assert thumb.exists()
 
 
-def test_recursive_directory_import(monkeypatch, tmp_path):
+def test_recursive_directory_import(monkeypatch, tmp_path, sample_png_bytes):
     monkeypatch.setattr(importer, "prompt_yes_no", always_yes)
 
     gallery_root = tmp_path / "gallery"
@@ -100,8 +90,8 @@ def test_recursive_directory_import(monkeypatch, tmp_path):
 
     folder = tmp_path / "folder"
     (folder / "nested").mkdir(parents=True)
-    (folder / "nested" / "one.png").write_bytes(PNG_BYTES)
-    (folder / "nested" / "two.PNG").write_bytes(PNG_BYTES)
+    (folder / "nested" / "one.png").write_bytes(sample_png_bytes)
+    (folder / "nested" / "two.PNG").write_bytes(sample_png_bytes)
     (folder / "nested" / "notes.txt").write_text("ignore")
 
     imported = importer.import_images(
@@ -142,11 +132,13 @@ def test_conversation_link_count_mismatch(monkeypatch, tmp_path):
         )
 
 
-def test_regenerate_thumbnails_recreates_missing(tmp_path, monkeypatch):
+def test_regenerate_thumbnails_recreates_missing(
+    tmp_path, monkeypatch, sample_png_bytes
+):
     monkeypatch.setattr(importer, "prompt_yes_no", always_yes)
 
     src = tmp_path / "sample.png"
-    src.write_bytes(PNG_BYTES)
+    src.write_bytes(sample_png_bytes)
 
     gallery_root = tmp_path / "gallery"
     imported = importer.import_images(inputs=[str(src)], gallery_root=str(gallery_root))

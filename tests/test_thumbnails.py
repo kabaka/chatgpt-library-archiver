@@ -1,4 +1,3 @@
-import io
 import multiprocessing
 import queue
 from concurrent.futures import Future
@@ -14,13 +13,6 @@ def test_max_image_pixels_is_set():
     assert Image.MAX_IMAGE_PIXELS == 200_000_000
 
 
-def _sample_png_bytes() -> bytes:
-    buf = io.BytesIO()
-    Image.new("RGB", (8, 8), color=(10, 20, 30)).save(buf, format="PNG")
-    return buf.getvalue()
-
-
-PNG_BYTES = _sample_png_bytes()
 PARALLEL_WORKERS = 2
 
 
@@ -40,9 +32,9 @@ class RecordingReporter:
         self.advanced += amount
 
 
-def test_create_thumbnails_logs_start_and_finish(tmp_path):
+def test_create_thumbnails_logs_start_and_finish(tmp_path, sample_png_bytes):
     source = tmp_path / "image.png"
-    source.write_bytes(PNG_BYTES)
+    source.write_bytes(sample_png_bytes)
     dest_map = {size: tmp_path / f"{size}.png" for size in thumbnails.THUMBNAIL_SIZES}
 
     reporter = RecordingReporter()
@@ -55,14 +47,16 @@ def test_create_thumbnails_logs_start_and_finish(tmp_path):
     ]
 
 
-def test_regenerate_thumbnails_parallel_uses_executor(monkeypatch, tmp_path):
+def test_regenerate_thumbnails_parallel_uses_executor(
+    monkeypatch, tmp_path, sample_png_bytes
+):
     gallery_root = tmp_path
     images_dir = gallery_root / "images"
     images_dir.mkdir()
 
     filenames = ["one.png", "two.png"]
     for name in filenames:
-        (images_dir / name).write_bytes(PNG_BYTES)
+        (images_dir / name).write_bytes(sample_png_bytes)
 
     metadata = [{"filename": name} for name in filenames]
 
@@ -125,14 +119,16 @@ def test_regenerate_thumbnails_parallel_uses_executor(monkeypatch, tmp_path):
         assert thumbs["large"] == f"thumbs/large/{name}"
 
 
-def test_regenerate_thumbnails_parallel_reports_start_and_finish(monkeypatch, tmp_path):
+def test_regenerate_thumbnails_parallel_reports_start_and_finish(
+    monkeypatch, tmp_path, sample_png_bytes
+):
     gallery_root = tmp_path
     images_dir = gallery_root / "images"
     images_dir.mkdir()
 
     filenames = ["one.png", "two.png", "three.png"]
     for name in filenames:
-        (images_dir / name).write_bytes(PNG_BYTES)
+        (images_dir / name).write_bytes(sample_png_bytes)
 
     metadata = [{"filename": name} for name in filenames]
 
@@ -231,7 +227,9 @@ def test_regenerate_thumbnails_rejects_invalid_worker_count(tmp_path):
         thumbnails.regenerate_thumbnails(tmp_path, [], max_workers=0)
 
 
-def test_regenerate_thumbnails_parallel_with_spawn_queue(tmp_path, monkeypatch):
+def test_regenerate_thumbnails_parallel_with_spawn_queue(
+    tmp_path, monkeypatch, sample_png_bytes
+):
     try:
         spawn_context = multiprocessing.get_context("spawn")
     except ValueError:  # pragma: no cover - safety for unusual platforms
@@ -247,7 +245,7 @@ def test_regenerate_thumbnails_parallel_with_spawn_queue(tmp_path, monkeypatch):
 
     filenames = ["alpha.png", "beta.png", "gamma.png"]
     for name in filenames:
-        (images_dir / name).write_bytes(PNG_BYTES)
+        (images_dir / name).write_bytes(sample_png_bytes)
 
     metadata = [{"filename": name} for name in filenames]
     reporter = RecordingReporter()

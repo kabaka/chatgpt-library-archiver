@@ -1,5 +1,5 @@
 import json
-from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -11,40 +11,24 @@ EXPECTED_TAGGED_ITEMS = 2
 EXPECTED_TOKEN_OCCURRENCES = 2
 
 
-def _write_metadata(tmp_path: Path, items):
-    gallery = tmp_path / "gallery"
-    (gallery / "images").mkdir(parents=True)
-    with open(gallery / "metadata.json", "w", encoding="utf-8") as f:
-        json.dump(items, f)
-    for item in items:
-        (gallery / "images" / item["filename"]).write_text("img")
-    return gallery
-
-
-def test_tag_missing_only(monkeypatch, tmp_path):
-    gallery = _write_metadata(
-        tmp_path,
+def test_tag_missing_only(monkeypatch, tmp_path, write_metadata):
+    gallery = write_metadata(
+        tmp_path / "gallery",
         [
             {"id": "1", "filename": "a.jpg", "tags": ["keep"]},
             {"id": "2", "filename": "b.jpg", "tags": []},
         ],
+        create_images=True,
     )
 
-    monkeypatch.setattr(
-        tagger,
-        "ensure_tagging_config",
-        lambda *a, **k: {
-            "api_key": "k",
-            "model": "m",
-            "prompt": "p",
-        },
+    mock_config = Mock(
+        spec=tagger.ensure_tagging_config,
+        return_value={"api_key": "k", "model": "m", "prompt": "p"},
     )
+    monkeypatch.setattr(tagger, "ensure_tagging_config", mock_config)
     telemetry = AIRequestTelemetry("tag", "file", 0.1, 2, 1, 1, 0)
-    monkeypatch.setattr(
-        tagger,
-        "generate_tags",
-        lambda *a, **k: (["x", "y"], telemetry),
-    )
+    mock_gen = Mock(spec=tagger.generate_tags, return_value=(["x", "y"], telemetry))
+    monkeypatch.setattr(tagger, "generate_tags", mock_gen)
 
     count = tagger.tag_images(gallery_root=str(gallery))
     assert count == 1
@@ -53,30 +37,24 @@ def test_tag_missing_only(monkeypatch, tmp_path):
     assert data[1]["tags"] == ["x", "y"]
 
 
-def test_retag_all(monkeypatch, tmp_path):
-    gallery = _write_metadata(
-        tmp_path,
+def test_retag_all(monkeypatch, tmp_path, write_metadata):
+    gallery = write_metadata(
+        tmp_path / "gallery",
         [
             {"id": "1", "filename": "a.jpg", "tags": ["old"]},
             {"id": "2", "filename": "b.jpg", "tags": []},
         ],
+        create_images=True,
     )
 
-    monkeypatch.setattr(
-        tagger,
-        "ensure_tagging_config",
-        lambda *a, **k: {
-            "api_key": "k",
-            "model": "m",
-            "prompt": "p",
-        },
+    mock_config = Mock(
+        spec=tagger.ensure_tagging_config,
+        return_value={"api_key": "k", "model": "m", "prompt": "p"},
     )
+    monkeypatch.setattr(tagger, "ensure_tagging_config", mock_config)
     telemetry = AIRequestTelemetry("tag", "file", 0.1, 1, 1, 0, 0)
-    monkeypatch.setattr(
-        tagger,
-        "generate_tags",
-        lambda *a, **k: (["new"], telemetry),
-    )
+    mock_gen = Mock(spec=tagger.generate_tags, return_value=(["new"], telemetry))
+    monkeypatch.setattr(tagger, "generate_tags", mock_gen)
 
     count = tagger.tag_images(gallery_root=str(gallery), re_tag=True)
     assert count == EXPECTED_TAGGED_ITEMS
@@ -85,30 +63,24 @@ def test_retag_all(monkeypatch, tmp_path):
     assert data[1]["tags"] == ["new"]
 
 
-def test_tag_specific_ids(monkeypatch, tmp_path):
-    gallery = _write_metadata(
-        tmp_path,
+def test_tag_specific_ids(monkeypatch, tmp_path, write_metadata):
+    gallery = write_metadata(
+        tmp_path / "gallery",
         [
             {"id": "1", "filename": "a.jpg", "tags": []},
             {"id": "2", "filename": "b.jpg", "tags": []},
         ],
+        create_images=True,
     )
 
-    monkeypatch.setattr(
-        tagger,
-        "ensure_tagging_config",
-        lambda *a, **k: {
-            "api_key": "k",
-            "model": "m",
-            "prompt": "p",
-        },
+    mock_config = Mock(
+        spec=tagger.ensure_tagging_config,
+        return_value={"api_key": "k", "model": "m", "prompt": "p"},
     )
+    monkeypatch.setattr(tagger, "ensure_tagging_config", mock_config)
     telemetry = AIRequestTelemetry("tag", "file", 0.1, 1, 1, 0, 0)
-    monkeypatch.setattr(
-        tagger,
-        "generate_tags",
-        lambda *a, **k: (["tagged"], telemetry),
-    )
+    mock_gen = Mock(spec=tagger.generate_tags, return_value=(["tagged"], telemetry))
+    monkeypatch.setattr(tagger, "generate_tags", mock_gen)
 
     count = tagger.tag_images(gallery_root=str(gallery), ids=["2"])
     assert count == 1
@@ -117,13 +89,14 @@ def test_tag_specific_ids(monkeypatch, tmp_path):
     assert data[1]["tags"] == ["tagged"]
 
 
-def test_remove_all_tags(tmp_path):
-    gallery = _write_metadata(
-        tmp_path,
+def test_remove_all_tags(tmp_path, write_metadata):
+    gallery = write_metadata(
+        tmp_path / "gallery",
         [
             {"id": "1", "filename": "a.jpg", "tags": ["a"]},
             {"id": "2", "filename": "b.jpg", "tags": ["b"]},
         ],
+        create_images=True,
     )
 
     count = tagger.tag_images(gallery_root=str(gallery), remove=True)
@@ -133,13 +106,14 @@ def test_remove_all_tags(tmp_path):
     assert data[1]["tags"] == []
 
 
-def test_remove_specific_ids(tmp_path):
-    gallery = _write_metadata(
-        tmp_path,
+def test_remove_specific_ids(tmp_path, write_metadata):
+    gallery = write_metadata(
+        tmp_path / "gallery",
         [
             {"id": "1", "filename": "a.jpg", "tags": ["a"]},
             {"id": "2", "filename": "b.jpg", "tags": ["b"]},
         ],
+        create_images=True,
     )
 
     count = tagger.tag_images(gallery_root=str(gallery), remove_ids=["1"])
@@ -149,29 +123,27 @@ def test_remove_specific_ids(tmp_path):
     assert data[1]["tags"] == ["b"]
 
 
-def test_progress_and_tokens(monkeypatch, capsys, tmp_path):
-    gallery = _write_metadata(
-        tmp_path,
+def test_progress_and_tokens(monkeypatch, capsys, tmp_path, write_metadata):
+    gallery = write_metadata(
+        tmp_path / "gallery",
         [
             {"id": "1", "filename": "a.jpg", "tags": []},
             {"id": "2", "filename": "b.jpg", "tags": []},
         ],
+        create_images=True,
     )
 
-    monkeypatch.setattr(
-        tagger,
-        "ensure_tagging_config",
-        lambda *a, **k: {
-            "api_key": "k",
-            "model": "m",
-            "prompt": "p",
-        },
+    mock_config = Mock(
+        spec=tagger.ensure_tagging_config,
+        return_value={"api_key": "k", "model": "m", "prompt": "p"},
     )
+    monkeypatch.setattr(tagger, "ensure_tagging_config", mock_config)
 
-    def fake_generate(*_args, **_kwargs):
-        return ["t"], AIRequestTelemetry("tag", "file", 0.5, 7, 4, 3, 0)
-
-    monkeypatch.setattr(tagger, "generate_tags", fake_generate)
+    mock_gen = Mock(
+        spec=tagger.generate_tags,
+        return_value=(["t"], AIRequestTelemetry("tag", "file", 0.5, 7, 4, 3, 0)),
+    )
+    monkeypatch.setattr(tagger, "generate_tags", mock_gen)
 
     count = tagger.tag_images(
         gallery_root=str(gallery), re_tag=True, max_workers=TAGGING_WORKERS

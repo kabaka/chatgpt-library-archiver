@@ -18,7 +18,10 @@ from chatgpt_library_archiver.metadata import GalleryItem
 
 def test_main_sets_assume_yes(monkeypatch):
     module = importlib.import_module("chatgpt_library_archiver.__main__")
-    previous_env = os.environ.pop("ARCHIVER_ASSUME_YES", None)
+    # Ensure monkeypatch tracks the key and starts with it unset.
+    # setenv records the original state; delenv then removes the key.
+    monkeypatch.setenv("ARCHIVER_ASSUME_YES", "")
+    monkeypatch.delenv("ARCHIVER_ASSUME_YES")
 
     class DummyCLI:
         def __init__(self) -> None:
@@ -41,11 +44,6 @@ def test_main_sets_assume_yes(monkeypatch):
     assert result == expected_exit_code
     assert dummy_cli.run_called_with is dummy_cli.parsed
     assert os.environ["ARCHIVER_ASSUME_YES"] == "1"
-
-    if previous_env is None:
-        os.environ.pop("ARCHIVER_ASSUME_YES", None)
-    else:
-        os.environ["ARCHIVER_ASSUME_YES"] = previous_env
 
 
 def test_gallery_subcommand(monkeypatch, tmp_path):
@@ -249,6 +247,7 @@ def test_import_subcommand(monkeypatch, tmp_path):
     assert called["tags"] == ["demo"]
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(
     platform.python_implementation() != "CPython",
     reason="Building wheels is only supported on CPython",
