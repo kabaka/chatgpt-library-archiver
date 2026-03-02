@@ -122,12 +122,36 @@ def generate_tags(
     return cleaned, telemetry
 
 
+def remove_tags(
+    gallery_root: str = "gallery",
+    ids: Iterable[str] | None = None,
+) -> int:
+    """Remove tags from gallery items.
+
+    When *ids* is ``None`` tags are cleared from **all** items.  Otherwise only
+    items whose id appears in *ids* are affected.
+
+    Returns the number of items whose tags were cleared.
+    """
+    items = load_gallery_items(gallery_root)
+    if not items:
+        return 0
+
+    ids_set = set(ids) if ids else None
+    updated = 0
+    for item in items:
+        if ids_set is None or item.id in ids_set:
+            item.tags = []
+            updated += 1
+
+    save_gallery_items(gallery_root, items)
+    return updated
+
+
 def tag_images(
     gallery_root: str = "gallery",
     ids: Iterable[str] | None = None,
     re_tag: bool = False,
-    remove: bool = False,
-    remove_ids: Iterable[str] | None = None,
     config_path: str = "tagging_config.json",
     prompt: str | None = None,
     model: str | None = None,
@@ -135,106 +159,103 @@ def tag_images(
     allow_interactive: bool | None = None,
     telemetry_sink: Callable[[AIRequestTelemetry], None] | None = None,
 ) -> int:
+    """Generate AI tags for gallery images.
+
+    Returns the number of items successfully tagged.
+    """
     items = load_gallery_items(gallery_root)
     if not items:
         return 0
 
     ids_set = set(ids) if ids else None
-    remove_ids_set = set(remove_ids) if remove_ids else None
 
     updated = 0
-    if remove or remove_ids_set:
-        for item in items:
-            if remove or (remove_ids_set and item.id in remove_ids_set):
-                item.tags = []
-                updated += 1
-    else:
-        cfg = ensure_tagging_config(
-            config_path,
-            allow_interactive=allow_interactive,
-        )
-        client = get_cached_client(cfg.api_key)
-        use_prompt = prompt or cfg.prompt
-        use_model = model or cfg.model
-        to_tag = []
-        for item in items:
-            if ids_set and item.id not in ids_set:
-                continue
-            if not ids_set and not re_tag and item.tags:
-                continue
-            to_tag.append(item)
+    cfg = ensure_tagging_config(
+        config_path,
+        allow_interactive=allow_interactive,
+    )
+    client = get_cached_client(cfg.api_key)
+    use_prompt = prompt or cfg.prompt
+    use_model = model or cfg.model
+    to_tag = []
+    for item in items:
+        if ids_set and item.id not in ids_set:
+            continue
+        if not ids_set and not re_tag and item.tags:
+            continue
+        to_tag.append(item)
 
-        if to_tag:
-            with StatusReporter(
-                total=len(to_tag), description="Tagging images", unit="img"
-            ) as reporter:
-                reporter.log_status("Tagging", f"{len(to_tag)} images.")
+    if to_tag:
+        with StatusReporter(
+            total=len(to_tag), description="Tagging images", unit="img"
+        ) as reporter:
+            reporter.log_status("Tagging", f"{len(to_tag)} images.")
 
-                total_tokens = 0
-                total_latency = 0.0
-                telemetry_count = 0
+            total_tokens = 0
+            total_latency = 0.0
+            telemetry_count = 0
 
-                def process(item: GalleryItem):
-                    image_path = os.path.join(gallery_root, "images", item.filename)
-                    reporter.log_status("Uploading", item.filename)
-                    tags, telemetry = generate_tags(
-                        image_path,
-                        client,
-                        use_model,
-                        use_prompt,
-                        reporter=reporter,
+            def process(item: GalleryItem):
+                image_path = os.path.join(gallery_root, "images", item.filename)
+                reporter.log_status("Uploading", item.filename)
+                tags, telemetry = generate_tags(
+                    image_path,
+                    client,
+                    use_model,
+                    use_prompt,
+                    reporter=reporter,
+                )
+                item.tags = tags
+                tokens = telemetry.total_tokens
+                if telemetry_sink is not None:
+                    telemetry_sink(telemetry)
+                if tokens is not None:
+                    reporter.log_status(
+                        "Received tags for",
+                        (
+                            f"{item.id} (tokens: {tokens}, "
+                            f"latency: {telemetry.latency_s:.2f}s)"
+                        ),
                     )
-                    item.tags = tags
-                    tokens = telemetry.total_tokens
-                    if telemetry_sink is not None:
-                        telemetry_sink(telemetry)
-                    if tokens is not None:
-                        reporter.log_status(
-                            "Received tags for",
-                            (
-                                f"{item.id} (tokens: {tokens}, "
-                                f"latency: {telemetry.latency_s:.2f}s)"
-                            ),
-                        )
-                    else:
-                        reporter.log_status("Received tags for", item.id)
-                    return telemetry
+                else:
+                    reporter.log_status("Received tags for", item.id)
+                return telemetry
 
-                with ThreadPoolExecutor(max_workers=max_workers) as ex:
-                    future_to_item = {ex.submit(process, item): item for item in to_tag}
-                    for fut in as_completed(future_to_item):
-                        item = future_to_item[fut]
-                        try:
-                            telemetry = fut.result()
-                        except Exception as exc:
-                            reporter.report_error(
-                                "Tagging failed",
-                                item.filename,
-                                reason=str(exc),
-                                exception=exc,
-                            )
-                            reporter.advance()
-                            continue
-                        if telemetry.total_tokens is not None:
-                            total_tokens += telemetry.total_tokens
-                        total_latency += telemetry.latency_s
-                        telemetry_count += 1
-                        updated += 1
-                        if updated % SAVE_INTERVAL == 0:
-                            save_gallery_items(gallery_root, items)
+            with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                future_to_item = {ex.submit(process, item): item for item in to_tag}
+                for fut in as_completed(future_to_item):
+                    item = future_to_item[fut]
+                    try:
+                        telemetry = fut.result()
+                    except Exception as exc:
+                        reporter.report_error(
+                            "Tagging failed",
+                            item.filename,
+                            reason=str(exc),
+                            exception=exc,
+                        )
                         reporter.advance()
+                        continue
+                    if telemetry.total_tokens is not None:
+                        total_tokens += telemetry.total_tokens
+                    total_latency += telemetry.latency_s
+                    telemetry_count += 1
+                    updated += 1
+                    if updated % SAVE_INTERVAL == 0:
+                        save_gallery_items(gallery_root, items)
+                    reporter.advance()
 
-                if telemetry_count:
-                    avg_latency = total_latency / telemetry_count
-                    if total_tokens:
-                        reporter.log(
-                            f"Total tokens used: {total_tokens} | "
-                            f"avg latency: {avg_latency:.2f}s"
-                        )
-                    else:
-                        reporter.log(f"Avg latency: {avg_latency:.2f}s")
-                elif total_tokens:
-                    reporter.log(f"Total tokens used: {total_tokens}")
+            if telemetry_count:
+                avg_latency = total_latency / telemetry_count
+                if total_tokens:
+                    reporter.log(
+                        f"Total tokens used: {total_tokens} | "
+                        f"avg latency: {avg_latency:.2f}s"
+                    )
+                else:
+                    reporter.log(f"Avg latency: {avg_latency:.2f}s")
+            elif total_tokens:
+                reporter.log(f"Total tokens used: {total_tokens}")
 
     save_gallery_items(gallery_root, items)
     return updated

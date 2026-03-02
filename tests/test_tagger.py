@@ -99,7 +99,7 @@ def test_remove_all_tags(tmp_path, write_metadata):
         create_images=True,
     )
 
-    count = tagger.tag_images(gallery_root=str(gallery), remove=True)
+    count = tagger.remove_tags(gallery_root=str(gallery))
     assert count == EXPECTED_TAGGED_ITEMS
     data = json.loads((gallery / "metadata.json").read_text())
     assert data[0]["tags"] == []
@@ -116,7 +116,7 @@ def test_remove_specific_ids(tmp_path, write_metadata):
         create_images=True,
     )
 
-    count = tagger.tag_images(gallery_root=str(gallery), remove_ids=["1"])
+    count = tagger.remove_tags(gallery_root=str(gallery), ids=["1"])
     assert count == 1
     data = json.loads((gallery / "metadata.json").read_text())
     assert data[0]["tags"] == []

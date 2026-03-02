@@ -3,6 +3,7 @@ import json
 import pytest
 
 from chatgpt_library_archiver import importer, thumbnails
+from chatgpt_library_archiver.importer import ImportConfig
 
 EXPECTED_IMPORTED_COUNT = 2
 EXPECTED_METADATA_COUNT = 3
@@ -22,9 +23,11 @@ def test_import_single_file_move(monkeypatch, tmp_path, sample_png_bytes):
 
     imported = importer.import_images(
         inputs=[str(src)],
-        gallery_root=str(gallery_root),
-        tags=["tag1", "tag2"],
-        conversation_links=["https://chat.openai.com/c/abc#def"],
+        config=ImportConfig(
+            gallery_root=str(gallery_root),
+            tags=["tag1", "tag2"],
+            conversation_links=["https://chat.openai.com/c/abc#def"],
+        ),
     )
 
     assert len(imported) == 1
@@ -62,8 +65,10 @@ def test_import_copy_keeps_source(monkeypatch, tmp_path, sample_png_bytes):
 
     importer.import_images(
         inputs=[str(src)],
-        gallery_root=str(gallery_root),
-        copy_files=True,
+        config=ImportConfig(
+            gallery_root=str(gallery_root),
+            copy_files=True,
+        ),
     )
 
     assert src.exists()
@@ -96,9 +101,11 @@ def test_recursive_directory_import(monkeypatch, tmp_path, sample_png_bytes):
 
     imported = importer.import_images(
         inputs=[str(folder)],
-        gallery_root=str(gallery_root),
-        recursive=True,
-        tags=["folder"],
+        config=ImportConfig(
+            gallery_root=str(gallery_root),
+            recursive=True,
+            tags=["folder"],
+        ),
     )
 
     # two png images imported, txt ignored
@@ -127,8 +134,10 @@ def test_conversation_link_count_mismatch(monkeypatch, tmp_path):
     with pytest.raises(ValueError):
         importer.import_images(
             inputs=[str(f1), str(f2)],
-            gallery_root=str(tmp_path / "gallery"),
-            conversation_links=["only-one"],
+            config=ImportConfig(
+                gallery_root=str(tmp_path / "gallery"),
+                conversation_links=["only-one"],
+            ),
         )
 
 
@@ -141,7 +150,9 @@ def test_regenerate_thumbnails_recreates_missing(
     src.write_bytes(sample_png_bytes)
 
     gallery_root = tmp_path / "gallery"
-    imported = importer.import_images(inputs=[str(src)], gallery_root=str(gallery_root))
+    imported = importer.import_images(
+        inputs=[str(src)], config=ImportConfig(gallery_root=str(gallery_root))
+    )
     filename = imported[0].filename
     thumb = gallery_root / "thumbs" / "medium" / filename
     thumb.unlink()

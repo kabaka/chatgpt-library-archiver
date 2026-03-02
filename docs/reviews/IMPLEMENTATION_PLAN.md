@@ -38,7 +38,7 @@
 | 9 | CI/CD Pipeline Hardening | 7 | Done | — |
 | 10 | Test Coverage Expansion | 7 | Done | Batch 3 (conftest.py), Batch 4 (error recovery) |
 | 11 | Gallery UX — Navigation & Performance | 7 | Not Started | Batch 6 (accessibility base) |
-| 12 | Function Decomposition & Data Flow | 5 | Not Started | Batch 8 (typed configs) |
+| 12 | Function Decomposition & Data Flow | 5 | Done | Batch 8 (typed configs) |
 | 13 | Image Pipeline & AI Cost Optimization | 6 | Not Started | Batch 4 (error recovery) |
 | 14 | Pyright Expansion & Linting | 5 | Not Started | Batch 8 (typed configs) |
 | 15 | Documentation & Skill File Updates | 8 | Not Started | Batch 5 (P0 docs), Batch 7 (API changes) |
@@ -222,11 +222,11 @@
 
 | # | Title | Description | Agent(s) | Reference | Depends On | Complexity | Status |
 |---|-------|-------------|----------|-----------|------------|------------|--------|
-| 12.1 | Decompose `import_images()` with `ImportConfig` | Group the 17 parameters into an `ImportConfig` dataclass. Extract file-collection and AI-rename logic into focused helper functions. | @python-developer | [code-quality-architecture.md](code-quality-architecture.md) §1, §4 | 8.1 (TaggingConfig pattern) | Large | Not Started |
-| 12.2 | Extract `download_image` closure to top-level | Move the `download_image()` closure from inside `incremental_downloader.main()` to a top-level function. Have it return a result DTO instead of mutating `GalleryItem`. | @python-developer | [code-quality-architecture.md](code-quality-architecture.md) §4, §9 | — | Medium | Not Started |
-| 12.3 | Split `tag_images()` into generate and remove | Separate `tag_images()` into `tag_images()` (generate only) and `remove_tags()`. The current function conflates both operations via boolean flags. | @python-developer | [code-quality-architecture.md](code-quality-architecture.md) §11 | — | Medium | Not Started |
-| 12.4 | Decompose `regenerate_thumbnails()` | Split into `ensure_thumbnail_metadata()` (lightweight metadata-only fixup) and `regenerate_thumbnails()` (full generation). The downloader would call the metadata function after per-image creation. | @image-processing-specialist | [image-pipeline.md](image-pipeline.md) §8.1 | — | Medium | Not Started |
-| 12.5 | Save metadata incrementally in download loop | Move `save_gallery_items()` inside the pagination loop in `incremental_downloader.main()` so progress is saved per-page rather than only after all downloads complete. | @python-developer | [code-quality-architecture.md](code-quality-architecture.md) §8 | 1.4 (atomic writes) | Small | Not Started |
+| 12.1 | Decompose `import_images()` with `ImportConfig` | Group the 17 parameters into an `ImportConfig` dataclass. Extract file-collection and AI-rename logic into focused helper functions. | @python-developer | [code-quality-architecture.md](code-quality-architecture.md) §1, §4 | 8.1 (TaggingConfig pattern) | Large | Done |
+| 12.2 | Extract `download_image` closure to top-level | Move the `download_image()` closure from inside `incremental_downloader.main()` to a top-level function. Have it return a result DTO instead of mutating `GalleryItem`. | @python-developer | [code-quality-architecture.md](code-quality-architecture.md) §4, §9 | — | Medium | Done |
+| 12.3 | Split `tag_images()` into generate and remove | Separate `tag_images()` into `tag_images()` (generate only) and `remove_tags()`. The current function conflates both operations via boolean flags. | @python-developer | [code-quality-architecture.md](code-quality-architecture.md) §11 | — | Medium | Done |
+| 12.4 | Decompose `regenerate_thumbnails()` | Split into `ensure_thumbnail_metadata()` (lightweight metadata-only fixup) and `regenerate_thumbnails()` (full generation). The downloader would call the metadata function after per-image creation. | @image-processing-specialist | [image-pipeline.md](image-pipeline.md) §8.1 | — | Medium | Done |
+| 12.5 | Save metadata incrementally in download loop | Move `save_gallery_items()` inside the pagination loop in `incremental_downloader.main()` so progress is saved per-page rather than only after all downloads complete. | @python-developer | [code-quality-architecture.md](code-quality-architecture.md) §8 | 1.4 (atomic writes) | Small | Done |
 
 ---
 

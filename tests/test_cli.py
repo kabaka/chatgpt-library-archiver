@@ -126,10 +126,15 @@ def test_tag_subcommand(monkeypatch, tmp_path):
     called = {}
 
     def fake_tag_images(**kwargs):
-        called.update(kwargs)
+        called["tag"] = kwargs
+        return 0
+
+    def fake_remove_tags(**kwargs):
+        called["remove"] = kwargs
         return 0
 
     monkeypatch.setattr(tagger, "tag_images", fake_tag_images)
+    monkeypatch.setattr(tagger, "remove_tags", fake_remove_tags)
     monkeypatch.setattr(
         sys, "argv", ["chatgpt_library_archiver", "tag", "--remove-all"]
     )
@@ -137,8 +142,9 @@ def test_tag_subcommand(monkeypatch, tmp_path):
     cli = importlib.import_module("chatgpt_library_archiver.__main__")
     cli.main()
 
-    assert called["remove"] is True
-    assert called["gallery_root"] == "gallery"
+    assert "remove" in called
+    assert called["remove"]["ids"] is None
+    assert called["remove"]["gallery_root"] == "gallery"
 
 
 def test_download_tag_new_flag(monkeypatch, tmp_path):
@@ -219,8 +225,9 @@ def test_import_subcommand(monkeypatch, tmp_path):
 
     called = {}
 
-    def fake_import_images(**kwargs):
-        called.update(kwargs)
+    def fake_import_images(*, inputs, config=None):
+        called["inputs"] = inputs
+        called["config"] = config
         return [GalleryItem(id="abc", filename="example.png")]
 
     monkeypatch.setattr(importer, "import_images", fake_import_images)
@@ -242,8 +249,8 @@ def test_import_subcommand(monkeypatch, tmp_path):
     cli.main()
 
     assert called["inputs"] == ["example.png"]
-    assert called["copy_files"] is True
-    assert called["tags"] == ["demo"]
+    assert called["config"].copy_files is True
+    assert called["config"].tags == ["demo"]
 
 
 @pytest.mark.slow

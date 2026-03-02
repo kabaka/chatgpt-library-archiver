@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from argparse import ArgumentParser, Namespace, _SubParsersAction
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
+from ...importer import ImportConfig
 from ...metadata import GalleryItem
 
 
@@ -116,28 +117,29 @@ class ImportCommand:
             return None
 
         try:
+            config = ImportConfig(
+                gallery_root=gallery_root,
+                copy_files=bool(getattr(args, "copy", False)),
+                recursive=bool(getattr(args, "recursive", False)),
+                tags=list(getattr(args, "tags", []) or []),
+                title=getattr(args, "title", None),
+                conversation_links=self._normalize_links(
+                    getattr(args, "conversation_links", None)
+                ),
+                tag_new=bool(getattr(args, "tag_new", False)),
+                config_path=getattr(args, "config", "tagging_config.json"),
+                ai_rename=bool(getattr(args, "ai_rename", False)),
+                rename_model=getattr(args, "rename_model", None),
+                rename_prompt=getattr(args, "rename_prompt", None),
+                tag_prompt=getattr(args, "tag_prompt", None),
+                tag_model=getattr(args, "tag_model", None),
+                tag_workers=int(getattr(args, "tag_workers", 4)),
+                allow_interactive=not bool(getattr(args, "no_config_prompt", False)),
+            )
             imported = list(
                 self.import_images(
                     inputs=list(getattr(args, "inputs", [])),
-                    gallery_root=gallery_root,
-                    copy_files=bool(getattr(args, "copy", False)),
-                    recursive=bool(getattr(args, "recursive", False)),
-                    tags=list(getattr(args, "tags", []) or []),
-                    title=getattr(args, "title", None),
-                    conversation_links=self._normalize_sequence(
-                        getattr(args, "conversation_links", None)
-                    ),
-                    tag_new=bool(getattr(args, "tag_new", False)),
-                    config_path=getattr(args, "config", "tagging_config.json"),
-                    ai_rename=bool(getattr(args, "ai_rename", False)),
-                    rename_model=getattr(args, "rename_model", None),
-                    rename_prompt=getattr(args, "rename_prompt", None),
-                    tag_prompt=getattr(args, "tag_prompt", None),
-                    tag_model=getattr(args, "tag_model", None),
-                    tag_workers=int(getattr(args, "tag_workers", 4)),
-                    allow_interactive=not bool(
-                        getattr(args, "no_config_prompt", False)
-                    ),
+                    config=config,
                 )
             )
         except ValueError as exc:
@@ -161,7 +163,7 @@ class ImportCommand:
         return None
 
     @staticmethod
-    def _normalize_sequence(value: Sequence[str] | None) -> Sequence[str] | None:
+    def _normalize_links(value: list[str] | None) -> list[str] | None:
         if value is None:
             return None
         return list(value)

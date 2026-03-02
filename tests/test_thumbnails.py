@@ -2,6 +2,7 @@ import io
 import multiprocessing
 import queue
 from concurrent.futures import Future
+from pathlib import Path
 
 import pytest
 from PIL import Image
@@ -437,3 +438,79 @@ def test_create_thumbnails_rgba_to_rgb_jpeg_conversion(tmp_path):
             assert img.mode == "RGB", (
                 f"{size} thumbnail has mode {img.mode}, expected RGB"
             )
+
+
+# ---------------------------------------------------------------------------
+# 12.4 — ensure_thumbnail_metadata() tests
+# ---------------------------------------------------------------------------
+
+
+def test_ensure_thumbnail_metadata_sets_missing_fields():
+    """Entries without thumbnails/thumbnail get the correct paths."""
+    metadata = [{"filename": "foo.png"}, {"filename": "bar.jpg"}]
+    changed = thumbnails.ensure_thumbnail_metadata(Path("/unused"), metadata)
+
+    assert changed is True
+    for entry in metadata:
+        name = entry["filename"]
+        assert entry["thumbnail"] == f"thumbs/medium/{name}"
+        assert entry["thumbnails"] == {
+            "small": f"thumbs/small/{name}",
+            "medium": f"thumbs/medium/{name}",
+            "large": f"thumbs/large/{name}",
+        }
+
+
+def test_ensure_thumbnail_metadata_noop_when_already_correct():
+    """Returns False when every entry already has the correct paths."""
+    metadata = [
+        {
+            "filename": "img.png",
+            "thumbnail": "thumbs/medium/img.png",
+            "thumbnails": {
+                "small": "thumbs/small/img.png",
+                "medium": "thumbs/medium/img.png",
+                "large": "thumbs/large/img.png",
+            },
+        }
+    ]
+    changed = thumbnails.ensure_thumbnail_metadata(Path("/unused"), metadata)
+    assert changed is False
+
+
+def test_ensure_thumbnail_metadata_fixes_partial_mismatch():
+    """Only the incorrect field is overwritten; returns True."""
+    metadata = [
+        {
+            "filename": "pic.jpg",
+            "thumbnail": "wrong/path.jpg",
+            "thumbnails": {
+                "small": "thumbs/small/pic.jpg",
+                "medium": "thumbs/medium/pic.jpg",
+                "large": "thumbs/large/pic.jpg",
+            },
+        }
+    ]
+    changed = thumbnails.ensure_thumbnail_metadata(Path("/unused"), metadata)
+    assert changed is True
+    assert metadata[0]["thumbnail"] == "thumbs/medium/pic.jpg"
+
+
+def test_ensure_thumbnail_metadata_skips_entries_without_filename():
+    """Entries lacking a filename are silently skipped."""
+    metadata = [{"title": "no filename"}, {"filename": "has.png"}]
+    changed = thumbnails.ensure_thumbnail_metadata(Path("/unused"), metadata)
+    assert changed is True
+    assert "thumbnails" not in metadata[0]
+    assert metadata[1]["thumbnail"] == "thumbs/medium/has.png"
+
+
+def test_ensure_thumbnail_metadata_no_io(tmp_path):
+    """The function must not check file existence or create directories."""
+    # gallery_root points to a real dir but images/ does not exist
+    metadata = [{"filename": "nonexistent.png"}]
+    changed = thumbnails.ensure_thumbnail_metadata(tmp_path, metadata)
+    assert changed is True
+    # No directories were created
+    assert not (tmp_path / "images").exists()
+    assert not (tmp_path / "thumbs").exists()

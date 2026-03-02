@@ -70,6 +70,7 @@ def create_app(
     thumbnail_regenerator: Callable[[str, bool], Iterable[str]],
     import_runner: Callable[..., Iterable[dict]],
     tag_runner: Callable[..., int],
+    tag_remover: Callable[..., int],
     printer: Callable[[str], None] = print,
 ) -> CLI:
     """Construct the CLI with the provided dependencies."""
@@ -100,7 +101,11 @@ def create_app(
         regenerate_thumbnails=thumbnail_regenerator,
         printer=printer,
     )
-    tag_cmd = TagCommand(tag_runner=tag_runner, printer=printer)
+    tag_cmd = TagCommand(
+        tag_runner=tag_runner,
+        tag_remover=tag_remover,
+        printer=printer,
+    )
 
     _register_commands(
         parser=parser,

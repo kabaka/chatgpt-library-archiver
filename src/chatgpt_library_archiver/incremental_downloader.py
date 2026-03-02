@@ -7,6 +7,8 @@ import re
 import time
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from urllib.parse import quote
 
@@ -62,6 +64,76 @@ def create_http_client() -> HttpClient:
     return HttpClient()
 
 
+@dataclass(slots=True)
+class DownloadImageResult:
+    """Result DTO returned by :func:`download_image` on success."""
+
+    filename: str
+    checksum: str | None
+    content_type: str | None
+    thumbnails: dict[str, str]
+    thumbnail: str
+
+
+def download_image(
+    item: GalleryItem,
+    *,
+    images_dir: Path,
+    gallery_root: Path,
+    headers: dict[str, str],
+    client: HttpClient,
+    progress: StatusReporter,
+) -> tuple[str, GalleryItem, DownloadImageResult | str, Exception | None]:
+    """Download a single image and generate thumbnails.
+
+    Returns a tuple of ``(status, item, result_or_reason, exception)``.
+    On success *status* is ``"ok"`` and the third element is a
+    :class:`DownloadImageResult`.  On failure *status* is ``"error"``
+    and the third element is a human-readable reason string.
+    """
+
+    try:
+        if not item.url:
+            raise ValueError("Missing URL for gallery item")
+        safe_id = _sanitize_id(item.id)
+        temp_path = images_dir / f"{safe_id}.download"
+        result = client.stream_download(
+            item.url,
+            temp_path,
+            headers=headers,
+            expected_content_prefixes=("image/",),
+            max_bytes=100 * 1024 * 1024,
+        )
+        raw_type = (result.content_type or "").split(";", 1)[0].strip()
+        ext = mimetypes.guess_extension(raw_type) or ".jpg"
+        filename = f"{safe_id}{ext}"
+        filepath = (images_dir / filename).resolve()
+        if not filepath.is_relative_to(images_dir.resolve()):
+            raise ValueError(
+                f"Skipped image: invalid filename derived from id '{item.id}'"
+            )
+        if filepath.exists():
+            filepath.unlink()
+        temp_path.replace(filepath)
+
+        thumb_rels = thumbnails.thumbnail_relative_paths(filename)
+        thumb_paths = {size: gallery_root / rel for size, rel in thumb_rels.items()}
+        thumbnails.create_thumbnails(filepath, thumb_paths, reporter=progress)
+
+        dto = DownloadImageResult(
+            filename=filename,
+            checksum=result.checksum,
+            content_type=result.content_type,
+            thumbnails=thumb_rels,
+            thumbnail=thumb_rels["medium"],
+        )
+        return ("ok", item, dto, None)
+    except HttpError as exc:
+        return ("error", item, exc.reason, exc)
+    except Exception as exc:  # pragma: no cover - safety net
+        return ("error", item, str(exc), exc)
+
+
 def main(tag_new: bool = False, browser: str | None = None) -> None:
     # Load auth from browser (live) or auth.txt (file)
     if browser:
@@ -100,46 +172,14 @@ def main(tag_new: bool = False, browser: str | None = None) -> None:
         new_metadata: list[GalleryItem] = []
         consecutive_empty_pages = 0
 
-        def download_image(item: GalleryItem):
-            try:
-                if not item.url:
-                    raise ValueError("Missing URL for gallery item")
-                safe_id = _sanitize_id(item.id)
-                temp_path = images_dir / f"{safe_id}.download"
-                result = client.stream_download(
-                    item.url,
-                    temp_path,
-                    headers=headers,
-                    expected_content_prefixes=("image/",),
-                    max_bytes=100 * 1024 * 1024,
-                )
-                raw_type = (result.content_type or "").split(";", 1)[0].strip()
-                ext = mimetypes.guess_extension(raw_type) or ".jpg"
-                filename = f"{safe_id}{ext}"
-                filepath = (images_dir / filename).resolve()
-                if not filepath.is_relative_to(images_dir.resolve()):
-                    raise ValueError(
-                        f"Skipped image: invalid filename derived from id '{item.id}'"
-                    )
-                if filepath.exists():
-                    filepath.unlink()
-                temp_path.replace(filepath)
-
-                item.filename = filename
-                item.checksum = result.checksum
-                item.content_type = result.content_type
-                thumb_rels = thumbnails.thumbnail_relative_paths(filename)
-                thumb_paths = {
-                    size: gallery_root / rel for size, rel in thumb_rels.items()
-                }
-                thumbnails.create_thumbnails(filepath, thumb_paths, reporter=progress)
-                item.thumbnails = thumb_rels
-                item.thumbnail = thumb_rels["medium"]
-                return ("ok", item, "", None)
-            except HttpError as exc:
-                return ("error", item, exc.reason, exc)
-            except Exception as exc:  # pragma: no cover - safety net
-                return ("error", item, str(exc), exc)
+        _download = partial(
+            download_image,
+            images_dir=images_dir,
+            gallery_root=gallery_root,
+            headers=headers,
+            client=client,
+            progress=progress,
+        )
 
         progress.log("Fetching metadata from API...")
 
@@ -247,7 +287,7 @@ def main(tag_new: bool = False, browser: str | None = None) -> None:
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 results = list(
                     tqdm(
-                        executor.map(download_image, metas),
+                        executor.map(_download, metas),
                         total=len(metas),
                         desc="Downloading images",
                         unit="img",
@@ -261,21 +301,34 @@ def main(tag_new: bool = False, browser: str | None = None) -> None:
                     )
                 )
 
-            for status, payload, message, exc in results:
+            page_added = 0
+            for status, payload, result_or_reason, exc in results:
                 if status == "ok":
                     item = payload
+                    dto: DownloadImageResult = result_or_reason  # type: ignore[assignment]
+                    item.filename = dto.filename
+                    item.checksum = dto.checksum
+                    item.content_type = dto.content_type
+                    item.thumbnails = dto.thumbnails
+                    item.thumbnail = dto.thumbnail
                     new_metadata.append(item)
+                    existing_metadata.append(item)
                     existing_ids.add(item.id)
                     progress.advance()
+                    page_added += 1
                 else:
                     item = payload
                     progress.report_error(
                         "Download",
                         item.id,
-                        reason=message,
+                        reason=result_or_reason,
                         context={"url": item.url or ""},
                         exception=exc,
                     )
+
+            if page_added:
+                save_gallery_items(gallery_root, existing_metadata)
+                progress.log(f"Saved progress: {len(existing_metadata)} total images")
 
             cursor = data.get("cursor") if isinstance(data, dict) else None
             if not cursor:
@@ -283,17 +336,13 @@ def main(tag_new: bool = False, browser: str | None = None) -> None:
 
             time.sleep(0.5)
 
-        # Save metadata
+        # Save metadata (items already appended to existing_metadata per-page)
         if new_metadata:
-            existing_metadata.extend(new_metadata)
-            processed, thumbnails_updated = thumbnails.regenerate_thumbnails(
-                gallery_root, existing_metadata, reporter=progress
+            metadata_updated = thumbnails.ensure_thumbnail_metadata(
+                gallery_root, existing_metadata
             )
-            if thumbnails_updated:
-                progress.log(
-                    "Refreshed thumbnails for "
-                    f"{len(processed)} image{'s' if len(processed) != 1 else ''}."
-                )
+            if metadata_updated:
+                progress.log("Updated thumbnail metadata for gallery items.")
             save_gallery_items(gallery_root, existing_metadata)
             progress.log(f"Saved {len(new_metadata)} new images to gallery/")
             if tag_new:

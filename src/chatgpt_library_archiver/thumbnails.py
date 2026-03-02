@@ -221,6 +221,35 @@ def _consume_status_messages(
             reporter.log_status("Failed to generate thumbnails for", f"{name}{suffix}")
 
 
+def ensure_thumbnail_metadata(
+    gallery_root: Path,
+    metadata: Iterable[GalleryItem | dict[str, Any]],
+) -> bool:
+    """Update metadata thumbnail paths without generating images.
+
+    Iterates over *metadata* entries and ensures each item's ``thumbnails``
+    and ``thumbnail`` fields contain the correct relative paths.  No file
+    existence checks or image I/O are performed.
+
+    Returns ``True`` if any metadata entry was changed.
+    """
+
+    updated = False
+    for entry in metadata:
+        filename = _entry_get(entry, "filename")
+        if not filename:
+            continue
+        thumb_rel_map = thumbnail_relative_paths(filename)
+        if _entry_get(entry, "thumbnails") != thumb_rel_map:
+            _entry_set(entry, "thumbnails", thumb_rel_map)
+            updated = True
+        medium_rel = thumb_rel_map["medium"]
+        if _entry_get(entry, "thumbnail") != medium_rel:
+            _entry_set(entry, "thumbnail", medium_rel)
+            updated = True
+    return updated
+
+
 def regenerate_thumbnails(
     gallery_root: Path,
     metadata: Iterable[GalleryItem | dict[str, Any]],
@@ -235,7 +264,6 @@ def regenerate_thumbnails(
     """
 
     processed: list[str] = []
-    updated = False
     images_dir = gallery_root / "images"
 
     if max_workers is not None and max_workers < 1:
@@ -261,13 +289,9 @@ def regenerate_thumbnails(
         )
         if need_create:
             pending.append((filename, source, thumb_path_map))
-        if _entry_get(entry, "thumbnails") != thumb_rel_map:
-            _entry_set(entry, "thumbnails", thumb_rel_map)
-            updated = True
-        medium_rel = thumb_rel_map["medium"]
-        if _entry_get(entry, "thumbnail") != medium_rel:
-            _entry_set(entry, "thumbnail", medium_rel)
-            updated = True
+
+    # Delegate metadata fixup to the lightweight helper.
+    updated = ensure_thumbnail_metadata(gallery_root, entries)
 
     if reporter is not None and pending:
         reporter.add_total(len(pending))

@@ -19,6 +19,7 @@ def build_app(*, printer: Callable[[str], None] = print) -> CLI:
         thumbnail_regenerator=importer.regenerate_thumbnails,
         import_runner=importer.import_images,
         tag_runner=tagger.tag_images,
+        tag_remover=tagger.remove_tags,
         printer=printer,
     )
 
