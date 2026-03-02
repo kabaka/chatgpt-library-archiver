@@ -35,7 +35,7 @@
 | 6 | Gallery Accessibility — Critical & High | 7 | Done | Batch 2 (XSS fix provides refactoring base) |
 | 7 | API & HTTP Resilience Improvements | 7 | Done | — |
 | 8 | Code Architecture & Type Safety | 6 | Not Started | — |
-| 9 | CI/CD Pipeline Hardening | 7 | Not Started | — |
+| 9 | CI/CD Pipeline Hardening | 7 | Done | — |
 | 10 | Test Coverage Expansion | 7 | Not Started | Batch 3 (conftest.py), Batch 4 (error recovery) |
 | 11 | Gallery UX — Navigation & Performance | 7 | Not Started | Batch 6 (accessibility base) |
 | 12 | Function Decomposition & Data Flow | 5 | Not Started | Batch 8 (typed configs) |
@@ -174,13 +174,13 @@
 
 | # | Title | Description | Agent(s) | Reference | Depends On | Complexity | Status |
 |---|-------|-------------|----------|-----------|------------|------------|--------|
-| 9.1 | Add Python version matrix to CI | Test on `[3.10, 3.11, 3.12, 3.13]` in GitHub Actions. The project declares `>=3.10` but only tests on latest. | @python-developer | [devops-ci-pipeline.md](devops-ci-pipeline.md) §4 | — | Small | Not Started |
-| 9.2 | Add pip caching to CI | Enable `cache: 'pip'` in `actions/setup-python` to avoid reinstalling all deps on every run. | @python-developer | [devops-ci-pipeline.md](devops-ci-pipeline.md) §4 | — | Small | Not Started |
-| 9.3 | Generate pinned dependency lock files | Run `pip-compile` or `uv pip compile` to produce fully-pinned `requirements.txt` and `requirements-dev.txt`. Commit them. Update Makefile sync targets accordingly. | @python-developer | [devops-ci-pipeline.md](devops-ci-pipeline.md) §2 | — | Medium | Not Started |
-| 9.4 | Add `pip-audit` to CI | Add `pypa/gh-action-pip-audit@v1` as a CI job to catch known dependency vulnerabilities. | @security-auditor | [devops-ci-pipeline.md](devops-ci-pipeline.md) §10 | — | Small | Not Started |
-| 9.5 | Enable ruff `S` (bandit security) rules | Add `"S"` to the ruff `select` list in `pyproject.toml`. Add per-file ignores for known-safe subprocess patterns in `browser_extract.py` and `bootstrap.py`. | @security-auditor | [devops-ci-pipeline.md](devops-ci-pipeline.md) §5, §10 | — | Small | Not Started |
-| 9.6 | Add pre-commit CI job | Add a workflow step (or use pre-commit.ci) that runs `pre-commit run --all-files` in CI to enforce formatting hooks. | @python-developer | [devops-ci-pipeline.md](devops-ci-pipeline.md) §4 | 1.6 (ruff version fix) | Small | Not Started |
-| 9.7 | Add build verification to CI | Add a job that runs `make build`, installs the wheel in a fresh venv, and verifies `chatgpt-archiver --help` works and `gallery_index.html` is packaged. | @python-developer | [devops-ci-pipeline.md](devops-ci-pipeline.md) §4 | — | Medium | Not Started |
+| 9.1 | Add Python version matrix to CI | Test on `[3.10, 3.11, 3.12, 3.13]` in GitHub Actions. The project declares `>=3.10` but only tests on latest. | @python-developer | [devops-ci-pipeline.md](devops-ci-pipeline.md) §4 | — | Small | Done |
+| 9.2 | Add pip caching to CI | Enable `cache: 'pip'` in `actions/setup-python` to avoid reinstalling all deps on every run. | @python-developer | [devops-ci-pipeline.md](devops-ci-pipeline.md) §4 | — | Small | Done |
+| 9.3 | Generate pinned dependency lock files | Run `pip-compile` or `uv pip compile` to produce fully-pinned `requirements.txt` and `requirements-dev.txt`. Commit them. Update Makefile sync targets accordingly. | @python-developer | [devops-ci-pipeline.md](devops-ci-pipeline.md) §2 | — | Medium | Done |
+| 9.4 | Add `pip-audit` to CI | Add `pypa/gh-action-pip-audit@v1` as a CI job to catch known dependency vulnerabilities. | @security-auditor | [devops-ci-pipeline.md](devops-ci-pipeline.md) §10 | — | Small | Done |
+| 9.5 | Enable ruff `S` (bandit security) rules | Add `"S"` to the ruff `select` list in `pyproject.toml`. Add per-file ignores for known-safe subprocess patterns in `browser_extract.py` and `bootstrap.py`. | @security-auditor | [devops-ci-pipeline.md](devops-ci-pipeline.md) §5, §10 | — | Small | Done |
+| 9.6 | Add pre-commit CI job | Add a workflow step (or use pre-commit.ci) that runs `pre-commit run --all-files` in CI to enforce formatting hooks. | @python-developer | [devops-ci-pipeline.md](devops-ci-pipeline.md) §4 | 1.6 (ruff version fix) | Small | Done |
+| 9.7 | Add build verification to CI | Add a job that runs `make build`, installs the wheel in a fresh venv, and verifies `chatgpt-archiver --help` works and `gallery_index.html` is packaged. | @python-developer | [devops-ci-pipeline.md](devops-ci-pipeline.md) §4 | — | Medium | Done |
 
 ---
 
