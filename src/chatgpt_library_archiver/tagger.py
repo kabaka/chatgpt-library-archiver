@@ -27,6 +27,8 @@ DEFAULT_PROMPT = (
     " booru archives."
 )
 
+SAVE_INTERVAL = 10
+
 
 def _load_config(path: str) -> dict:
     with open(path, encoding="utf-8") as f:
@@ -197,14 +199,27 @@ def tag_images(
                     return telemetry
 
                 with ThreadPoolExecutor(max_workers=max_workers) as ex:
-                    futures = [ex.submit(process, item) for item in to_tag]
-                    for fut in as_completed(futures):
-                        telemetry = fut.result()
+                    future_to_item = {ex.submit(process, item): item for item in to_tag}
+                    for fut in as_completed(future_to_item):
+                        item = future_to_item[fut]
+                        try:
+                            telemetry = fut.result()
+                        except Exception as exc:
+                            reporter.report_error(
+                                "Tagging failed",
+                                item.filename,
+                                reason=str(exc),
+                                exception=exc,
+                            )
+                            reporter.advance()
+                            continue
                         if telemetry.total_tokens is not None:
                             total_tokens += telemetry.total_tokens
                         total_latency += telemetry.latency_s
                         telemetry_count += 1
                         updated += 1
+                        if updated % SAVE_INTERVAL == 0:
+                            save_gallery_items(gallery_root, items)
                         reporter.advance()
 
                 if telemetry_count:

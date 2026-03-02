@@ -19,6 +19,7 @@ PARALLEL_WORKERS = 2
 class RecordingReporter:
     def __init__(self) -> None:
         self.messages: list[tuple[str, str]] = []
+        self.errors: list[tuple] = []
         self.total: int = 0
         self.advanced: int = 0
 
@@ -27,6 +28,9 @@ class RecordingReporter:
 
     def add_total(self, amount: int) -> None:
         self.total += amount
+
+    def report_error(self, action, detail, *, reason="", context=None, exception=None):
+        self.errors.append((action, detail, reason))
 
     def advance(self, amount: int = 1) -> None:
         self.advanced += amount
@@ -271,3 +275,117 @@ def test_regenerate_thumbnails_parallel_with_spawn_queue(
             assert rel_path == expected_rel
             dest_path = gallery_root / rel_path
             assert dest_path.is_file()
+
+
+# --- Error-path tests (item 4.3) ---
+
+
+def test_create_thumbnails_missing_source_raises_thumbnail_error(tmp_path):
+    """create_thumbnails must raise ThumbnailError for a non-existent source."""
+    source = tmp_path / "nonexistent.png"
+    dest_map = {size: tmp_path / f"{size}.png" for size in thumbnails.THUMBNAIL_SIZES}
+
+    with pytest.raises(thumbnails.ThumbnailError):
+        thumbnails.create_thumbnails(source, dest_map)
+
+
+def test_create_thumbnails_corrupt_image_raises_thumbnail_error(tmp_path):
+    """create_thumbnails must raise ThumbnailError for an unreadable image."""
+    source = tmp_path / "corrupt.png"
+    source.write_bytes(b"\x00garbage\xff\xfe")
+    dest_map = {size: tmp_path / f"{size}.png" for size in thumbnails.THUMBNAIL_SIZES}
+
+    with pytest.raises(thumbnails.ThumbnailError):
+        thumbnails.create_thumbnails(source, dest_map)
+
+
+@pytest.mark.parametrize("max_workers", [1, 2])
+def test_regenerate_thumbnails_one_bad_one_good_continues_and_reports_error(
+    monkeypatch,
+    gallery_dir,
+    sample_png_bytes,
+    max_workers,
+):
+    """Batch continues past a corrupt image and reports the error."""
+    images_dir = gallery_dir / "images"
+    (images_dir / "good.png").write_bytes(sample_png_bytes)
+    (images_dir / "bad.png").write_bytes(b"\x00garbage\xff\xfe")
+
+    metadata = [{"filename": "good.png"}, {"filename": "bad.png"}]
+    reporter = RecordingReporter()
+
+    if max_workers == 2:
+
+        class _DummyFuture(Future):
+            def __init__(self, fn, *args):
+                super().__init__()
+                try:
+                    result = fn(*args)
+                except Exception as exc:
+                    self.set_exception(exc)
+                else:
+                    self.set_result(result)
+
+        class _DummyExecutor:
+            def __init__(self, **kwargs):
+                self._max_workers = kwargs.get("max_workers", 2)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def submit(self, fn, *args):
+                return _DummyFuture(fn, *args)
+
+        class _DummyManager:
+            def __init__(self):
+                self.queue = queue.Queue()
+                self.shutdown_called = False
+
+            def Queue(self):
+                return self.queue
+
+            def shutdown(self):
+                self.shutdown_called = True
+
+        class _DummyContext:
+            def __init__(self):
+                self.manager = _DummyManager()
+
+            def Manager(self):
+                return self.manager
+
+        monkeypatch.setattr(thumbnails, "ProcessPoolExecutor", _DummyExecutor)
+        dummy_ctx = _DummyContext()
+        monkeypatch.setattr(
+            thumbnails.multiprocessing,
+            "get_context",
+            lambda: dummy_ctx,
+        )
+
+    processed, _updated = thumbnails.regenerate_thumbnails(
+        gallery_dir,
+        metadata,
+        force=True,
+        reporter=reporter,
+        max_workers=max_workers,
+    )
+
+    # Both images are in the processed list
+    assert "good.png" in processed
+    assert "bad.png" in processed
+
+    # Good image's thumbnails were created
+    for size in thumbnails.THUMBNAIL_SIZES:
+        assert (gallery_dir / "thumbs" / size / "good.png").is_file()
+
+    # Reporter collected exactly one error for the bad image
+    assert len(reporter.errors) == 1
+    _action, detail, reason = reporter.errors[0]
+    assert "bad.png" in detail
+    assert reason  # non-empty reason string
+
+    # Both images advanced the progress counter
+    assert reporter.advanced == 2

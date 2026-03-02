@@ -280,3 +280,55 @@ def test_write_config_uses_getpass_for_api_key(monkeypatch, capsys, tmp_path):
     # Config was written correctly
     assert cfg["api_key"] == "sk-test1234567890abcdef"
     assert cfg["model"] == "gpt-4.1-mini"
+
+
+# --- Batch failure isolation test (item 4.4) ---
+
+
+def test_tag_images_single_failure_does_not_abort_batch(
+    monkeypatch,
+    tmp_path,
+    write_metadata,
+):
+    """When one image fails tagging, the others must still be tagged and saved."""
+    gallery = write_metadata(
+        tmp_path / "gallery",
+        [
+            {"id": "1", "filename": "a.jpg", "tags": []},
+            {"id": "2", "filename": "b.jpg", "tags": ["original"]},
+            {"id": "3", "filename": "c.jpg", "tags": []},
+        ],
+        create_images=True,
+    )
+
+    mock_config = Mock(
+        spec=tagger.ensure_tagging_config,
+        return_value={"api_key": "k", "model": "m", "prompt": "p"},
+    )
+    monkeypatch.setattr(tagger, "ensure_tagging_config", mock_config)
+
+    telemetry = AIRequestTelemetry("tag", "file", 0.1, 2, 1, 1, 0)
+
+    def tag_side_effect(image_path, client, model, prompt, *, reporter=None):
+        if "b.jpg" in str(image_path):
+            raise RuntimeError("API error for b.jpg")
+        return (["new-tag"], telemetry)
+
+    mock_gen = Mock(spec=tagger.generate_tags, side_effect=tag_side_effect)
+    monkeypatch.setattr(tagger, "generate_tags", mock_gen)
+
+    count = tagger.tag_images(
+        gallery_root=str(gallery),
+        re_tag=True,
+        max_workers=1,
+    )
+
+    # Items 1 and 3 were tagged successfully
+    assert count == 2
+
+    # Metadata was saved with correct tags
+    data = json.loads((gallery / "metadata.json").read_text())
+    items_by_id = {item["id"]: item for item in data}
+    assert items_by_id["1"]["tags"] == ["new-tag"]
+    assert items_by_id["2"]["tags"] == ["original"]  # unchanged — error skipped
+    assert items_by_id["3"]["tags"] == ["new-tag"]

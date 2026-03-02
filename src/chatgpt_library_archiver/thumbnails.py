@@ -277,7 +277,16 @@ def regenerate_thumbnails(
 
     if max_workers == 1 or len(pending) == 1:
         for _filename, source, thumb_paths in pending:
-            create_thumbnails(source, thumb_paths, reporter=reporter)
+            try:
+                create_thumbnails(source, thumb_paths, reporter=reporter)
+            except Exception as exc:
+                if reporter is not None:
+                    reporter.report_error(
+                        "Thumbnail generation failed",
+                        _filename,
+                        reason=str(exc),
+                        exception=exc,
+                    )
             if reporter is not None:
                 reporter.advance()
         return processed, updated
@@ -306,6 +315,7 @@ def regenerate_thumbnails(
         with ProcessPoolExecutor(**executor_kwargs) as executor:
             pending_iter = iter(pending)
             futures: set[concurrent.futures.Future] = set()
+            future_filenames: dict[concurrent.futures.Future, str] = {}
 
             def submit_next() -> bool:
                 try:
@@ -319,6 +329,7 @@ def regenerate_thumbnails(
                     status_queue,
                 )
                 futures.add(future)
+                future_filenames[future] = _filename
                 return True
 
             worker_limit = getattr(executor, "_max_workers", None)
@@ -331,7 +342,17 @@ def regenerate_thumbnails(
             while futures:
                 future = next(as_completed(futures))
                 futures.remove(future)
-                future.result()
+                fname = future_filenames.pop(future, "unknown")
+                try:
+                    future.result()
+                except Exception as exc:
+                    if reporter is not None:
+                        reporter.report_error(
+                            "Thumbnail generation failed",
+                            fname,
+                            reason=str(exc),
+                            exception=exc,
+                        )
                 if reporter is not None:
                     reporter.advance()
                 submit_next()
