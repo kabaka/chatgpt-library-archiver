@@ -10,6 +10,7 @@ __all__ = [
     "importer",
     "incremental_downloader",
     "metadata",
+    "tag_normalizer",
     "tagger",
     "thumbnails",
     "utils",

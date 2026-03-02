@@ -71,6 +71,7 @@ def create_app(
     import_runner: Callable[..., Iterable[dict]],
     tag_runner: Callable[..., int],
     tag_remover: Callable[..., int],
+    tag_consolidator: Callable[..., int],
     printer: Callable[[str], None] = print,
 ) -> CLI:
     """Construct the CLI with the provided dependencies."""
@@ -104,6 +105,7 @@ def create_app(
     tag_cmd = TagCommand(
         tag_runner=tag_runner,
         tag_remover=tag_remover,
+        consolidator=tag_consolidator,
         printer=printer,
     )
 

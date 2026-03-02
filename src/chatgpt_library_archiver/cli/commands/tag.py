@@ -13,6 +13,7 @@ class TagCommand:
 
     tag_runner: Callable[..., int]
     tag_remover: Callable[..., int]
+    consolidator: Callable[..., int]
     printer: Callable[[str], None]
 
     def register(self, subparsers: _SubParsersAction[ArgumentParser]) -> ArgumentParser:
@@ -33,6 +34,21 @@ class TagCommand:
         )
         parser.add_argument(
             "--remove-ids", nargs="+", help="Remove tags from specific image IDs"
+        )
+        parser.add_argument(
+            "--consolidate",
+            action="store_true",
+            help="Find and merge near-duplicate tags",
+        )
+        parser.add_argument(
+            "--auto",
+            action="store_true",
+            help="Auto-apply high-confidence tag merges without prompting",
+        )
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Show what tag consolidation would change without modifying metadata",
         )
         parser.add_argument("--prompt", help="Override tagging prompt")
         parser.add_argument("--model", help="Override model ID")
@@ -63,6 +79,21 @@ class TagCommand:
     def handle(self, args: Namespace) -> None:
         remove_all = getattr(args, "remove_all", False)
         remove_ids = getattr(args, "remove_ids", None)
+        consolidate = getattr(args, "consolidate", False)
+
+        if consolidate:
+            count = self.consolidator(
+                gallery_root=getattr(args, "gallery", "gallery"),
+                auto_apply=bool(getattr(args, "auto", False)),
+                interactive=not bool(getattr(args, "auto", False)),
+                dry_run=bool(getattr(args, "dry_run", False)),
+                printer=self.printer,
+            )
+            if count:
+                self.printer(f"Modified tags on {count} image(s).")
+            else:
+                self.printer("No tag changes needed.")
+            return
 
         if remove_all or remove_ids:
             count = self.tag_remover(

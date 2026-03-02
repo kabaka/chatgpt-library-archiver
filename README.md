@@ -247,7 +247,12 @@ python -m chatgpt_library_archiver [--tag-new] [--browser edge|chrome]
 
 ```bash
 python -m chatgpt_library_archiver tag [--gallery DIR] [--all|--ids <id...>|--remove-all|--remove-ids <id...>] [--workers N]
+python -m chatgpt_library_archiver tag --consolidate [--auto] [--dry-run]
 ```
+
+The `--consolidate` flag finds and merges near-duplicate tags (e.g. plural
+variants, underscore/space differences). Add `--auto` to apply high-confidence
+merges without prompting, or `--dry-run` to preview changes without writing.
 
 > **Privacy notice:** The `tag` command sends your images to the
 > [OpenAI vision API](https://platform.openai.com/docs/guides/images) for

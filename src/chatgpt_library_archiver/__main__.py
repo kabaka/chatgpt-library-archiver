@@ -7,6 +7,7 @@ from collections.abc import Callable, Sequence
 
 from . import bootstrap, gallery, importer, incremental_downloader, tagger
 from .cli import CLI, create_app
+from .tag_normalizer import consolidate_tags
 
 
 def build_app(*, printer: Callable[[str], None] = print) -> CLI:
@@ -20,6 +21,7 @@ def build_app(*, printer: Callable[[str], None] = print) -> CLI:
         import_runner=importer.import_images,
         tag_runner=tagger.tag_images,
         tag_remover=tagger.remove_tags,
+        tag_consolidator=consolidate_tags,
         printer=printer,
     )
 

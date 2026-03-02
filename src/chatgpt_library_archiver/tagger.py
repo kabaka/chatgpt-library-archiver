@@ -116,11 +116,21 @@ def generate_tags(
     cleaned: list[str] = []
     seen: set[str] = set()
     for p in parts:
-        tag = re.sub(r"<[^>]+>", "", p).strip().lower()
+        tag = normalize_tag(p)
         if tag and tag not in seen:
             seen.add(tag)
             cleaned.append(tag)
     return cleaned, telemetry
+
+
+def normalize_tag(raw: str) -> str:
+    """Normalize a single tag string for consistent storage."""
+    tag = re.sub(r"<[^>]+>", "", raw)  # strip HTML tags
+    tag = tag.replace("_", " ")  # underscores → spaces
+    tag = re.sub(r"\s+", " ", tag).strip()  # collapse whitespace
+    tag = tag.lower()  # lowercase
+    tag = tag.rstrip(".!?,;:")  # strip trailing punctuation
+    return tag
 
 
 def remove_tags(
