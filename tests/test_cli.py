@@ -81,7 +81,7 @@ def test_gallery_subcommand_with_thumbnails(monkeypatch, tmp_path):
 
     calls = {}
 
-    def fake_regen(gallery_root="gallery", force=False):
+    def fake_regen(gallery_root="gallery", force=False, webp=False):
         calls["gallery_root"] = gallery_root
         calls["force"] = force
         return ["a.jpg"]
@@ -152,7 +152,7 @@ def test_download_tag_new_flag(monkeypatch, tmp_path):
 
     called = {}
 
-    def fake_main(tag_new=False, browser=None, max_workers=6):
+    def fake_main(tag_new=False, browser=None, max_workers=6, webp=False):
         called["tag_new"] = tag_new
         called["browser"] = browser
 
@@ -174,7 +174,7 @@ def test_download_browser_flag_edge(monkeypatch, tmp_path):
 
     called = {}
 
-    def fake_main(tag_new=False, browser=None, max_workers=6):
+    def fake_main(tag_new=False, browser=None, max_workers=6, webp=False):
         called["tag_new"] = tag_new
         called["browser"] = browser
 
@@ -196,7 +196,7 @@ def test_download_browser_flag_chrome(monkeypatch, tmp_path):
 
     called = {}
 
-    def fake_main(tag_new=False, browser=None, max_workers=6):
+    def fake_main(tag_new=False, browser=None, max_workers=6, webp=False):
         called["tag_new"] = tag_new
         called["browser"] = browser
 

@@ -34,6 +34,11 @@ class DownloadCommand:
             default=6,
             help="Maximum number of concurrent download threads (default: 6)",
         )
+        parser.add_argument(
+            "--webp-thumbnails",
+            action="store_true",
+            help="Generate thumbnails in WebP format for smaller file sizes",
+        )
         parser.set_defaults(command_handler=self.handle, command="download")
         return parser
 
@@ -43,4 +48,5 @@ class DownloadCommand:
             bool(getattr(args, "tag_new", False)),
             browser=getattr(args, "browser", None),
             max_workers=max_workers,
+            webp=bool(getattr(args, "webp_thumbnails", False)),
         )

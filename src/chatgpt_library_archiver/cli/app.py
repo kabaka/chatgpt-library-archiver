@@ -67,7 +67,7 @@ def create_app(
     bootstrap_runner: Callable[[bool], int | None],
     download_runner: Callable[..., int | None],
     gallery_generator: Callable[[str], int],
-    thumbnail_regenerator: Callable[[str, bool], Iterable[str]],
+    thumbnail_regenerator: Callable[..., Iterable[str]],
     import_runner: Callable[..., Iterable[dict]],
     tag_runner: Callable[..., int],
     tag_remover: Callable[..., int],

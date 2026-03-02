@@ -339,9 +339,10 @@ def test_viewer_keyboard_navigation():
             focus: () => {},
             querySelectorAll: () => [],
           },
-          viewerImg: { src: '', alt: '' },
+          viewerImg: { src: '', alt: '', style: { opacity: '' }, onload: null },
           viewerRaw: { href: '' },
           viewerCounter: { textContent: '' },
+          viewerSpinner: { style: { display: '' } },
         };
         const document = {
           getElementById: id => elements[id],
@@ -389,9 +390,10 @@ def test_viewer_navigation_respects_filters():
             focus: () => {},
             querySelectorAll: () => [],
           },
-          viewerImg: { src: '', alt: '' },
+          viewerImg: { src: '', alt: '', style: { opacity: '' }, onload: null },
           viewerRaw: { href: '' },
           viewerCounter: { textContent: '' },
+          viewerSpinner: { style: { display: '' } },
         };
         const document = {
           getElementById: id => elements[id],

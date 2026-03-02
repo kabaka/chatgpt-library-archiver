@@ -12,6 +12,7 @@ from openai import OpenAI
 
 from .ai import (
     DEFAULT_MODEL,
+    DEFAULT_TAG_SYSTEM_PROMPT,
     AIRequestTelemetry,
     TaggingConfig,
     call_image_endpoint,
@@ -109,6 +110,7 @@ def generate_tags(
         operation="tag",
         subject=path.name,
         on_retry=on_retry,
+        system_prompt=DEFAULT_TAG_SYSTEM_PROMPT,
     )
     parts = [p.strip() for p in text.replace("\n", ",").split(",")]
     cleaned: list[str] = []

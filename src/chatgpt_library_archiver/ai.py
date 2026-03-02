@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
 import logging
 import mimetypes
@@ -33,6 +34,17 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 Image.MAX_IMAGE_PIXELS = 200_000_000
 
 DEFAULT_MODEL = "gpt-4.1-mini"
+
+DEFAULT_TAG_SYSTEM_PROMPT = (
+    "You are a tagging assistant. Always respond with only comma-separated tags,"
+    " nothing else. Do not include explanations, greetings, or any other text."
+)
+
+DEFAULT_RENAME_SYSTEM_PROMPT = (
+    "You are a filename assistant. Always respond with only a short kebab-case"
+    " filename slug, nothing else. Do not include explanations, file extensions,"
+    " or any other text."
+)
 
 #: Files larger than this threshold (bytes) are resized before AI encoding.
 _ENCODE_SIZE_THRESHOLD = 500_000
@@ -69,12 +81,16 @@ def get_cached_client(api_key: str) -> OpenAI:
     The client is created with ``max_retries=0`` so that the SDK does not
     perform its own retries on top of the application-level retry loop in
     :func:`call_image_endpoint`.
+
+    The cache key is a blake2b hash of the API key to avoid holding the
+    raw secret as a dictionary key in memory (M-1).
     """
 
-    client = _CLIENT_CACHE.get(api_key)
+    cache_key = hashlib.blake2b(api_key.encode(), digest_size=16).hexdigest()
+    client = _CLIENT_CACHE.get(cache_key)
     if client is None:
         client = OpenAI(api_key=api_key, max_retries=0)
-        _CLIENT_CACHE[api_key] = client
+        _CLIENT_CACHE[cache_key] = client
     return client
 
 
@@ -209,6 +225,7 @@ def call_image_endpoint(
     on_retry: Callable[[int, float], None] | None = None,
     max_retries: int = 3,
     max_output_tokens: int = 300,
+    system_prompt: str | None = None,
 ) -> tuple[str, AIRequestTelemetry, Any | None]:
     """Invoke ``client.responses.create`` with retries and telemetry.
 
@@ -239,12 +256,17 @@ def call_image_endpoint(
             ],
         }
     ]
+    create_kwargs: dict[str, object] = {
+        "model": model,
+        "input": input_messages,
+        "max_output_tokens": max_output_tokens,
+    }
+    if system_prompt is not None:
+        create_kwargs["instructions"] = system_prompt
     while True:
         try:
-            response = client.responses.create(
-                model=model,
-                input=input_messages,  # type: ignore[arg-type]
-                max_output_tokens=max_output_tokens,
+            response: object = client.responses.create(  # type: ignore[reportUnknownVariableType]
+                **create_kwargs,  # type: ignore[arg-type]
             )
             break
         except (AuthenticationError, BadRequestError):
@@ -262,10 +284,10 @@ def call_image_endpoint(
 
     latency = time.perf_counter() - start
 
-    output_text = getattr(response, "output_text", None)
+    output_text = getattr(response, "output_text", None)  # type: ignore[reportUnknownArgumentType]
     text = "" if output_text is None else output_text.strip()
 
-    usage = getattr(response, "usage", None)
+    usage = getattr(response, "usage", None)  # type: ignore[reportUnknownArgumentType]
     total, prompt_tokens, completion_tokens = _extract_usage(usage)
     telemetry = AIRequestTelemetry(
         operation=operation,

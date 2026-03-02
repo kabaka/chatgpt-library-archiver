@@ -15,7 +15,12 @@ from pathlib import Path
 from openai import OpenAI
 
 from . import gallery, tagger, thumbnails
-from .ai import AIRequestTelemetry, call_image_endpoint, get_cached_client
+from .ai import (
+    DEFAULT_RENAME_SYSTEM_PROMPT,
+    AIRequestTelemetry,
+    call_image_endpoint,
+    get_cached_client,
+)
 from .metadata import GalleryItem, load_gallery_items, save_gallery_items
 from .status import StatusReporter
 from .utils import prompt_yes_no
@@ -186,6 +191,7 @@ def _generate_ai_slug(
         subject=image_path.name,
         on_retry=on_retry,
         max_output_tokens=50,
+        system_prompt=DEFAULT_RENAME_SYSTEM_PROMPT,
     )
     slug = _slugify(text)
     return (slug or None), telemetry
@@ -239,7 +245,14 @@ def _import_one_image(
                         f"latency: {telemetry.latency_s:.2f}s"
                     ),
                 )
-        except Exception:
+        except Exception as exc:
+            if reporter is not None:
+                reporter.report_error(
+                    "AI rename",
+                    source_path.name,
+                    reason=str(exc),
+                    exception=exc,
+                )
             slug = None
 
     if not slug:
@@ -250,6 +263,8 @@ def _import_one_image(
     dest = ctx.images_dir / filename
 
     dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.is_symlink():
+        raise ValueError(f"Refusing to overwrite symlink at {dest}")
     if ctx.config.copy_files:
         shutil.copy2(source_path, dest)
     else:
@@ -385,7 +400,9 @@ def import_images(
     return imported
 
 
-def regenerate_thumbnails(*, gallery_root: str, force: bool = False) -> list[str]:
+def regenerate_thumbnails(
+    *, gallery_root: str, force: bool = False, webp: bool = False
+) -> list[str]:
     gallery_path = Path(gallery_root)
     data = load_gallery_items(gallery_path)
     if not data:
@@ -394,7 +411,7 @@ def regenerate_thumbnails(*, gallery_root: str, force: bool = False) -> list[str
         description="Regenerating thumbnails", unit="thumb"
     ) as reporter:
         processed, updated = thumbnails.regenerate_thumbnails(
-            gallery_path, data, force=force, reporter=reporter
+            gallery_path, data, force=force, reporter=reporter, webp=webp
         )
     if updated:
         save_gallery_items(gallery_path, data)

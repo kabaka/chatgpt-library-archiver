@@ -12,7 +12,7 @@ class GalleryCommand:
     """Command that regenerates the gallery HTML and thumbnails."""
 
     generate_gallery: Callable[[str], int]
-    regenerate_thumbnails: Callable[[str, bool], Iterable[str]]
+    regenerate_thumbnails: Callable[..., Iterable[str]]
     printer: Callable[[str], None]
 
     def register(self, subparsers: _SubParsersAction[ArgumentParser]) -> ArgumentParser:
@@ -30,6 +30,11 @@ class GalleryCommand:
             action="store_true",
             help="Overwrite thumbnails when regenerating",
         )
+        parser.add_argument(
+            "--webp-thumbnails",
+            action="store_true",
+            help="Generate thumbnails in WebP format for smaller file sizes",
+        )
         parser.set_defaults(command_handler=self.handle, command="gallery")
         return parser
 
@@ -40,6 +45,7 @@ class GalleryCommand:
                 self.regenerate_thumbnails(
                     gallery_root=gallery_root,
                     force=bool(getattr(args, "force_thumbnails", False)),
+                    webp=bool(getattr(args, "webp_thumbnails", False)),
                 )
             )
             if regenerated:

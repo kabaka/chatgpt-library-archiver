@@ -83,6 +83,7 @@ def download_image(
     headers: dict[str, str],
     client: HttpClient,
     progress: StatusReporter,
+    webp: bool = False,
 ) -> tuple[str, GalleryItem, DownloadImageResult | str, Exception | None]:
     """Download a single image and generate thumbnails.
 
@@ -112,13 +113,17 @@ def download_image(
             raise ValueError(
                 f"Skipped image: invalid filename derived from id '{item.id}'"
             )
+        if filepath.is_symlink():
+            raise ValueError(f"Refusing to overwrite symlink at {filepath}")
         if filepath.exists():
             filepath.unlink()
         temp_path.replace(filepath)
 
-        thumb_rels = thumbnails.thumbnail_relative_paths(filename)
+        thumb_rels = thumbnails.thumbnail_relative_paths(filename, webp=webp)
         thumb_paths = {size: gallery_root / rel for size, rel in thumb_rels.items()}
-        thumbnails.create_thumbnails(filepath, thumb_paths, reporter=progress)
+        thumbnails.create_thumbnails(
+            filepath, thumb_paths, reporter=progress, webp=webp
+        )
 
         dto = DownloadImageResult(
             filename=filename,
@@ -138,6 +143,7 @@ def main(
     tag_new: bool = False,
     browser: str | None = None,
     max_workers: int = 6,
+    webp: bool = False,
 ) -> None:
     # Load auth from browser (live) or auth.txt (file)
     if browser:
@@ -182,6 +188,7 @@ def main(
             headers=headers,
             client=client,
             progress=progress,
+            webp=webp,
         )
 
         progress.log("Fetching metadata from API...")
@@ -314,6 +321,7 @@ def main(
                     item.content_type = dto.content_type
                     item.thumbnails = dto.thumbnails
                     item.thumbnail = dto.thumbnail
+                    item.url = ""
                     new_metadata.append(item)
                     existing_metadata.append(item)
                     existing_ids.add(item.id)
@@ -342,7 +350,7 @@ def main(
         # Save metadata (items already appended to existing_metadata per-page)
         if new_metadata:
             metadata_updated = thumbnails.ensure_thumbnail_metadata(
-                gallery_root, existing_metadata
+                gallery_root, existing_metadata, webp=webp
             )
             if metadata_updated:
                 progress.log("Updated thumbnail metadata for gallery items.")

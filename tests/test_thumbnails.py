@@ -11,6 +11,7 @@ import pytest
 from PIL import Image
 
 from chatgpt_library_archiver import thumbnails
+from chatgpt_library_archiver.metadata import GalleryItem
 
 
 def test_max_image_pixels_is_set():
@@ -67,11 +68,11 @@ def test_regenerate_thumbnails_parallel_uses_executor(
     for name in filenames:
         (images_dir / name).write_bytes(sample_png_bytes)
 
-    metadata = [{"filename": name} for name in filenames]
+    metadata = [GalleryItem(id=name, filename=name) for name in filenames]
 
     calls: list[tuple[str, dict[str, str]]] = []
 
-    def fake_create_thumbnails(source, dest_map, reporter=None):
+    def fake_create_thumbnails(source, dest_map, reporter=None, webp=False):
         calls.append((source.name, dest_map))
 
     monkeypatch.setattr(thumbnails, "create_thumbnails", fake_create_thumbnails)
@@ -121,8 +122,8 @@ def test_regenerate_thumbnails_parallel_uses_executor(
     assert processed == filenames
     assert updated
     for entry, name in zip(metadata, filenames, strict=True):
-        assert entry["thumbnail"] == f"thumbs/medium/{name}"
-        thumbs = entry["thumbnails"]
+        assert entry.thumbnail == f"thumbs/medium/{name}"
+        thumbs = entry.thumbnails
         assert thumbs["small"] == f"thumbs/small/{name}"
         assert thumbs["medium"] == f"thumbs/medium/{name}"
         assert thumbs["large"] == f"thumbs/large/{name}"
@@ -139,7 +140,7 @@ def test_regenerate_thumbnails_parallel_reports_start_and_finish(
     for name in filenames:
         (images_dir / name).write_bytes(sample_png_bytes)
 
-    metadata = [{"filename": name} for name in filenames]
+    metadata = [GalleryItem(id=name, filename=name) for name in filenames]
 
     executor_kwargs: list[dict[str, object]] = []
 
@@ -256,7 +257,7 @@ def test_regenerate_thumbnails_parallel_with_spawn_queue(
     for name in filenames:
         (images_dir / name).write_bytes(sample_png_bytes)
 
-    metadata = [{"filename": name} for name in filenames]
+    metadata = [GalleryItem(id=name, filename=name) for name in filenames]
     reporter = RecordingReporter()
 
     processed, updated = thumbnails.regenerate_thumbnails(
@@ -273,9 +274,9 @@ def test_regenerate_thumbnails_parallel_with_spawn_queue(
     assert reporter.advanced == len(filenames)
 
     for entry, name in zip(metadata, filenames, strict=True):
-        assert entry["thumbnail"] == f"thumbs/medium/{name}"
+        assert entry.thumbnail == f"thumbs/medium/{name}"
         for size in thumbnails.THUMBNAIL_SIZES:
-            rel_path = entry["thumbnails"][size]
+            rel_path = entry.thumbnails[size]
             expected_rel = f"thumbs/{size}/{name}"
             assert rel_path == expected_rel
             dest_path = gallery_root / rel_path
@@ -316,7 +317,10 @@ def test_regenerate_thumbnails_one_bad_one_good_continues_and_reports_error(
     (images_dir / "good.png").write_bytes(sample_png_bytes)
     (images_dir / "bad.png").write_bytes(b"\x00garbage\xff\xfe")
 
-    metadata = [{"filename": "good.png"}, {"filename": "bad.png"}]
+    metadata = [
+        GalleryItem(id="good", filename="good.png"),
+        GalleryItem(id="bad", filename="bad.png"),
+    ]
     reporter = RecordingReporter()
 
     if max_workers == 2:
@@ -450,14 +454,17 @@ def test_create_thumbnails_rgba_to_rgb_jpeg_conversion(tmp_path):
 
 def test_ensure_thumbnail_metadata_sets_missing_fields():
     """Entries without thumbnails/thumbnail get the correct paths."""
-    metadata = [{"filename": "foo.png"}, {"filename": "bar.jpg"}]
+    metadata = [
+        GalleryItem(id="foo", filename="foo.png"),
+        GalleryItem(id="bar", filename="bar.jpg"),
+    ]
     changed = thumbnails.ensure_thumbnail_metadata(Path("/unused"), metadata)
 
     assert changed is True
     for entry in metadata:
-        name = entry["filename"]
-        assert entry["thumbnail"] == f"thumbs/medium/{name}"
-        assert entry["thumbnails"] == {
+        name = entry.filename
+        assert entry.thumbnail == f"thumbs/medium/{name}"
+        assert entry.thumbnails == {
             "small": f"thumbs/small/{name}",
             "medium": f"thumbs/medium/{name}",
             "large": f"thumbs/large/{name}",
@@ -467,15 +474,16 @@ def test_ensure_thumbnail_metadata_sets_missing_fields():
 def test_ensure_thumbnail_metadata_noop_when_already_correct():
     """Returns False when every entry already has the correct paths."""
     metadata = [
-        {
-            "filename": "img.png",
-            "thumbnail": "thumbs/medium/img.png",
-            "thumbnails": {
+        GalleryItem(
+            id="img",
+            filename="img.png",
+            thumbnail="thumbs/medium/img.png",
+            thumbnails={
                 "small": "thumbs/small/img.png",
                 "medium": "thumbs/medium/img.png",
                 "large": "thumbs/large/img.png",
             },
-        }
+        )
     ]
     changed = thumbnails.ensure_thumbnail_metadata(Path("/unused"), metadata)
     assert changed is False
@@ -484,34 +492,38 @@ def test_ensure_thumbnail_metadata_noop_when_already_correct():
 def test_ensure_thumbnail_metadata_fixes_partial_mismatch():
     """Only the incorrect field is overwritten; returns True."""
     metadata = [
-        {
-            "filename": "pic.jpg",
-            "thumbnail": "wrong/path.jpg",
-            "thumbnails": {
+        GalleryItem(
+            id="pic",
+            filename="pic.jpg",
+            thumbnail="wrong/path.jpg",
+            thumbnails={
                 "small": "thumbs/small/pic.jpg",
                 "medium": "thumbs/medium/pic.jpg",
                 "large": "thumbs/large/pic.jpg",
             },
-        }
+        )
     ]
     changed = thumbnails.ensure_thumbnail_metadata(Path("/unused"), metadata)
     assert changed is True
-    assert metadata[0]["thumbnail"] == "thumbs/medium/pic.jpg"
+    assert metadata[0].thumbnail == "thumbs/medium/pic.jpg"
 
 
 def test_ensure_thumbnail_metadata_skips_entries_without_filename():
     """Entries lacking a filename are silently skipped."""
-    metadata = [{"title": "no filename"}, {"filename": "has.png"}]
+    metadata = [
+        GalleryItem(id="no-file", filename=""),
+        GalleryItem(id="has", filename="has.png"),
+    ]
     changed = thumbnails.ensure_thumbnail_metadata(Path("/unused"), metadata)
     assert changed is True
-    assert "thumbnails" not in metadata[0]
-    assert metadata[1]["thumbnail"] == "thumbs/medium/has.png"
+    assert metadata[0].thumbnails == {}
+    assert metadata[1].thumbnail == "thumbs/medium/has.png"
 
 
 def test_ensure_thumbnail_metadata_no_io(tmp_path):
     """The function must not check file existence or create directories."""
     # gallery_root points to a real dir but images/ does not exist
-    metadata = [{"filename": "nonexistent.png"}]
+    metadata = [GalleryItem(id="missing", filename="nonexistent.png")]
     changed = thumbnails.ensure_thumbnail_metadata(tmp_path, metadata)
     assert changed is True
     # No directories were created
@@ -534,7 +546,10 @@ def test_regenerate_thumbnails_caps_max_workers_at_8(
     for name in ("a.png", "b.png"):
         (images_dir / name).write_bytes(sample_png_bytes)
 
-    metadata = [{"filename": "a.png"}, {"filename": "b.png"}]
+    metadata = [
+        GalleryItem(id="a", filename="a.png"),
+        GalleryItem(id="b", filename="b.png"),
+    ]
 
     executor_kwargs_log: list[dict[str, object]] = []
 
@@ -588,7 +603,10 @@ def test_regenerate_thumbnails_caps_max_workers_low_cpu(
     for name in ("a.png", "b.png"):
         (images_dir / name).write_bytes(sample_png_bytes)
 
-    metadata = [{"filename": "a.png"}, {"filename": "b.png"}]
+    metadata = [
+        GalleryItem(id="a", filename="a.png"),
+        GalleryItem(id="b", filename="b.png"),
+    ]
 
     executor_kwargs_log: list[dict[str, object]] = []
 
@@ -644,7 +662,7 @@ def test_regenerate_thumbnails_recreates_stale_thumbnails(
     source = images_dir / "img.png"
     source.write_bytes(sample_png_bytes)
 
-    metadata = [{"filename": "img.png"}]
+    metadata = [GalleryItem(id="img", filename="img.png")]
 
     # First pass — create thumbnails
     thumbnails.regenerate_thumbnails(gallery_dir, metadata, force=True, max_workers=1)
@@ -692,4 +710,209 @@ def test_rgba_to_rgb_jpeg_has_white_background(tmp_path):
             corner = img.getpixel((0, 0))
             assert corner == (255, 255, 255), (
                 f"{size} thumbnail corner pixel is {corner}, expected (255, 255, 255)"
+            )
+
+
+# ---------------------------------------------------------------------------
+# WebP thumbnail output tests
+# ---------------------------------------------------------------------------
+
+
+def test_thumbnail_relative_path_webp():
+    """webp=True replaces the file extension with .webp."""
+    assert thumbnails.thumbnail_relative_path("image.png", "small", webp=True) == (
+        "thumbs/small/image.webp"
+    )
+    assert thumbnails.thumbnail_relative_path("photo.jpg", "medium", webp=True) == (
+        "thumbs/medium/photo.webp"
+    )
+
+
+def test_thumbnail_relative_path_webp_false_preserves_extension():
+    """webp=False keeps the original extension."""
+    assert thumbnails.thumbnail_relative_path("image.png", "small", webp=False) == (
+        "thumbs/small/image.png"
+    )
+
+
+def test_thumbnail_relative_paths_webp():
+    """All paths use .webp extensions when webp=True."""
+    paths = thumbnails.thumbnail_relative_paths("photo.jpg", webp=True)
+    for size in thumbnails.THUMBNAIL_SIZES:
+        assert paths[size] == f"thumbs/{size}/photo.webp"
+
+
+def test_create_thumbnails_webp_output(tmp_path, sample_png_bytes):
+    """webp=True saves all thumbnails as WebP regardless of source format."""
+    source = tmp_path / "image.png"
+    source.write_bytes(sample_png_bytes)
+
+    dest_map = {size: tmp_path / f"{size}.png" for size in thumbnails.THUMBNAIL_SIZES}
+    thumbnails.create_thumbnails(source, dest_map, webp=True)
+
+    for size in thumbnails.THUMBNAIL_SIZES:
+        webp_dest = tmp_path / f"{size}.webp"
+        assert webp_dest.is_file(), f"{size} WebP thumbnail was not created"
+        with Image.open(webp_dest) as img:
+            assert img.format == "WEBP"
+
+
+def test_create_thumbnails_webp_from_jpeg(tmp_path):
+    """JPEG source produces WebP thumbnails when webp=True."""
+    buf = io.BytesIO()
+    Image.new("RGB", (8, 8), color=(50, 100, 150)).save(buf, format="JPEG")
+    source = tmp_path / "photo.jpg"
+    source.write_bytes(buf.getvalue())
+
+    dest_map = {size: tmp_path / f"{size}.jpg" for size in thumbnails.THUMBNAIL_SIZES}
+    thumbnails.create_thumbnails(source, dest_map, webp=True)
+
+    for size in thumbnails.THUMBNAIL_SIZES:
+        webp_dest = tmp_path / f"{size}.webp"
+        assert webp_dest.is_file()
+        with Image.open(webp_dest) as img:
+            assert img.format == "WEBP"
+
+
+def test_ensure_thumbnail_metadata_webp():
+    """ensure_thumbnail_metadata uses .webp paths when webp=True."""
+    metadata = [GalleryItem(id="photo", filename="photo.jpg")]
+    changed = thumbnails.ensure_thumbnail_metadata(Path("/unused"), metadata, webp=True)
+    assert changed is True
+    assert metadata[0].thumbnail == "thumbs/medium/photo.webp"
+    for size in thumbnails.THUMBNAIL_SIZES:
+        assert metadata[0].thumbnails[size] == f"thumbs/{size}/photo.webp"
+
+
+def test_regenerate_thumbnails_webp_creates_webp_files(gallery_dir, sample_png_bytes):
+    """regenerate_thumbnails with webp=True creates .webp thumbnail files."""
+    images_dir = gallery_dir / "images"
+    (images_dir / "img.png").write_bytes(sample_png_bytes)
+
+    metadata = [GalleryItem(id="img", filename="img.png")]
+    processed, updated = thumbnails.regenerate_thumbnails(
+        gallery_dir,
+        metadata,
+        force=True,
+        max_workers=1,
+        webp=True,
+    )
+
+    assert "img.png" in processed
+    assert updated
+    for size in thumbnails.THUMBNAIL_SIZES:
+        webp_path = gallery_dir / "thumbs" / size / "img.webp"
+        assert webp_path.is_file(), f"WebP thumbnail missing for {size}"
+        with Image.open(webp_path) as img:
+            assert img.format == "WEBP"
+
+    # Metadata should reference .webp paths
+    assert metadata[0].thumbnail == "thumbs/medium/img.webp"
+    for size in thumbnails.THUMBNAIL_SIZES:
+        assert metadata[0].thumbnails[size] == f"thumbs/{size}/img.webp"
+
+
+# ---------------------------------------------------------------------------
+# ICC profile handling tests
+# ---------------------------------------------------------------------------
+
+
+def _make_image_with_icc(
+    mode: str = "RGB",
+    size: tuple[int, int] = (8, 8),
+    color: tuple[int, ...] = (100, 150, 200),
+    profile_desc: str = "sRGB",
+) -> Image.Image:
+    """Helper: create an image with an ICC profile attached."""
+    from PIL import ImageCms
+
+    img = Image.new(mode, size, color)
+    if profile_desc.lower() == "srgb":
+        profile = ImageCms.createProfile("sRGB")
+    else:
+        # Use sRGB bytes but we'll mock the description to simulate non-sRGB.
+        profile = ImageCms.createProfile("sRGB")
+    img.info["icc_profile"] = ImageCms.ImageCmsProfile(profile).tobytes()
+    return img
+
+
+def test_ensure_srgb_no_profile():
+    """Image without ICC profile is returned unchanged."""
+    img = Image.new("RGB", (8, 8), (100, 150, 200))
+    result = thumbnails._ensure_srgb(img)
+    assert "icc_profile" not in result.info
+    assert result is img
+
+
+def test_ensure_srgb_strips_srgb_profile():
+    """sRGB profile is stripped without colour conversion."""
+    img = _make_image_with_icc(profile_desc="sRGB")
+    assert "icc_profile" in img.info
+
+    result = thumbnails._ensure_srgb(img)
+    assert "icc_profile" not in result.info
+
+
+def test_ensure_srgb_converts_non_srgb_profile(monkeypatch):
+    """Non-sRGB profile triggers colour conversion and profile stripping."""
+    from PIL import ImageCms
+
+    img = _make_image_with_icc(profile_desc="sRGB")
+    assert "icc_profile" in img.info
+
+    # Mock description to simulate a non-sRGB profile (e.g., Display P3).
+    monkeypatch.setattr(ImageCms, "getProfileDescription", lambda _p: "Display P3")
+
+    result = thumbnails._ensure_srgb(img)
+    assert "icc_profile" not in result.info
+    assert result.mode == "RGB"
+
+
+def test_ensure_srgb_converts_rgba_non_srgb(monkeypatch):
+    """RGBA image with non-sRGB profile preserves alpha after conversion."""
+    from PIL import ImageCms
+
+    img = _make_image_with_icc(
+        mode="RGBA", color=(100, 150, 200, 128), profile_desc="sRGB"
+    )
+    monkeypatch.setattr(ImageCms, "getProfileDescription", lambda _p: "Display P3")
+
+    result = thumbnails._ensure_srgb(img)
+    assert "icc_profile" not in result.info
+    assert result.mode == "RGBA"
+    # Alpha channel should be preserved.
+    alpha = result.split()[3]
+    assert alpha.getpixel((0, 0)) == 128
+
+
+def test_ensure_srgb_corrupt_profile_strips_gracefully():
+    """Corrupt ICC profile bytes are stripped without raising."""
+    img = Image.new("RGB", (8, 8), (100, 150, 200))
+    img.info["icc_profile"] = b"\x00corrupt\xff\xfe"
+
+    result = thumbnails._ensure_srgb(img)
+    assert "icc_profile" not in result.info
+
+
+def test_create_thumbnails_strips_icc_profile(tmp_path):
+    """End-to-end: ICC profile on source image is not propagated to thumbnails."""
+    from PIL import ImageCms
+
+    profile = ImageCms.createProfile("sRGB")
+    profile_bytes = ImageCms.ImageCmsProfile(profile).tobytes()
+
+    img = Image.new("RGB", (32, 32), (100, 150, 200))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", icc_profile=profile_bytes)
+    source = tmp_path / "profiled.png"
+    source.write_bytes(buf.getvalue())
+
+    dest_map = {size: tmp_path / f"{size}.png" for size in thumbnails.THUMBNAIL_SIZES}
+    thumbnails.create_thumbnails(source, dest_map)
+
+    for size, dest in dest_map.items():
+        assert dest.is_file()
+        with Image.open(dest) as thumb:
+            assert not thumb.info.get("icc_profile"), (
+                f"{size} thumbnail should not have an ICC profile"
             )
