@@ -6,14 +6,12 @@
 - Install the development dependencies (for example, `pip install -e .[dev]` or
   `make install`) so tools like `pre-commit`, `ruff`, and the rest of the
   automation are available on your `PATH`.
-- Configure Git to use the repository's hooks with `git config core.hooksPath .githooks`.
 
 ## Quality Gates
 
 - Before committing changes in this repository, run `pre-commit run --all-files`
   and address any issues it reports.
-- The provided Git hook runs `make lint` and `make test`, matching the guidance
-  in the README.
+- Run `make lint` and `make test` before pushing changes.
 - `make test` enforces a minimum **85 %** project-level test coverage via
   `--cov-fail-under=85`.
 

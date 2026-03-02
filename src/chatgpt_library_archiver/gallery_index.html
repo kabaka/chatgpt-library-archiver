@@ -18,7 +18,7 @@
   box-sizing: border-box;
 }
 body {
-  font-family: sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   margin: 0;
   background: var(--bg);
   color: var(--text);
@@ -69,6 +69,7 @@ body.dark {
   overflow: hidden;
   background: var(--bg);
   height: 100%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 .image-card a.thumb {
   display: flex;
@@ -327,6 +328,10 @@ header.top-bar .search-bar {
   .controls .icon-link {
     display: none;
   }
+  #viewer .viewer-nav {
+    font-size: 1.8em;
+    padding: 6px 10px;
+  }
 }
 #viewer {
   position: fixed;
@@ -404,6 +409,52 @@ button.toggle {
   color: inherit;
   font-family: inherit;
 }
+#viewer .viewer-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  border: none;
+  font-size: 2.5em;
+  cursor: pointer;
+  padding: 8px 16px;
+  border-radius: 4px;
+  z-index: 1;
+  line-height: 1;
+}
+#viewer .viewer-nav:hover,
+#viewer .viewer-nav:focus-visible {
+  background: rgba(0, 0, 0, 0.8);
+}
+#viewer .viewer-prev { left: 15px; }
+#viewer .viewer-next { right: 15px; }
+#viewer .viewer-counter {
+  position: absolute;
+  top: 15px;
+  left: 15px;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+.empty-message {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--meta-color);
+  font-size: 1.1em;
+}
+.img-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 3em;
+  color: var(--meta-color);
+  opacity: 0.5;
+}
 </style>
 </head>
 <body>
@@ -461,15 +512,21 @@ button.toggle {
   </header>
   <div class="result-count" id="resultCount" aria-live="polite"></div>
   <main class="layout">
+    <div id="emptyMessage" class="empty-message" style="display:none;" role="status"></div>
     <div class="gallery gallery-grid gallery-medium" id="gallery"></div>
     <div class="scroll-sentinel" id="scrollSentinel" aria-hidden="true"></div>
   </main>
 <div id="viewer" role="dialog" aria-modal="true" aria-label="Image viewer" tabindex="-1">
   <button id="viewerClose" class="viewer-close" type="button" aria-label="Close viewer">&times;</button>
+  <span id="viewerCounter" class="viewer-counter" aria-live="polite"></span>
+  <button id="viewerPrev" class="viewer-nav viewer-prev" type="button" aria-label="Previous image">&#8249;</button>
   <img id="viewerImg" src="" alt="">
+  <button id="viewerNext" class="viewer-nav viewer-next" type="button" aria-label="Next image">&#8250;</button>
   <div class="viewer-meta"><a id="viewerRaw" href="" target="_blank">Raw file</a></div>
 </div>
 <script>
+(function() {
+'use strict';
 /* === Constants === */
 const INITIAL_BATCH = 100;
 const SCROLL_BATCH = 50;
@@ -651,6 +708,17 @@ function createCard(item, filteredIndex) {
   img.setAttribute('data-full', imgPath);
   img.alt = title || item.filename || item.id;
   img.loading = 'lazy';
+  img.addEventListener('error', function() {
+    this.style.display = 'none';
+    if (!link.querySelector('.img-fallback')) {
+      var fb = document.createElement('span');
+      fb.className = 'img-fallback';
+      fb.setAttribute('role', 'img');
+      fb.setAttribute('aria-label', 'Image not available');
+      fb.textContent = '\u26A0';
+      link.appendChild(fb);
+    }
+  });
   link.appendChild(img);
   card.appendChild(link);
   // Build metadata overlay
@@ -802,6 +870,17 @@ function applyFiltersAndSort() {
   resetRender();
   renderBatch(INITIAL_BATCH);
   updateResultCount();
+  // Show/hide empty message
+  var emptyEl = document.getElementById('emptyMessage');
+  if (allItems.length === 0) {
+    emptyEl.textContent = 'No images found. Make sure metadata.json contains image data.';
+    emptyEl.style.display = 'block';
+  } else if (filteredItems.length === 0) {
+    emptyEl.textContent = 'No matching images. Try adjusting your search or date filters.';
+    emptyEl.style.display = 'block';
+  } else {
+    emptyEl.style.display = 'none';
+  }
 }
 
 /* === Metadata Loading === */
@@ -896,10 +975,12 @@ function showViewerAt(pos) {
   var viewer = document.getElementById('viewer');
   var img = document.getElementById('viewerImg');
   var raw = document.getElementById('viewerRaw');
+  var counter = document.getElementById('viewerCounter');
   viewer.style.display = 'flex';
   img.src = item.src;
   img.alt = item.title;
   raw.href = item.src;
+  counter.textContent = (pos + 1) + ' of ' + visibleIndices.length;
   viewer.focus();
 }
 
@@ -966,6 +1047,12 @@ document.getElementById('searchHelp').addEventListener('keydown', function(e) {
   }
 });
 document.getElementById('viewerClose').addEventListener('click', closeViewer);
+document.getElementById('viewerPrev').addEventListener('click', function() {
+  showNext(-1);
+});
+document.getElementById('viewerNext').addEventListener('click', function() {
+  showNext(1);
+});
 
 // Keyboard navigation
 document.addEventListener('keydown', function(e) {
@@ -1000,7 +1087,7 @@ document.addEventListener('keydown', function(e) {
 var viewerEl = document.getElementById('viewer');
 viewerEl.addEventListener('click', function(e) {
   if (justSwiped) { justSwiped = false; return; }
-  if (e.target.closest('#viewer .viewer-meta a')) return;
+  if (e.target.closest('button, a[href]')) return;
   e.preventDefault();
   e.stopPropagation();
   closeViewer();
@@ -1033,5 +1120,6 @@ loadImages().catch(function(err) {
   var gallery = document.getElementById('gallery');
   gallery.innerHTML = '<p style="padding:20px;text-align:center;color:var(--text);">Unable to load gallery. Make sure <strong>metadata.json</strong> is available and the gallery is served over HTTP.</p>';
 });
+})();
 </script>
 </body></html>

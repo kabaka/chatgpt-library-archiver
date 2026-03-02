@@ -488,17 +488,18 @@ helpers, then augment the end-to-end flow if the user journey changes. Finally,
 run `make lint` and `make test` locally before pushing to confirm the coverage
 gate and static analysis still pass.
 
-### Git hook
+### Git hooks
 
-To ensure linting and tests pass before commits are created, configure Git to
-use the provided hooks:
+The project uses the [pre-commit](https://pre-commit.com/) framework for Git
+hooks. Running `make install` sets up the hooks automatically. You can also
+install them manually:
 
+```sh
+pre-commit install --install-hooks
 ```
-git config core.hooksPath .githooks
-```
 
-The pre-commit hook runs `make lint` and `make test` and will block the commit
-if either step fails.
+The pre-commit hooks run trailing-whitespace fixes, YAML checks, and ruff
+linting/formatting on every commit.
 
 To build a distributable package:
 

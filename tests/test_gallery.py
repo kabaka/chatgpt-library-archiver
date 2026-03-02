@@ -341,6 +341,7 @@ def test_viewer_keyboard_navigation():
           },
           viewerImg: { src: '', alt: '' },
           viewerRaw: { href: '' },
+          viewerCounter: { textContent: '' },
         };
         const document = {
           getElementById: id => elements[id],
@@ -390,6 +391,7 @@ def test_viewer_navigation_respects_filters():
           },
           viewerImg: { src: '', alt: '' },
           viewerRaw: { href: '' },
+          viewerCounter: { textContent: '' },
         };
         const document = {
           getElementById: id => elements[id],
