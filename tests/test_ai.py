@@ -483,3 +483,47 @@ def test_call_image_endpoint_default_max_output_tokens(monkeypatch, tmp_path):
     )
 
     assert captured_kwargs["max_output_tokens"] == 300
+
+
+# ---------------------------------------------------------------------------
+# 10.5 — output_text=None crash test with input_tokens/output_tokens naming
+# ---------------------------------------------------------------------------
+
+
+def test_call_image_endpoint_output_text_none_with_alternate_usage_naming(
+    monkeypatch, tmp_path
+):
+    """10.5 — output_text=None with input_tokens/output_tokens usage fields.
+
+    Verifies that call_image_endpoint:
+    1. Returns an empty string (not AttributeError) when output_text is None.
+    2. Correctly extracts prompt/completion tokens via the input_tokens and
+       output_tokens attribute fallbacks in _extract_usage.
+    """
+    image_path = tmp_path / "image.png"
+    image_path.write_bytes(b"data")
+
+    class FilteredResponse:
+        def create(self, **_kwargs):
+            return SimpleNamespace(
+                output_text=None,
+                usage=SimpleNamespace(input_tokens=100, output_tokens=0),
+            )
+
+    client = SimpleNamespace(responses=FilteredResponse())
+    monkeypatch.setattr(ai.time, "perf_counter", iter([0.0, 0.1]).__next__)
+
+    result, telemetry, _usage = ai.call_image_endpoint(
+        client=client,
+        model="m",
+        prompt="p",
+        image_path=image_path,
+        operation="tag",
+        subject="image.png",
+    )
+
+    assert result == ""
+    assert telemetry.retries == 0
+    assert telemetry.total_tokens is None
+    assert telemetry.prompt_tokens == 100
+    assert telemetry.completion_tokens == 0

@@ -36,7 +36,7 @@
 | 7 | API & HTTP Resilience Improvements | 7 | Done | — |
 | 8 | Code Architecture & Type Safety | 6 | Not Started | — |
 | 9 | CI/CD Pipeline Hardening | 7 | Done | — |
-| 10 | Test Coverage Expansion | 7 | Not Started | Batch 3 (conftest.py), Batch 4 (error recovery) |
+| 10 | Test Coverage Expansion | 7 | Done | Batch 3 (conftest.py), Batch 4 (error recovery) |
 | 11 | Gallery UX — Navigation & Performance | 7 | Not Started | Batch 6 (accessibility base) |
 | 12 | Function Decomposition & Data Flow | 5 | Not Started | Batch 8 (typed configs) |
 | 13 | Image Pipeline & AI Cost Optimization | 6 | Not Started | Batch 4 (error recovery) |
@@ -190,13 +190,13 @@
 
 | # | Title | Description | Agent(s) | Reference | Depends On | Complexity | Status |
 |---|-------|-------------|----------|-----------|------------|------------|--------|
-| 10.1 | Corrupt/malformed metadata JSON tests | Test `load_gallery_items` with truncated JSON, non-list root, items missing `id`/`filename`, and non-dict items in list. Verify silent-skip behavior. | @testing-expert | [test-coverage-strategy.md](test-coverage-strategy.md) §6 item 1 | 3.1 | Small | Not Started |
-| 10.2 | HTTP streaming failure test | Mock `iter_content` to raise mid-stream. Verify partial file cleanup (`destination.unlink()`). | @testing-expert | [test-coverage-strategy.md](test-coverage-strategy.md) §6 item 2, [http-resilience.md](http-resilience.md) §13 | — | Small | Not Started |
-| 10.3 | Empty response body rejection test | Test `stream_download()` with zero bytes received when `allow_empty=False` (default). | @testing-expert | [test-coverage-strategy.md](test-coverage-strategy.md) §6 item 3 | — | Small | Not Started |
-| 10.4 | Thumbnail format-specific tests | Parametrize tests for WebP, GIF, BMP input images through `create_thumbnails` to cover `_prepare_for_format` branches. Test RGBA→RGB conversion for JPEG. | @testing-expert | [test-coverage-strategy.md](test-coverage-strategy.md) §6 item 4, [image-pipeline.md](image-pipeline.md) §11.3 | 3.1 | Medium | Not Started |
-| 10.5 | `output_text=None` crash test | Mock `responses.create` to return `SimpleNamespace(output_text=None, usage=...)`. Verify `call_image_endpoint` handles gracefully (after 7.4 fix). | @testing-expert | [test-coverage-strategy.md](test-coverage-strategy.md) §6 item 6, [openai-integration.md](openai-integration.md) Test Coverage | 7.4 | Small | Not Started |
-| 10.6 | Parametrized OpenAI error type tests | Parametrize over `TRANSIENT_ERRORS = [RateLimitError, APIConnectionError, APITimeoutError]` (should retry) and `FATAL_ERRORS = [AuthenticationError, BadRequestError]` (should raise). | @testing-expert | [test-coverage-strategy.md](test-coverage-strategy.md) §6 item 8, [openai-integration.md](openai-integration.md) §4 | 7.1, 7.3 | Medium | Not Started |
-| 10.7 | Unicode filename and _slugify tests | Test `_slugify` and `_unique_filename` in `importer.py` with Unicode input, empty input, and collision scenarios. | @testing-expert | [test-coverage-strategy.md](test-coverage-strategy.md) §6 item 9 | — | Small | Not Started |
+| 10.1 | Corrupt/malformed metadata JSON tests | Test `load_gallery_items` with truncated JSON, non-list root, items missing `id`/`filename`, and non-dict items in list. Verify silent-skip behavior. | @testing-expert | [test-coverage-strategy.md](test-coverage-strategy.md) §6 item 1 | 3.1 | Small | Done |
+| 10.2 | HTTP streaming failure test | Mock `iter_content` to raise mid-stream. Verify partial file cleanup (`destination.unlink()`). | @testing-expert | [test-coverage-strategy.md](test-coverage-strategy.md) §6 item 2, [http-resilience.md](http-resilience.md) §13 | — | Small | Done |
+| 10.3 | Empty response body rejection test | Test `stream_download()` with zero bytes received when `allow_empty=False` (default). | @testing-expert | [test-coverage-strategy.md](test-coverage-strategy.md) §6 item 3 | — | Small | Done |
+| 10.4 | Thumbnail format-specific tests | Parametrize tests for WebP, GIF, BMP input images through `create_thumbnails` to cover `_prepare_for_format` branches. Test RGBA→RGB conversion for JPEG. | @testing-expert | [test-coverage-strategy.md](test-coverage-strategy.md) §6 item 4, [image-pipeline.md](image-pipeline.md) §11.3 | 3.1 | Medium | Done |
+| 10.5 | `output_text=None` crash test | Mock `responses.create` to return `SimpleNamespace(output_text=None, usage=...)`. Verify `call_image_endpoint` handles gracefully (after 7.4 fix). | @testing-expert | [test-coverage-strategy.md](test-coverage-strategy.md) §6 item 6, [openai-integration.md](openai-integration.md) Test Coverage | 7.4 | Small | Done |
+| 10.6 | Parametrized OpenAI error type tests | Parametrize over `TRANSIENT_ERRORS = [RateLimitError, APIConnectionError, APITimeoutError]` (should retry) and `FATAL_ERRORS = [AuthenticationError, BadRequestError]` (should raise). | @testing-expert | [test-coverage-strategy.md](test-coverage-strategy.md) §6 item 8, [openai-integration.md](openai-integration.md) §4 | 7.1, 7.3 | Medium | Done |
+| 10.7 | Unicode filename and _slugify tests | Test `_slugify` and `_unique_filename` in `importer.py` with Unicode input, empty input, and collision scenarios. | @testing-expert | [test-coverage-strategy.md](test-coverage-strategy.md) §6 item 9 | — | Small | Done |
 
 ---
 

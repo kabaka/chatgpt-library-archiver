@@ -97,3 +97,57 @@ def test_save_gallery_items_preserves_existing_on_failure(tmp_path: Path) -> Non
 
     # Original file should be unchanged
     assert dest.read_text() == original_content
+
+
+# ---------------------------------------------------------------------------
+# 10.1 — Corrupt / malformed metadata JSON tests
+# ---------------------------------------------------------------------------
+
+
+def test_load_gallery_items_truncated_json_raises(tmp_path: Path) -> None:
+    """Truncated JSON raises JSONDecodeError."""
+    (tmp_path / "metadata.json").write_text('[{"id": "1", "filename": "a.png"')
+    with pytest.raises(json.JSONDecodeError):
+        metadata.load_gallery_items(tmp_path)
+
+
+def test_load_gallery_items_dict_root_returns_empty_list(tmp_path: Path) -> None:
+    """Non-list root (a dict) should return an empty list.
+
+    Iterating a dict yields its keys (strings), which are not Mapping
+    instances, so the ``isinstance`` guard filters them all out.
+    """
+    (tmp_path / "metadata.json").write_text('{"key": "value"}')
+    items = metadata.load_gallery_items(tmp_path)
+    assert items == []
+
+
+def test_load_gallery_items_non_dict_items_in_list_are_filtered(
+    tmp_path: Path,
+) -> None:
+    """Non-Mapping items in the JSON list are silently skipped."""
+    data = [
+        {"id": "1", "filename": "a.png"},
+        "just a string",
+        42,
+        None,
+        {"id": "2", "filename": "b.png"},
+    ]
+    (tmp_path / "metadata.json").write_text(json.dumps(data))
+    items = metadata.load_gallery_items(tmp_path)
+    assert len(items) == 2
+    assert items[0].id == "1"
+    assert items[1].id == "2"
+
+
+def test_load_gallery_items_missing_id_and_filename_default_to_empty(
+    tmp_path: Path,
+) -> None:
+    """Items missing 'id' or 'filename' default to empty strings via from_dict."""
+    data = [{"tags": ["a"]}]
+    (tmp_path / "metadata.json").write_text(json.dumps(data))
+    items = metadata.load_gallery_items(tmp_path)
+    assert len(items) == 1
+    assert items[0].id == ""
+    assert items[0].filename == ""
+    assert items[0].tags == ["a"]

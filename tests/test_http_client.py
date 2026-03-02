@@ -486,3 +486,46 @@ def test_stream_download_max_bytes_exact_boundary(tmp_path):
     destination = tmp_path / "exact.download"
     result = client.stream_download(url, destination, max_bytes=1024)
     assert result.bytes_downloaded == 1024
+
+
+# ---------------------------------------------------------------------------
+# 10.2 — HTTP streaming failure test
+# ---------------------------------------------------------------------------
+
+
+def test_stream_download_midstream_failure_cleans_up_partial(tmp_path):
+    """When iter_content raises mid-stream the partial file is deleted."""
+    url = "https://example.test/image"
+
+    class FailingResponse(FakeResponse):
+        def iter_content(self, chunk_size=8192):
+            yield b"partial data"
+            raise ConnectionError("connection dropped")
+
+    response = FailingResponse(headers={"Content-Type": "image/png"})
+    client = make_client({url: response})
+    destination = tmp_path / "partial.download"
+
+    with pytest.raises(ConnectionError, match="connection dropped"):
+        client.stream_download(url, destination)
+
+    assert not destination.exists(), "partial file should be cleaned up"
+
+
+# ---------------------------------------------------------------------------
+# 10.3 — Empty response body rejection test
+# ---------------------------------------------------------------------------
+
+
+def test_stream_download_rejects_empty_body_by_default(tmp_path):
+    """Zero bytes with allow_empty=False (default) raises HttpError."""
+    url = "https://example.test/empty"
+    response = FakeResponse(headers={"Content-Type": "image/png"}, body=b"")
+    client = make_client({url: response})
+    destination = tmp_path / "empty.download"
+
+    with pytest.raises(HttpError) as exc:
+        client.stream_download(url, destination)
+
+    assert exc.value.reason == "Empty response body"
+    assert not destination.exists(), "empty file should be removed"

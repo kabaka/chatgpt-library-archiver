@@ -1,3 +1,4 @@
+import io
 import multiprocessing
 import queue
 from concurrent.futures import Future
@@ -389,3 +390,50 @@ def test_regenerate_thumbnails_one_bad_one_good_continues_and_reports_error(
 
     # Both images advanced the progress counter
     assert reporter.advanced == 2
+
+
+# ---------------------------------------------------------------------------
+# 10.4 — Thumbnail format-specific tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "fmt,ext",
+    [
+        ("WEBP", ".webp"),
+        ("GIF", ".gif"),
+        ("BMP", ".bmp"),
+    ],
+)
+def test_create_thumbnails_format_specific(tmp_path, fmt, ext):
+    """Format-specific _prepare_for_format branches are exercised."""
+    buf = io.BytesIO()
+    Image.new("RGB", (8, 8), color=(100, 150, 200)).save(buf, format=fmt)
+    source = tmp_path / f"image{ext}"
+    source.write_bytes(buf.getvalue())
+
+    dest_map = {size: tmp_path / f"{size}{ext}" for size in thumbnails.THUMBNAIL_SIZES}
+    thumbnails.create_thumbnails(source, dest_map)
+
+    for size, dest in dest_map.items():
+        assert dest.is_file(), f"{size} thumbnail was not created for {fmt}"
+        with Image.open(dest) as img:
+            assert img.size[0] <= 400 and img.size[1] <= 400
+
+
+def test_create_thumbnails_rgba_to_rgb_jpeg_conversion(tmp_path):
+    """RGBA image saved as JPEG thumbnail must convert to RGB mode."""
+    buf = io.BytesIO()
+    Image.new("RGBA", (8, 8), color=(100, 150, 200, 128)).save(buf, format="PNG")
+    source = tmp_path / "rgba_image.png"
+    source.write_bytes(buf.getvalue())
+
+    dest_map = {size: tmp_path / f"{size}.jpg" for size in thumbnails.THUMBNAIL_SIZES}
+    thumbnails.create_thumbnails(source, dest_map)
+
+    for size, dest in dest_map.items():
+        assert dest.is_file(), f"{size} JPEG thumbnail was not created"
+        with Image.open(dest) as img:
+            assert img.mode == "RGB", (
+                f"{size} thumbnail has mode {img.mode}, expected RGB"
+            )

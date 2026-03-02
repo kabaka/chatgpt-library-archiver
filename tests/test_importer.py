@@ -163,3 +163,67 @@ def test_regenerate_thumbnails_recreates_missing(
     for size in thumbnails.THUMBNAIL_SIZES:
         path = gallery_root / "thumbs" / size / filename
         assert path.exists()
+
+
+# ---------------------------------------------------------------------------
+# 10.7 — Unicode filenames, _slugify, and _unique_filename tests
+# ---------------------------------------------------------------------------
+
+
+def test_slugify_ascii_text():
+    """_slugify normalizes to lowercase kebab-case."""
+    assert importer._slugify("Hello World") == "hello-world"
+
+
+def test_slugify_accented_characters():
+    """Accented characters decompose to ASCII equivalents via NFKD."""
+    assert importer._slugify("caf\u00e9 r\u00e9sum\u00e9") == "cafe-resume"
+
+
+def test_slugify_chinese_characters_returns_fallback():
+    """Non-ASCII characters with no Latin decomposition use the fallback."""
+    assert importer._slugify("\u4f60\u597d\u4e16\u754c") == "image"
+
+
+def test_slugify_emoji_returns_fallback():
+    """Emoji characters are stripped and the fallback is returned."""
+    assert importer._slugify("\U0001f3a8\U0001f58c\ufe0f") == "image"
+
+
+def test_slugify_empty_string_returns_fallback():
+    """Empty input returns the default fallback."""
+    assert importer._slugify("") == "image"
+
+
+def test_slugify_custom_fallback():
+    """Custom fallback is used when text produces an empty slug."""
+    assert importer._slugify("\u4f60\u597d", fallback="untitled") == "untitled"
+
+
+def test_slugify_mixed_unicode_and_ascii():
+    """Mixed content preserves the ASCII portion."""
+    assert importer._slugify("hello-\u4e16\u754c-world") == "hello-world"
+
+
+def test_unique_filename_no_collision():
+    """First candidate is used when no collision exists."""
+    existing: set[str] = set()
+    result = importer._unique_filename("photo", ".png", existing)
+    assert result == "photo.png"
+    assert "photo.png" in existing
+
+
+def test_unique_filename_with_collision():
+    """Numeric suffix is added to resolve collisions."""
+    existing = {"image.png"}
+    result = importer._unique_filename("image", ".png", existing)
+    assert result == "image-2.png"
+    assert "image-2.png" in existing
+
+
+def test_unique_filename_multiple_collisions():
+    """Counter increments until a unique name is found."""
+    existing = {"shot.jpg", "shot-2.jpg", "shot-3.jpg"}
+    result = importer._unique_filename("shot", ".jpg", existing)
+    assert result == "shot-4.jpg"
+    assert "shot-4.jpg" in existing
