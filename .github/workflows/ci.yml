@@ -93,4 +93,4 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install .
-      - uses: pypa/gh-action-pip-audit@v1
+      - uses: pypa/gh-action-pip-audit@v1.1.0
