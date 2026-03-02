@@ -40,8 +40,8 @@
 | 11 | Gallery UX — Navigation & Performance | 7 | Not Started | Batch 6 (accessibility base) |
 | 12 | Function Decomposition & Data Flow | 5 | Done | Batch 8 (typed configs) |
 | 13 | Image Pipeline & AI Cost Optimization | 6 | Done | Batch 4 (error recovery) |
-| 14 | Pyright Expansion & Linting | 5 | Not Started | Batch 8 (typed configs) |
-| 15 | Documentation & Skill File Updates | 8 | Not Started | Batch 5 (P0 docs), Batch 7 (API changes) |
+| 14 | Pyright Expansion & Linting | 5 | Done | Batch 8 (typed configs) |
+| 15 | Documentation & Skill File Updates | 8 | Done | Batch 5 (P0 docs), Batch 7 (API changes) |
 | 16 | Gallery Visual Polish | 8 | Not Started | Batch 6 + 11 (gallery infrastructure) |
 | 17 | Release Infrastructure & DevOps Polish | 7 | Not Started | Batch 9 (CI pipeline) |
 
@@ -251,11 +251,11 @@
 
 | # | Title | Description | Agent(s) | Reference | Depends On | Complexity | Status |
 |---|-------|-------------|----------|-----------|------------|------------|--------|
-| 14.1 | Expand pyright to `status.py`, `utils.py`, `ai.py` | Add these three modules to the pyright `include` list. Fix any type errors surfaced. These are the easiest modules to make strict-compatible. | @python-developer | [code-quality-architecture.md](code-quality-architecture.md) §2, [devops-ci-pipeline.md](devops-ci-pipeline.md) §5 | 8.1, 8.2 (typed configs) | Medium | Not Started |
-| 14.2 | Expand pyright to `http_client.py`, `gallery.py` | Add to pyright include. Fix type errors. These modules have clean signatures already. | @python-developer | [code-quality-architecture.md](code-quality-architecture.md) §2 | 14.1 | Medium | Not Started |
-| 14.3 | Expand pyright to `thumbnails.py` | Add to pyright include. This module has more complex types due to Pillow, but is well-structured. | @python-developer | [devops-ci-pipeline.md](devops-ci-pipeline.md) §5 | 14.2 | Medium | Not Started |
-| 14.4 | Add `PTH` (pathlib) rule set to ruff | Add the `PTH` rule set to encourage pathlib usage. Migrate `bootstrap.py` from `os.path` to `pathlib`. Fix remaining `os.path` usage in `gallery.py` and `tagger.py`. | @python-developer | [devops-ci-pipeline.md](devops-ci-pipeline.md) §5, [code-quality-architecture.md](code-quality-architecture.md) §10 | — | Medium | Not Started |
-| 14.5 | Add pytest markers and reduce coverage omit list | Add `@pytest.mark.slow` and `@pytest.mark.integration` markers. Progressively reduce the coverage omit list by adding tests for `cli/` and other excluded modules. | @testing-expert | [devops-ci-pipeline.md](devops-ci-pipeline.md) §6, [test-coverage-strategy.md](test-coverage-strategy.md) §1 | 3.1, 3.2 | Medium | Not Started |
+| 14.1 | Expand pyright to `status.py`, `utils.py`, `ai.py` | Add these three modules to the pyright `include` list. Fix any type errors surfaced. These are the easiest modules to make strict-compatible. | @python-developer | [code-quality-architecture.md](code-quality-architecture.md) §2, [devops-ci-pipeline.md](devops-ci-pipeline.md) §5 | 8.1, 8.2 (typed configs) | Medium | Done |
+| 14.2 | Expand pyright to `http_client.py`, `gallery.py` | Add to pyright include. Fix type errors. These modules have clean signatures already. | @python-developer | [code-quality-architecture.md](code-quality-architecture.md) §2 | 14.1 | Medium | Done |
+| 14.3 | Expand pyright to `thumbnails.py` | Add to pyright include. This module has more complex types due to Pillow, but is well-structured. | @python-developer | [devops-ci-pipeline.md](devops-ci-pipeline.md) §5 | 14.2 | Medium | Done |
+| 14.4 | Add `PTH` (pathlib) rule set to ruff | Add the `PTH` rule set to encourage pathlib usage. Migrate `bootstrap.py` from `os.path` to `pathlib`. Fix remaining `os.path` usage in `gallery.py` and `tagger.py`. | @python-developer | [devops-ci-pipeline.md](devops-ci-pipeline.md) §5, [code-quality-architecture.md](code-quality-architecture.md) §10 | — | Medium | Done |
+| 14.5 | Add pytest markers and reduce coverage omit list | Add `@pytest.mark.slow` and `@pytest.mark.integration` markers. Progressively reduce the coverage omit list by adding tests for `cli/` and other excluded modules. | @testing-expert | [devops-ci-pipeline.md](devops-ci-pipeline.md) §6, [test-coverage-strategy.md](test-coverage-strategy.md) §1 | 3.1, 3.2 | Medium | Done |
 
 ---
 
@@ -265,14 +265,14 @@
 
 | # | Title | Description | Agent(s) | Reference | Depends On | Complexity | Status |
 |---|-------|-------------|----------|-----------|------------|------------|--------|
-| 15.1 | Update `openai-vision-api` skill file | Replace `chat.completions.create` with `responses.create`. Update content type keys to `input_text`/`input_image`. Update mock examples. This is the most outdated skill. | @documentation-specialist | [documentation-quality.md](documentation-quality.md) §7 | 7.x (API changes) | Medium | Not Started |
-| 15.2 | Update `archiver-testing-strategy` skill | Fix OpenAI mock example to use `responses.create`. Update mock strategy table: `SimpleNamespace` for OpenAI client, `Mock(spec=...)` for project functions. Add `test_browser_extract.py` to file listing. | @documentation-specialist | [documentation-quality.md](documentation-quality.md) §7, [test-coverage-strategy.md](test-coverage-strategy.md) §10 | — | Small | Not Started |
-| 15.3 | Update credential-handling skill domain | Change `chat.openai.com` to `chatgpt.com`. Add `extract-auth` as a credential acquisition method. | @documentation-specialist | [documentation-quality.md](documentation-quality.md) §7 | — | Small | Not Started |
-| 15.4 | Expand `AGENTS.md` | Add Python version (3.10+), pointer to skill files in `.github/skills/`, coverage threshold (85%), security-sensitive files list (`auth.txt`, `tagging_config.json`). | @documentation-specialist | [documentation-quality.md](documentation-quality.md) §8 | — | Small | Not Started |
-| 15.5 | Create `docs/adr/README.md` | Create the ADR directory and index file so the ADR skill's references work. Include a template link and numbering convention. | @documentation-specialist | [documentation-quality.md](documentation-quality.md) §5, §7 | — | Small | Not Started |
-| 15.6 | Document `--browser` download flag | Add the `--browser edge|chrome` flag documentation to the README `download` command section. | @documentation-specialist | [documentation-quality.md](documentation-quality.md) §1, §12 | — | Small | Not Started |
-| 15.7 | Document `ARCHIVER_ASSUME_YES` env var | Add to README for CI/scripted use. Currently only in `utils.py` docstring and credential skill. | @documentation-specialist | [documentation-quality.md](documentation-quality.md) §4 | — | Small | Not Started |
-| 15.8 | Add privacy/consent notice for `tag` command | Document in README and `tag --help` that images are sent to OpenAI's vision API for analysis. Consider a consent prompt suppressible via `ARCHIVER_ASSUME_YES`. | @documentation-specialist | [documentation-quality.md](documentation-quality.md) §1, [openai-integration.md](openai-integration.md) §10 | — | Small | Not Started |
+| 15.1 | Update `openai-vision-api` skill file | Replace `chat.completions.create` with `responses.create`. Update content type keys to `input_text`/`input_image`. Update mock examples. This is the most outdated skill. | @documentation-specialist | [documentation-quality.md](documentation-quality.md) §7 | 7.x (API changes) | Medium | Done |
+| 15.2 | Update `archiver-testing-strategy` skill | Fix OpenAI mock example to use `responses.create`. Update mock strategy table: `SimpleNamespace` for OpenAI client, `Mock(spec=...)` for project functions. Add `test_browser_extract.py` to file listing. | @documentation-specialist | [documentation-quality.md](documentation-quality.md) §7, [test-coverage-strategy.md](test-coverage-strategy.md) §10 | — | Small | Done |
+| 15.3 | Update credential-handling skill domain | Change `chat.openai.com` to `chatgpt.com`. Add `extract-auth` as a credential acquisition method. | @documentation-specialist | [documentation-quality.md](documentation-quality.md) §7 | — | Small | Done |
+| 15.4 | Expand `AGENTS.md` | Add Python version (3.10+), pointer to skill files in `.github/skills/`, coverage threshold (85%), security-sensitive files list (`auth.txt`, `tagging_config.json`). | @documentation-specialist | [documentation-quality.md](documentation-quality.md) §8 | — | Small | Done |
+| 15.5 | Create `docs/adr/README.md` | Create the ADR directory and index file so the ADR skill's references work. Include a template link and numbering convention. | @documentation-specialist | [documentation-quality.md](documentation-quality.md) §5, §7 | — | Small | Done |
+| 15.6 | Document `--browser` download flag | Add the `--browser edge|chrome` flag documentation to the README `download` command section. | @documentation-specialist | [documentation-quality.md](documentation-quality.md) §1, §12 | — | Small | Done |
+| 15.7 | Document `ARCHIVER_ASSUME_YES` env var | Add to README for CI/scripted use. Currently only in `utils.py` docstring and credential skill. | @documentation-specialist | [documentation-quality.md](documentation-quality.md) §4 | — | Small | Done |
+| 15.8 | Add privacy/consent notice for `tag` command | Document in README and `tag --help` that images are sent to OpenAI's vision API for analysis. Consider a consent prompt suppressible via `ARCHIVER_ASSUME_YES`. | @documentation-specialist | [documentation-quality.md](documentation-quality.md) §1, [openai-integration.md](openai-integration.md) §10 | — | Small | Done |
 
 ---
 
