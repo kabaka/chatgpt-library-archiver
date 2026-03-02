@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import getpass
 import json
-import os
 import re
 import sys
 from collections.abc import Callable, Iterable
@@ -32,7 +31,7 @@ SAVE_INTERVAL = 10
 
 
 def _load_config(path: str) -> dict:
-    with open(path, encoding="utf-8") as f:
+    with Path(path).open(encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -196,7 +195,7 @@ def tag_images(
             telemetry_count = 0
 
             def process(item: GalleryItem):
-                image_path = os.path.join(gallery_root, "images", item.filename)
+                image_path = str(Path(gallery_root) / "images" / item.filename)
                 reporter.log_status("Uploading", item.filename)
                 tags, telemetry = generate_tags(
                     image_path,

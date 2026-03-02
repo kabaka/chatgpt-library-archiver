@@ -172,6 +172,22 @@ can create it manually with contents like:
 Only `api_key` is required; `model` and `prompt` have sensible defaults. Keep
 this file private—never commit it to version control.
 
+### `ARCHIVER_ASSUME_YES` — skip interactive prompts
+
+Set the `ARCHIVER_ASSUME_YES` environment variable to `1`, `true`, or `yes` to
+automatically confirm every interactive yes/no prompt. This is useful for
+CI pipelines, cron jobs, and other scripted environments where no human is
+available to answer:
+
+```bash
+export ARCHIVER_ASSUME_YES=1
+python -m chatgpt_library_archiver          # no prompts
+python -m chatgpt_library_archiver tag      # tagging also skips prompts
+```
+
+This variable affects all prompts across the CLI, including credential creation,
+configuration setup, and any future consent dialogs.
+
 ### Non-interactive configuration
 
 For scripted environments you can skip the interactive prompts by supplying
@@ -208,10 +224,14 @@ it so you can monitor each stage of the workflow without losing context.
 2. **Run manually inside venv**
 
 ```bash
-python -m chatgpt_library_archiver [--tag-new]
+python -m chatgpt_library_archiver [--tag-new] [--browser edge|chrome]
 ```
 - Downloads **only new images**, adds them to `gallery/images`, updates `gallery/metadata.json`, creates `gallery/thumbs/<size>/<file>` thumbnails, and regenerates `gallery/index.html`
 - Add `--tag-new` to tag fresh images during the download
+- Pass `--browser edge|chrome` to authenticate with live browser credentials
+  instead of reading `auth.txt` (macOS only). This extracts session cookies and
+  headers directly from the specified browser, so you don't need to maintain an
+  `auth.txt` file at all.
 
 3. **Regenerate gallery or thumbnails without downloading**
 
@@ -228,6 +248,16 @@ python -m chatgpt_library_archiver [--tag-new]
 ```bash
 python -m chatgpt_library_archiver tag [--gallery DIR] [--all|--ids <id...>|--remove-all|--remove-ids <id...>] [--workers N]
 ```
+
+> **Privacy notice:** The `tag` command sends your images to the
+> [OpenAI vision API](https://platform.openai.com/docs/guides/images) for
+> analysis. Images are transmitted as base64-encoded payloads to generate
+> descriptive tags. Review
+> [OpenAI's API data usage policy](https://openai.com/policies/api-data-usage-policies)
+> before proceeding. If you run the tool in an automated pipeline, set
+> `ARCHIVER_ASSUME_YES=1` to acknowledge this and suppress any future
+> consent prompts.
+
 - Populates the `tags` field in `metadata.json` using the OpenAI API. By
   default, only images missing tags are processed. Override the gallery location
   with `--gallery`. Use `--all` to re-tag every image, `--ids` to tag specific

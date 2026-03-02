@@ -3,7 +3,7 @@ from __future__ import annotations
 import getpass
 import os
 from pathlib import Path
-from typing import TypedDict
+from typing import TypedDict, cast
 
 REQUIRED_AUTH_KEYS = [
     "url",
@@ -101,17 +101,17 @@ def load_auth_config(path: str = "auth.txt") -> AuthConfig:
     """Load key=value lines from auth.txt into a dict.
     Ignores lines without '=' and whitespace-only lines.
     """
-    config = {}
-    if not os.path.isfile(path):
+    config: dict[str, str] = {}
+    if not Path(path).is_file():
         raise FileNotFoundError(path)
-    with open(path, encoding="utf-8") as f:
+    with Path(path).open(encoding="utf-8") as f:
         for raw in f:
             line = raw.strip()
             if not line or "=" not in line:
                 continue
             key, value = line.split("=", 1)
             config[key.strip()] = value.strip()
-    return config
+    return cast(AuthConfig, config)
 
 
 def prompt_and_write_auth(path: str = "auth.txt") -> AuthConfig:
@@ -119,7 +119,7 @@ def prompt_and_write_auth(path: str = "auth.txt") -> AuthConfig:
     print("Instructions: In your browser, open Developer Tools → Network,")
     print("find a request to 'image_gen', and copy these exact header values.\n")
 
-    cfg = {}
+    cfg: dict[str, str] = {}
     for key in REQUIRED_AUTH_KEYS:
         sensitive = key in _SENSITIVE_AUTH_KEYS
         while True:
@@ -139,7 +139,7 @@ def prompt_and_write_auth(path: str = "auth.txt") -> AuthConfig:
     write_secure_file(path, lines)
 
     print(f"\nSaved credentials to {path}.\n")
-    return cfg
+    return cast(AuthConfig, cfg)
 
 
 def ensure_auth_config(path: str = "auth.txt") -> AuthConfig:

@@ -3,6 +3,8 @@
         "pre-commit": true,
         "source .venv/bin/activate": true,
         "make": true,
-        "python -m ruff": true
+        "python -m ruff": true,
+        ".venv/bin/pyright": true,
+        ".venv/bin/pre-commit": true
     }
 }

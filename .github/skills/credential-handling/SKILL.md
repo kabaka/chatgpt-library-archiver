@@ -32,10 +32,22 @@ oai_language=...
 ```
 
 **Security properties:**
-- File permissions: `600` (owner read/write only)
+- File permissions: `600` (owner read/write only), enforced by `write_secure_file()`
 - Listed in `.gitignore` — never committed
 - Contains session tokens that can impersonate the user
 - Tokens expire — users must refresh periodically
+
+**Acquisition methods** (in order of preference):
+
+1. **`extract-auth` CLI command** (recommended for macOS) — automatically extracts credentials from Edge or Chrome browser cookies, fetches the Bearer token, and writes `auth.txt`:
+   ```bash
+   chatgpt-archiver extract-auth --browser edge
+   chatgpt-archiver extract-auth --browser chrome --output auth.txt
+   chatgpt-archiver extract-auth --dry-run  # preview without writing
+   ```
+2. **Manual extraction** — copy headers from browser DevTools → Network tab
+
+See the [Browser Credential Extraction](#browser-credential-extraction-extract-auth) section below for details.
 
 ### 2. OpenAI API Key (`tagging_config.json`)
 
@@ -96,18 +108,73 @@ Additional overrides:
 The archiver prompts users interactively when credentials are missing:
 
 ```python
-def ensure_auth_config(path: str) -> dict:
+def ensure_auth_config(path: str = "auth.txt") -> AuthConfig:
     """Load auth config, prompting user to create it if missing."""
-    if os.path.exists(path):
-        return load_auth_config(path)
-    # Interactive: guide user through header extraction
-    config = prompt_for_auth_headers()
-    write_auth_config(path, config)
-    os.chmod(path, 0o600)
-    return config
+    try:
+        cfg = load_auth_config(path)
+    except FileNotFoundError:
+        if prompt_yes_no("auth.txt not found. Create it now?"):
+            cfg = prompt_and_write_auth(path)
+        else:
+            raise
+    # Validate required keys are present
+    missing = [k for k in REQUIRED_AUTH_KEYS if not cfg.get(k)]
+    if missing:
+        if prompt_yes_no("auth.txt is missing required keys. Re-enter credentials now?"):
+            cfg = prompt_and_write_auth(path)
+        else:
+            raise ValueError("auth.txt is missing required keys")
+    return cfg
 ```
 
-For CI/scripted use, provide `--no-config-prompt` to fail fast instead of prompting.
+Sensitive fields (`authorization`, `cookie`) are collected via `getpass.getpass()` to avoid terminal echo. A masked confirmation is displayed after entry (e.g. `✓ authorization set: Bearer e...`).
+
+For CI/scripted use, set `ARCHIVER_ASSUME_YES=1` to auto-answer prompts. For tagging config, pass `allow_interactive=False` to `ensure_tagging_config()` to fail fast instead of prompting.
+
+## Browser Credential Extraction (`extract-auth`)
+
+The `extract-auth` CLI command automates credential acquisition on macOS by reading encrypted cookies from Chromium-based browsers (Edge, Chrome).
+
+### How It Works
+
+1. **Cookie extraction** — copies the browser's SQLite cookie database to a temp location, reads `chatgpt.com` cookies
+2. **Decryption** — retrieves the encryption key from the macOS Keychain via `security find-generic-password`, derives AES-128-CBC key via PBKDF2, decrypts cookie values
+3. **Token exchange** — uses the session cookie to call ChatGPT's `/api/auth/session` endpoint for a Bearer access token
+4. **Header discovery** — fetches the ChatGPT page to extract `oai_client_version` (build ID), generates a device UUID
+5. **File writing** — writes `auth.txt` with `0o600` permissions via `write_secure_file()`
+
+### CLI Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--browser` | `edge` | Browser to extract from (`edge` or `chrome`) |
+| `--output` | `auth.txt` | Path to write the auth file |
+| `--dry-run` | — | Print extracted values (sensitive fields masked) without writing |
+| `--no-verify` | — | Skip the test API call that confirms the token works |
+
+### Security Considerations
+
+- The macOS Keychain dialog may appear asking the user to grant access — this is expected
+- Cookie database is copied to a temp directory to avoid SQLite locking
+- Decrypted cookies and tokens are only held in memory during extraction
+- `--dry-run` masks sensitive fields (authorization, cookie) via `_mask()` helper
+- The verification step makes a lightweight API call to confirm the token is valid
+
+### Platform Limitations
+
+- **macOS only** — raises `PlatformNotSupportedError` on non-Darwin systems
+- Requires the browser's "Default" profile to have been used
+- Cookie database version 24+ (Edge 145+, Chrome 131+) prepends a 32-byte SHA-256 domain hash to encrypted values — handled automatically
+
+### Error Types
+
+All extraction errors inherit from `BrowserExtractError`:
+- `PlatformNotSupportedError` — not macOS
+- `BrowserNotFoundError` — cookie database missing
+- `KeychainAccessError` — Keychain password retrieval failed
+- `CookieDecryptionError` — AES decryption failed
+- `SessionExpiredError` — session cookie missing or expired
+- `TokenFetchError` — access token API call failed
 
 ## Testing Credential Code
 
@@ -125,7 +192,9 @@ For CI/scripted use, provide `--no-config-prompt` to fail fast instead of prompt
 - [ ] `tagging_config.json` in `.gitignore`
 - [ ] No credentials in `metadata.json`
 - [ ] No credentials in log output or error messages
-- [ ] File permissions set to `600`
+- [ ] File permissions set to `600` via `write_secure_file()`
 - [ ] Env var fallbacks tested
-- [ ] `--no-config-prompt` works for scripted environments
+- [ ] `ARCHIVER_ASSUME_YES` works for scripted environments
+- [ ] `allow_interactive=False` works for tagging config in CI
+- [ ] `extract-auth --dry-run` masks sensitive fields
 - [ ] Redirect responses don't forward auth headers to other domains

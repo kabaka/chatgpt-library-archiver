@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import sys
+import types
 from collections.abc import Mapping
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
+from typing import NoReturn
 
 from tqdm import tqdm
 
@@ -29,7 +31,7 @@ class StatusError:
     action: str
     detail: str
     reason: str
-    context: dict[str, object] = field(default_factory=dict)
+    context: dict[str, object] = field(default_factory=lambda: {})
     exception: Exception | None = None
 
     def as_dict(self) -> dict[str, object]:
@@ -54,27 +56,27 @@ class StatusReporter(AbstractContextManager["StatusReporter"]):
     unit: str = "item"
     position: int = 0
     disable: bool | None = None
-    errors: list[StatusError] = field(default_factory=list, init=False)
+    errors: list[StatusError] = field(default_factory=lambda: [])
 
     def __post_init__(self) -> None:
-        self._bar = None
-        self._bar_kwargs = {
-            "desc": self.description,
-            "unit": self.unit,
-            "dynamic_ncols": True,
-            "position": self.position,
-            "leave": False,
-            "file": sys.stdout,
-        }
+        self._bar: tqdm[NoReturn] | None = None
         if self.disable is None:
             self.disable = not sys.stdout.isatty()
-        self._bar_kwargs["disable"] = self.disable
         if self.total is not None:
             self._create_bar(self.total)
 
     def _create_bar(self, total: int) -> None:
         if self._bar is None:
-            self._bar = tqdm(total=total, **self._bar_kwargs)
+            self._bar = tqdm(
+                total=total,
+                desc=self.description,
+                unit=self.unit,
+                dynamic_ncols=True,
+                position=self.position,
+                leave=False,
+                file=sys.stdout,
+                disable=self.disable,
+            )
         else:
             self._bar.total = total
             self._bar.refresh()
@@ -139,6 +141,11 @@ class StatusReporter(AbstractContextManager["StatusReporter"]):
             self._bar.close()
             self._bar = None
 
-    def __exit__(self, exc_type, exc, exc_tb):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        exc_tb: types.TracebackType | None,
+    ) -> bool:
         self.close()
         return False

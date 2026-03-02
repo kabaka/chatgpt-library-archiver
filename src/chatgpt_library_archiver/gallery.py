@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import os
 import shutil
 from importlib import resources
+from pathlib import Path
 
 from .metadata import (
     GalleryItem,
@@ -21,7 +21,7 @@ def generate_gallery(gallery_root: str = "gallery") -> int:
 
     The bundled viewer supports filtering by title and date range.
     """
-    os.makedirs(gallery_root, exist_ok=True)
+    Path(gallery_root).mkdir(parents=True, exist_ok=True)
     items = load_gallery_items(gallery_root)
     if not items:
         return 0
@@ -37,7 +37,7 @@ def generate_gallery(gallery_root: str = "gallery") -> int:
     save_gallery_items(gallery_root, items)
 
     index_src = resources.open_binary("chatgpt_library_archiver", "gallery_index.html")
-    with index_src as src, open(os.path.join(gallery_root, "index.html"), "wb") as dst:
+    with index_src as src, (Path(gallery_root) / "index.html").open("wb") as dst:
         shutil.copyfileobj(src, dst)
 
     return len(items)

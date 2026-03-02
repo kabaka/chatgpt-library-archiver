@@ -6,6 +6,7 @@ import subprocess
 import sys
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 from .utils import prompt_yes_no
 
@@ -18,27 +19,27 @@ def in_venv() -> bool:
 
 def venv_python(venv_dir: str) -> str:
     if os.name == "nt":
-        return os.path.join(venv_dir, "Scripts", "python.exe")
-    return os.path.join(venv_dir, "bin", "python")
+        return str(Path(venv_dir) / "Scripts" / "python.exe")
+    return str(Path(venv_dir) / "bin" / "python")
 
 
 def venv_bin(venv_dir: str, executable: str) -> str:
     suffix = "Scripts" if os.name == "nt" else "bin"
     ext = ".exe" if os.name == "nt" and not executable.endswith(".exe") else ""
-    return os.path.join(venv_dir, suffix, f"{executable}{ext}")
+    return str(Path(venv_dir) / suffix / f"{executable}{ext}")
 
 
 def find_executable(name: str, env_dir: str | None = None) -> str | None:
     candidates: list[str] = []
     if env_dir:
         candidate = venv_bin(env_dir, name)
-        if os.path.isfile(candidate):
+        if Path(candidate).is_file():
             candidates.append(candidate)
     found = shutil.which(name)
     if found:
         candidates.append(found)
     for candidate in candidates:
-        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+        if Path(candidate).is_file() and os.access(candidate, os.X_OK):
             return candidate
     return None
 
@@ -52,7 +53,7 @@ class EnvironmentInfo:
 
 
 def ensure_environment(project_root: str) -> EnvironmentInfo:
-    venv_dir = os.path.join(project_root, ".venv")
+    venv_dir = str(Path(project_root) / ".venv")
 
     if in_venv():
         prefix = os.environ.get("VIRTUAL_ENV") or sys.prefix
@@ -61,7 +62,7 @@ def ensure_environment(project_root: str) -> EnvironmentInfo:
         )
 
     created = False
-    if not os.path.isdir(venv_dir):
+    if not Path(venv_dir).is_dir():
         print("No virtual environment found (.venv).")
         if prompt_yes_no("Create one and install requirements now?"):
             print("Creating virtual environment...")
@@ -74,7 +75,7 @@ def ensure_environment(project_root: str) -> EnvironmentInfo:
             sys.exit(1)
 
     py_exe = venv_python(venv_dir)
-    if not os.path.isfile(py_exe):
+    if not Path(py_exe).is_file():
         print(
             "Python executable inside .venv not found. "
             "The virtual environment may be broken."
@@ -100,7 +101,7 @@ def select_installer(env: EnvironmentInfo) -> tuple[str, Sequence[str]]:
 
 
 def install_dependencies(env: EnvironmentInfo, requirements: Iterable[str]) -> None:
-    reqs = [req for req in requirements if os.path.isfile(req)]
+    reqs = [req for req in requirements if Path(req).is_file()]
     if not reqs:
         print("No requirements files found; skipping dependency installation.")
         return
@@ -118,13 +119,13 @@ def install_dependencies(env: EnvironmentInfo, requirements: Iterable[str]) -> N
 
 
 def main(tag_new: bool = False):
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    project_root = str(Path(__file__).resolve().parent.parent)
 
     env = ensure_environment(project_root)
 
     requirements = [
-        os.path.join(project_root, "requirements.txt"),
-        os.path.join(project_root, "requirements-dev.txt"),
+        str(Path(project_root) / "requirements.txt"),
+        str(Path(project_root) / "requirements-dev.txt"),
     ]
     install_dependencies(env, requirements)
 

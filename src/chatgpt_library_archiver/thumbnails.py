@@ -11,7 +11,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from multiprocessing.context import BaseContext
 from multiprocessing.managers import SyncManager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
@@ -50,9 +50,9 @@ class _StatusQueueProtocol(Protocol):
     """Minimal protocol for status queue objects used by workers."""
 
     def put(
-        self, message: object, block: bool = True, timeout: float | None = None
+        self, item: object, block: bool = True, timeout: float | None = None
     ) -> None:
-        """Send ``message`` to the queue."""
+        """Send ``item`` to the queue."""
 
     def get(self) -> object:
         """Retrieve a message from the queue."""
@@ -65,8 +65,7 @@ THUMBNAIL_SIZES: dict[str, tuple[int, int]] = {
     "large": (400, 400),
 }
 
-_RESAMPLING = getattr(Image, "Resampling", Image)
-_LANCZOS = getattr(_RESAMPLING, "LANCZOS", Image.BICUBIC)
+_LANCZOS: Image.Resampling = Image.Resampling.LANCZOS
 
 _EXT_TO_FORMAT = {
     ".jpg": "JPEG",
@@ -153,7 +152,7 @@ def _prepare_for_format(
         )
     elif fmt == "GIF":
         if img.mode not in ("P", "L"):
-            img = img.convert("P", palette=Image.ADAPTIVE)
+            img = img.convert("P", palette=Image.Palette.ADAPTIVE)
         save_kwargs["optimize"] = True
     return img, save_kwargs
 
@@ -215,10 +214,13 @@ def _consume_status_messages(
     """Forward worker status updates to ``reporter``."""
 
     while True:
-        message = status_queue.get()
-        if message is None:
+        raw = status_queue.get()
+        if raw is None:
             break
-        kind, name, *rest = message
+        message = cast(tuple[str, ...], raw)
+        kind = message[0]
+        name = message[1]
+        rest = message[2:]
         if kind == "start":
             reporter.log_status("Generating thumbnails for", name)
         elif kind == "finish":
@@ -349,13 +351,15 @@ def regenerate_thumbnails(
             daemon=True,
         )
         status_thread.start()
-        executor_kwargs["mp_context"] = mp_context
 
     try:
-        with ProcessPoolExecutor(**executor_kwargs) as executor:
+        with ProcessPoolExecutor(
+            max_workers=max_workers,
+            mp_context=mp_context,
+        ) as executor:
             pending_iter = iter(pending)
-            futures: set[concurrent.futures.Future] = set()
-            future_filenames: dict[concurrent.futures.Future, str] = {}
+            futures: set[concurrent.futures.Future[str]] = set()
+            future_filenames: dict[concurrent.futures.Future[str], str] = {}
 
             def submit_next() -> bool:
                 try:

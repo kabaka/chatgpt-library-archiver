@@ -159,7 +159,7 @@ def encode_image(image_path: Path, *, max_dimension: int = 1024) -> tuple[str, s
     if file_size > _ENCODE_SIZE_THRESHOLD:
         with Image.open(image_path) as raw:
             img = ImageOps.exif_transpose(raw)
-        img.thumbnail((max_dimension, max_dimension), Image.LANCZOS)
+        img.thumbnail((max_dimension, max_dimension), Image.Resampling.LANCZOS)
         if img.mode == "RGBA":
             background = Image.new("RGB", img.size, (255, 255, 255))
             background.paste(img, mask=img.split()[3])
@@ -230,19 +230,20 @@ def call_image_endpoint(
     retries = 0
     delay = 1.0
     start = time.perf_counter()
+    input_messages: list[dict[str, object]] = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": prompt},
+                {"type": "input_image", "image_url": data_url},
+            ],
+        }
+    ]
     while True:
         try:
             response = client.responses.create(
                 model=model,
-                input=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "input_text", "text": prompt},
-                            {"type": "input_image", "image_url": data_url},
-                        ],
-                    }
-                ],
+                input=input_messages,  # type: ignore[arg-type]
                 max_output_tokens=max_output_tokens,
             )
             break

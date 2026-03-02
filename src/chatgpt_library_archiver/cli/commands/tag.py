@@ -19,6 +19,12 @@ class TagCommand:
         parser = subparsers.add_parser(
             "tag",
             help="Generate or remove tags for images using OpenAI",
+            description=(
+                "Generate or remove tags for images using the OpenAI vision API. "
+                "When generating tags, images are sent to OpenAI as base64-encoded "
+                "payloads for analysis. Review OpenAI's API data usage policy at "
+                "https://openai.com/policies/api-data-usage-policies before use."
+            ),
         )
         parser.add_argument("--all", action="store_true", help="Re-tag all images")
         parser.add_argument("--ids", nargs="+", help="Tag only specific image IDs")

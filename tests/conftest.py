@@ -15,6 +15,10 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers", "slow: marks tests as slow (deselected by default)"
     )
+    config.addinivalue_line(
+        "markers",
+        "integration: marks integration tests requiring external resources",
+    )
 
 
 def _make_sample_png() -> bytes:

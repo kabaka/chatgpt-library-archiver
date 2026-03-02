@@ -194,7 +194,7 @@ def load_gallery_items(gallery_root: str | Path) -> list[GalleryItem]:
     path = metadata_path(gallery_root)
     if not path.is_file():
         return []
-    with open(path, encoding="utf-8") as fh:
+    with path.open(encoding="utf-8") as fh:
         raw_items = json.load(fh)
     items: list[GalleryItem] = []
     for raw in raw_items:

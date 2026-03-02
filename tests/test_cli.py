@@ -254,6 +254,7 @@ def test_import_subcommand(monkeypatch, tmp_path):
 
 
 @pytest.mark.slow
+@pytest.mark.integration
 @pytest.mark.skipif(
     platform.python_implementation() != "CPython",
     reason="Building wheels is only supported on CPython",

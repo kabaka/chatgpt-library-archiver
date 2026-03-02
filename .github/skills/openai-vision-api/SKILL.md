@@ -18,7 +18,7 @@ Integration patterns for using the OpenAI vision API to tag and rename images in
 
 ### Cached Client Pattern
 
-The archiver caches `OpenAI` client instances per API key to avoid creating new connections for every request:
+The archiver caches `OpenAI` client instances per API key to avoid creating new connections for every request. The SDK's own retry is disabled (`max_retries=0`) so that the application-level retry loop in `call_image_endpoint` has full control:
 
 ```python
 _CLIENT_CACHE: dict[str, OpenAI] = {}
@@ -26,71 +26,112 @@ _CLIENT_CACHE: dict[str, OpenAI] = {}
 def get_cached_client(api_key: str) -> OpenAI:
     client = _CLIENT_CACHE.get(api_key)
     if client is None:
-        client = OpenAI(api_key=api_key)
+        client = OpenAI(api_key=api_key, max_retries=0)
         _CLIENT_CACHE[api_key] = client
     return client
 ```
 
-Always use `get_cached_client()` — never construct `OpenAI()` directly in feature code.
+Always use `get_cached_client()` — never construct `OpenAI()` directly in feature code. Use `reset_client_cache()` in tests to clear cached clients between test runs.
 
 ## Vision API Call Pattern
 
 ### Image Encoding
 
-```python
-import base64
-import mimetypes
+The `encode_image()` function in `ai.py` returns `(mime, data_url)` for use in API calls. It applies smart preprocessing for large files:
 
-def encode_image_for_api(image_path: Path) -> tuple[str, str]:
-    """Return (base64_data, media_type) for an image file."""
-    mime_type = mimetypes.guess_type(str(image_path))[0] or "image/png"
-    with open(image_path, "rb") as f:
-        data = base64.b64encode(f.read()).decode("utf-8")
-    return data, mime_type
+- Files **≤ 500 KB**: passed through as-is (raw base64)
+- Files **> 500 KB**: resized so the longest dimension ≤ 1024 px, EXIF-transposed, and converted to JPEG (saves 60–80% on token costs)
+- **RGBA** images: composited onto a white background before JPEG conversion
+- **BMP/TIFF**: converted to JPEG when resized
+
+```python
+def encode_image(image_path: Path, *, max_dimension: int = 1024) -> tuple[str, str]:
+    """Return (mime, data_url) for image_path suitable for API calls."""
+    mime = mimetypes.guess_type(str(image_path))[0] or "image/jpeg"
+    file_size = image_path.stat().st_size
+
+    if file_size > _ENCODE_SIZE_THRESHOLD:  # 500_000 bytes
+        # Open with Pillow, EXIF transpose, resize, convert to JPEG
+        ...
+        return "image/jpeg", f"data:image/jpeg;base64,{payload}"
+
+    # Small file — pass through as-is
+    with image_path.open("rb") as fh:
+        payload = base64.b64encode(fh.read()).decode("ascii")
+    return mime, f"data:{mime};base64,{payload}"
 ```
 
 ### API Call Structure
 
+The archiver uses the OpenAI **Responses API** (`client.responses.create`), not the Chat Completions API:
+
 ```python
-response = client.chat.completions.create(
-    model=model,
-    messages=[{
+input_messages = [
+    {
         "role": "user",
         "content": [
-            {"type": "text", "text": prompt},
-            {"type": "image_url", "image_url": {
-                "url": f"data:{media_type};base64,{base64_data}"
-            }}
-        ]
-    }],
-    max_tokens=300,
+            {"type": "input_text", "text": prompt},
+            {"type": "input_image", "image_url": data_url},
+        ],
+    }
+]
+
+response = client.responses.create(
+    model=model,
+    input=input_messages,
+    max_output_tokens=300,  # 300 for tagging, 50 for renaming
 )
-result = response.choices[0].message.content
+
+# Safe extraction — output_text may be None (e.g. content-filtered)
+output_text = getattr(response, "output_text", None)
+text = "" if output_text is None else output_text.strip()
 ```
 
-## Rate Limit Handling
+Key differences from the Chat Completions API:
+- Method: `responses.create` (not `chat.completions.create`)
+- Parameter: `input=` (not `messages=`)
+- Content types: `input_text` / `input_image` (not `text` / `image_url`)
+- Token cap: `max_output_tokens=` (not `max_tokens=`)
+- Result: `response.output_text` (not `response.choices[0].message.content`)
+
+## Retry & Error Handling
+
+The `call_image_endpoint()` function retries transient errors with exponential backoff, while fatal errors propagate immediately:
 
 ```python
-from openai import RateLimitError
+from openai import (
+    APIConnectionError, APITimeoutError, AuthenticationError,
+    BadRequestError, InternalServerError, RateLimitError,
+)
 
-MAX_RETRIES = 3
-BASE_DELAY = 2.0
+def _is_transient(exc: Exception) -> bool:
+    return isinstance(exc, (
+        RateLimitError, APIConnectionError, APITimeoutError, InternalServerError,
+    ))
 
-for attempt in range(MAX_RETRIES):
+# Inside call_image_endpoint:
+while True:
     try:
-        response = client.chat.completions.create(...)
+        response = client.responses.create(...)
         break
-    except RateLimitError:
-        if attempt == MAX_RETRIES - 1:
+    except (AuthenticationError, BadRequestError):
+        raise  # Fatal — never retry
+    except Exception as exc:
+        if not _is_transient(exc) or retries >= max_retries:
             raise
-        delay = BASE_DELAY * (2 ** attempt)
+        if on_retry:
+            on_retry(retries + 1, delay)
         time.sleep(delay)
+        retries += 1
+        delay *= 2  # Exponential backoff
 ```
 
 Key considerations:
+- **Transient** (retried): `RateLimitError`, `APIConnectionError`, `APITimeoutError`, `InternalServerError`
+- **Fatal** (never retried): `AuthenticationError`, `BadRequestError`
 - Always use exponential backoff, not fixed delays
 - Track retry count in telemetry (`AIRequestTelemetry.retries`)
-- Respect `Retry-After` headers when present
+- The SDK's own retry is disabled (`max_retries=0`) to avoid double-retry
 - Cap concurrent workers to avoid hitting rate limits in the first place
 
 ## Telemetry
@@ -115,10 +156,21 @@ Report telemetry via callback to `StatusReporter` for consistent logging.
 
 The archiver resolves OpenAI configuration from multiple sources in priority order:
 
-1. **CLI arguments** (highest priority)
-2. **Environment variables**: `OPENAI_API_KEY`, `CHATGPT_LIBRARY_ARCHIVER_API_KEY`, `CHATGPT_LIBRARY_ARCHIVER_OPENAI_API_KEY`
-3. **Config file**: `tagging_config.json` (`api_key`, `model`, `prompt`)
-4. **Defaults**: model = `gpt-4.1-mini`, prompt = built-in default
+1. **CLI arguments** (highest priority — except API key, which cannot be overridden via CLI)
+2. **Environment variables**: `CHATGPT_LIBRARY_ARCHIVER_OPENAI_API_KEY`, `CHATGPT_LIBRARY_ARCHIVER_API_KEY`, `OPENAI_API_KEY` (checked in that order)
+3. **Config file**: `tagging_config.json` (`api_key`, `model`, `prompt`, `rename_prompt`)
+4. **Defaults**: model = `gpt-4.1-mini` (`DEFAULT_MODEL` in `ai.py`), prompt = built-in default in `tagger.py`
+
+Configuration is resolved into a `TaggingConfig` dataclass:
+
+```python
+@dataclass(slots=True)
+class TaggingConfig:
+    api_key: str
+    model: str = DEFAULT_MODEL
+    prompt: str = ""
+    rename_prompt: str | None = None
+```
 
 This layered resolution supports both interactive use and CI/scripted environments.
 

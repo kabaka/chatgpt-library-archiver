@@ -115,7 +115,7 @@ def test_regenerate_thumbnails_parallel_uses_executor(
         max_workers=PARALLEL_WORKERS,
     )
 
-    assert executor_kwargs == [{"max_workers": PARALLEL_WORKERS}]
+    assert executor_kwargs == [{"max_workers": PARALLEL_WORKERS, "mp_context": None}]
     assert len(submitted) == PARALLEL_WORKERS
     assert sorted(name for name, _ in calls) == sorted(filenames)
     assert processed == filenames

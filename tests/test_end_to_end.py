@@ -2,11 +2,14 @@ import hashlib
 import json
 from urllib.parse import urlparse
 
+import pytest
+
 from chatgpt_library_archiver import incremental_downloader
 from chatgpt_library_archiver.http_client import DownloadResult
 from chatgpt_library_archiver.incremental_downloader import _sanitize_id
 
 
+@pytest.mark.integration
 def test_incremental_download_and_gallery(monkeypatch, tmp_path, sample_png_bytes):
     # Operate within a temporary working directory
     monkeypatch.chdir(tmp_path)
@@ -142,6 +145,7 @@ def test_incremental_download_and_gallery(monkeypatch, tmp_path, sample_png_byte
     assert "metadata.json" in html
 
 
+@pytest.mark.integration
 def test_incremental_download_with_browser_calls_extract_auth(monkeypatch, tmp_path):
     """browser= passed → calls extract_auth_config, not ensure_auth_config."""
     monkeypatch.chdir(tmp_path)
@@ -186,6 +190,7 @@ def test_incremental_download_with_browser_calls_extract_auth(monkeypatch, tmp_p
     assert auth_calls["ensure"] == 0
 
 
+@pytest.mark.integration
 def test_incremental_download_without_browser_calls_ensure_auth(monkeypatch, tmp_path):
     """browser= None (default) → calls ensure_auth_config."""
     monkeypatch.chdir(tmp_path)
@@ -234,6 +239,7 @@ def test_incremental_download_without_browser_calls_ensure_auth(monkeypatch, tmp
 # -------------------------------------------------------------------
 
 
+@pytest.mark.integration
 def test_main_default_max_workers_is_six(monkeypatch, tmp_path, sample_png_bytes):
     """main() should default to max_workers=6 and pass it to ThreadPoolExecutor."""
     monkeypatch.chdir(tmp_path)
@@ -319,6 +325,7 @@ def test_main_default_max_workers_is_six(monkeypatch, tmp_path, sample_png_bytes
     assert recorded_workers == [6]
 
 
+@pytest.mark.integration
 def test_main_custom_max_workers(monkeypatch, tmp_path, sample_png_bytes):
     """main(max_workers=N) should pass N to ThreadPoolExecutor."""
     monkeypatch.chdir(tmp_path)
@@ -489,6 +496,7 @@ class TestSanitizeId:
 # -------------------------------------------------------------------
 
 
+@pytest.mark.integration
 def test_path_traversal_does_not_escape_gallery(
     monkeypatch, tmp_path, sample_png_bytes
 ):

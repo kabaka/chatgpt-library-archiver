@@ -7,6 +7,7 @@ import threading
 from collections.abc import Callable, Iterable, Mapping, MutableSet
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 from urllib.parse import urlparse
 
 from requests import PreparedRequest, Response, Session
@@ -92,7 +93,7 @@ class SafeSession(Session):
             for header in _SENSITIVE_HEADERS:
                 prepared_request.headers.pop(header, None)
         else:
-            super().rebuild_auth(prepared_request, response)
+            super().rebuild_auth(prepared_request, response)  # type: ignore[reportUnknownMemberType]
 
 
 def _default_retry(
@@ -232,7 +233,7 @@ class HttpClient:
                     details={"content_type": content_type},
                     response=response,
                 )
-            return data
+            return cast(Mapping[str, object], data)
         finally:
             response.close()
 

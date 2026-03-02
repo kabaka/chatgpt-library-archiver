@@ -61,13 +61,17 @@ Issues = "https://github.com/kabaka/chatgpt-library-archiver/issues"
 [tool.pytest.ini_options]
 addopts = "-q -m 'not slow'"
 testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (deselected by default, run with -m slow)",
+    "integration: marks integration tests requiring external resources",
+]
 
 [tool.ruff]
 line-length = 88
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "SIM", "PL", "RUF", "FURB", "S"]
+select = ["E", "F", "I", "B", "UP", "SIM", "PL", "RUF", "FURB", "S", "PTH"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/chatgpt_library_archiver/ai.py" = ["PLR0913"]
@@ -77,10 +81,12 @@ select = ["E", "F", "I", "B", "UP", "SIM", "PL", "RUF", "FURB", "S"]
 "src/chatgpt_library_archiver/tagger.py" = ["PLR0912", "PLR0913", "PLR0915"]
 "src/chatgpt_library_archiver/thumbnails.py" = ["PLR0912", "PLR0915"]
 "src/chatgpt_library_archiver/bootstrap.py" = ["S603", "S607"]
-"src/chatgpt_library_archiver/browser_extract.py" = ["PLC0415", "PLR0913", "S603", "S607", "SLF001"]
+"src/chatgpt_library_archiver/browser_extract.py" = ["PLC0415", "PLR0913", "PTH101", "S603", "S607", "SLF001"]
 "src/chatgpt_library_archiver/cli/commands/extract_auth.py" = ["PLC0415"]
+"src/chatgpt_library_archiver/metadata.py" = ["PTH105", "PTH108"]
+"src/chatgpt_library_archiver/utils.py" = ["PTH101"]
 
-"tests/*.py" = ["PLC0415", "PLR2004", "S101", "S105", "S603", "S607"]
+"tests/*.py" = ["PLC0415", "PLR2004", "PTH", "S101", "S105", "S603", "S607"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["chatgpt_library_archiver"]
@@ -91,19 +97,21 @@ indent-style = "space"
 
 [tool.coverage.run]
 source = ["chatgpt_library_archiver"]
-omit = [
-  "*/chatgpt_library_archiver/bootstrap.py",
-  "*/chatgpt_library_archiver/browser_extract.py",
-  "*/chatgpt_library_archiver/cli/*",
-  "*/chatgpt_library_archiver/importer.py",
-  "*/chatgpt_library_archiver/incremental_downloader.py",
-  "*/chatgpt_library_archiver/tagger.py",
-]
 
 [tool.pyright]
 typeCheckingMode = "strict"
 reportMissingTypeStubs = "warning"
-include = ["src/chatgpt_library_archiver/metadata.py"]
+venvPath = "."
+venv = ".venv"
+include = [
+  "src/chatgpt_library_archiver/metadata.py",
+  "src/chatgpt_library_archiver/status.py",
+  "src/chatgpt_library_archiver/utils.py",
+  "src/chatgpt_library_archiver/ai.py",
+  "src/chatgpt_library_archiver/http_client.py",
+  "src/chatgpt_library_archiver/gallery.py",
+  "src/chatgpt_library_archiver/thumbnails.py",
+]
 
 [tool.setuptools.package-data]
 chatgpt_library_archiver = ["gallery_index.html"]
