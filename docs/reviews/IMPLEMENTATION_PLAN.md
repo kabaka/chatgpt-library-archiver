@@ -32,7 +32,7 @@
 | 3 | Test Infrastructure Foundations | 5 | Not Started | — |
 | 4 | Batch Error Recovery & Resilience | 5 | Not Started | Batch 3 (ThumbnailError, conftest.py) |
 | 5 | Documentation P0 — Accuracy & Onboarding | 6 | Not Started | — |
-| 6 | Gallery Accessibility — Critical & High | 7 | Not Started | Batch 2 (XSS fix provides refactoring base) |
+| 6 | Gallery Accessibility — Critical & High | 7 | Done | Batch 2 (XSS fix provides refactoring base) |
 | 7 | API & HTTP Resilience Improvements | 7 | Not Started | — |
 | 8 | Code Architecture & Type Safety | 6 | Not Started | — |
 | 9 | CI/CD Pipeline Hardening | 7 | Not Started | — |
@@ -127,13 +127,13 @@
 
 | # | Title | Description | Agent(s) | Reference | Depends On | Complexity | Status |
 |---|-------|-------------|----------|-----------|------------|------------|--------|
-| 6.1 | Add `<meta name="viewport">` tag | Add `<meta name="viewport" content="width=device-width, initial-scale=1">` to `<head>`. Without it, mobile renders at ~980px width. | @gallery-ux-designer | [gallery-ux-accessibility.md](gallery-ux-accessibility.md) R-1 | — | Small | Not Started |
-| 6.2 | Add skip-to-content link | Add `<a class="skip-link" href="#gallery">Skip to content</a>` as the first focusable element in `<body>`. Style it to be visually hidden until focused. | @gallery-ux-designer | [gallery-ux-accessibility.md](gallery-ux-accessibility.md) A-1 | — | Small | Not Started |
-| 6.3 | Lightbox focus management & ARIA | On open: move focus to viewer, add `role="dialog"`, `aria-modal="true"`, `aria-label`. Trap Tab within the viewer. On close: return focus to the triggering card. | @gallery-ux-designer | [gallery-ux-accessibility.md](gallery-ux-accessibility.md) A-2, A-3, L-1, L-2 | — | Medium | Not Started |
-| 6.4 | Make all controls keyboard-accessible | Change dark mode toggle from `<div>` to `<button>`. Add `role="button"` and `keydown` handler to search help icon. Replace inline `onclick` handlers with `addEventListener`. | @gallery-ux-designer | [gallery-ux-accessibility.md](gallery-ux-accessibility.md) A-4, J-3 | — | Medium | Not Started |
-| 6.5 | Add `:focus-visible` styles | Add visible focus indicators for all interactive elements: links, buttons, inputs, select, gallery cards. | @gallery-ux-designer | [gallery-ux-accessibility.md](gallery-ux-accessibility.md) A-5, A-6 | — | Small | Not Started |
-| 6.6 | Make metadata accessible without hover | Add `:focus-within .meta { display: block }` CSS rule. Consider always-visible title below cards in list/full views. | @gallery-ux-designer | [gallery-ux-accessibility.md](gallery-ux-accessibility.md) A-7, M-1 | — | Small | Not Started |
-| 6.7 | Handle fetch errors gracefully | Wrap `loadImages()` in try/catch, show a user-friendly error message in the gallery container. Add `.catch()` to the promise chain. Add `<noscript>` message. | @gallery-ux-designer | [gallery-ux-accessibility.md](gallery-ux-accessibility.md) E-1, E-5, J-5, S-4 | — | Small | Not Started |
+| 6.1 | Add `<meta name="viewport">` tag | Add `<meta name="viewport" content="width=device-width, initial-scale=1">` to `<head>`. Without it, mobile renders at ~980px width. | @gallery-ux-designer | [gallery-ux-accessibility.md](gallery-ux-accessibility.md) R-1 | — | Small | Done |
+| 6.2 | Add skip-to-content link | Add `<a class="skip-link" href="#gallery">Skip to content</a>` as the first focusable element in `<body>`. Style it to be visually hidden until focused. | @gallery-ux-designer | [gallery-ux-accessibility.md](gallery-ux-accessibility.md) A-1 | — | Small | Done |
+| 6.3 | Lightbox focus management & ARIA | On open: move focus to viewer, add `role="dialog"`, `aria-modal="true"`, `aria-label`. Trap Tab within the viewer. On close: return focus to the triggering card. | @gallery-ux-designer | [gallery-ux-accessibility.md](gallery-ux-accessibility.md) A-2, A-3, L-1, L-2 | — | Medium | Done |
+| 6.4 | Make all controls keyboard-accessible | Change dark mode toggle from `<div>` to `<button>`. Add `role="button"` and `keydown` handler to search help icon. Replace inline `onclick` handlers with `addEventListener`. | @gallery-ux-designer | [gallery-ux-accessibility.md](gallery-ux-accessibility.md) A-4, J-3 | — | Medium | Done |
+| 6.5 | Add `:focus-visible` styles | Add visible focus indicators for all interactive elements: links, buttons, inputs, select, gallery cards. | @gallery-ux-designer | [gallery-ux-accessibility.md](gallery-ux-accessibility.md) A-5, A-6 | — | Small | Done |
+| 6.6 | Make metadata accessible without hover | Add `:focus-within .meta { display: block }` CSS rule. Consider always-visible title below cards in list/full views. | @gallery-ux-designer | [gallery-ux-accessibility.md](gallery-ux-accessibility.md) A-7, M-1 | — | Small | Done |
+| 6.7 | Handle fetch errors gracefully | Wrap `loadImages()` in try/catch, show a user-friendly error message in the gallery container. Add `.catch()` to the promise chain. Add `<noscript>` message. | @gallery-ux-designer | [gallery-ux-accessibility.md](gallery-ux-accessibility.md) E-1, E-5, J-5, S-4 | — | Small | Done |
 
 ---
 

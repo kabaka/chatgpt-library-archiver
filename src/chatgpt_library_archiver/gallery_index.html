@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:;">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Image Gallery</title>
 <style>
 :root {
@@ -99,7 +100,8 @@ body.dark {
   box-sizing: border-box;
   overflow: hidden;
 }
-.image-card:hover .meta { display: block; }
+.image-card:hover .meta,
+.image-card:focus-within .meta { display: block; }
 .meta a { color: #fff; text-decoration: underline; }
 .meta .tags {
   font-size: 0.7em;
@@ -327,9 +329,62 @@ header.top-bar .search-bar {
   padding: 4px 8px;
   border-radius: 4px;
 }
+#viewer .viewer-close {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  border: none;
+  font-size: 1.5em;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 4px;
+  z-index: 1;
+}
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  z-index: 1000;
+}
+.skip-link:focus {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  width: auto;
+  height: auto;
+  padding: 8px 16px;
+  background: var(--control-bg);
+  color: var(--text);
+  border-radius: 4px;
+  font-size: 1em;
+  text-decoration: none;
+  outline: 2px solid #4A90D9;
+  outline-offset: 2px;
+}
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+.thumb:focus-visible,
+.help-icon:focus-visible {
+  outline: 2px solid #4A90D9;
+  outline-offset: 2px;
+}
+button.toggle {
+  border: none;
+  color: inherit;
+  font-family: inherit;
+}
 </style>
 </head>
 <body>
+  <a class="skip-link" href="#gallery">Skip to content</a>
+  <noscript><p style="padding: 20px; text-align: center;">JavaScript is required to view this gallery. Please enable JavaScript in your browser settings.</p></noscript>
   <header class="top-bar">
       <h1>Image Gallery</h1>
       <div class="search-bar">
@@ -338,32 +393,33 @@ header.top-bar .search-bar {
           id="searchBox"
           placeholder="Search images"
           aria-describedby="searchHelp"
-          oninput="filterGallery()"
         >
         <span
           id="searchHelp"
           class="help-icon"
           tabindex="0"
+          role="button"
+          aria-label="Search help: Use AND, OR, NOT, and parentheses to refine search"
           title="Use AND, OR, NOT, and parentheses to refine search."
         >?</span>
         <div class="date-range">
           <span>Date range:</span>
-          <input type="date" id="startDate" aria-label="Start date" onchange="filterGallery()">
-          <input type="date" id="endDate" aria-label="End date" onchange="filterGallery()">
-          <button type="button" id="resetFilters" class="reset-button" onclick="resetFilters()" title="Reset filters">⟲<span class="sr-only">Reset filters</span></button>
+          <input type="date" id="startDate" aria-label="Start date">
+          <input type="date" id="endDate" aria-label="End date">
+          <button type="button" id="resetFilters" class="reset-button" title="Reset filters">⟲<span class="sr-only">Reset filters</span></button>
         </div>
       </div>
       <div class="controls">
         <div class="size-select">
           <strong>Select Image Size: </strong>
-          <select id="sizeSelector" onchange="changeSize()">
+          <select id="sizeSelector" aria-label="Select image size">
             <option value="gallery-small">Small</option>
             <option value="gallery-medium" selected>Medium</option>
             <option value="gallery-large">Large</option>
             <option value="gallery-full">Full size</option>
           </select>
         </div>
-        <div class="toggle" onclick="toggleDarkMode()">Toggle Dark Mode</div>
+        <button class="toggle" type="button">Toggle Dark Mode</button>
         <a class="icon-link" href="https://github.com/kabaka/chatgpt-library-archiver" target="_blank" rel="noopener" title="GitHub project">
           <svg role="img" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.387.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.758-1.333-1.758-1.09-.744.083-.729.083-.729 1.205.084 1.84 1.236 1.84 1.236 1.07 1.835 2.807 1.305 3.492.998.108-.776.418-1.305.762-1.605-2.665-.305-5.466-1.332-5.466-5.93 0-1.31.467-2.381 1.235-3.221-.124-.303-.535-1.523.117-3.176 0 0 1.008-.322 3.3 1.23a11.52 11.52 0 0 1 3-.405c1.02.005 2.045.138 3 .405 2.29-1.552 3.296-1.23 3.296-1.23.653 1.653.242 2.873.118 3.176.77.84 1.233 1.911 1.233 3.221 0 4.61-2.807 5.624-5.479 5.921.43.37.823 1.102.823 2.222 0 1.606-.014 2.898-.014 3.293 0 .319.218.694.825.576C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
           <span class="sr-only">GitHub project</span>
@@ -373,7 +429,8 @@ header.top-bar .search-bar {
   <div class="layout">
     <div class="gallery gallery-grid gallery-medium" id="gallery"></div>
   </div>
-<div id="viewer">
+<div id="viewer" role="dialog" aria-modal="true" aria-label="Image viewer" tabindex="-1">
+  <button id="viewerClose" class="viewer-close" type="button" aria-label="Close viewer">&times;</button>
   <img id="viewerImg" src="" alt="">
   <div class="viewer-meta"><a id="viewerRaw" href="" target="_blank">Raw file</a></div>
 </div>
@@ -409,6 +466,7 @@ function safeHref(url) {
 
 async function loadImages() {
   const response = await fetch('metadata.json', { cache: 'no-store' });
+  if (!response.ok) throw new Error('Failed to load metadata: ' + response.status);
   const data = await response.json();
   const gallery = document.getElementById('gallery');
   const observer = new IntersectionObserver((entries, obs) => {
@@ -676,6 +734,7 @@ let currentIndex = 0;
 let justSwiped = false;
 let touchStartX = 0;
 let touchStartY = 0;
+let viewerTrigger = null;
 
 function updateVisibleIndices() {
   const cards = document.querySelectorAll('.image-card');
@@ -695,9 +754,12 @@ function showViewerAt(pos) {
   img.src = item.src;
   img.alt = item.title;
   raw.href = item.src;
+  viewer.focus();
 }
 
 function openViewer(index) {
+  const card = document.querySelector('.image-card[data-index="' + index + '"] a.thumb');
+  viewerTrigger = card || document.activeElement;
   updateVisibleIndices();
   const pos = visibleIndices.indexOf(index);
   if (pos === -1) return;
@@ -706,6 +768,10 @@ function openViewer(index) {
 function closeViewer() {
   document.getElementById('viewer').style.display = 'none';
   justSwiped = false;
+  if (viewerTrigger) {
+    viewerTrigger.focus();
+    viewerTrigger = null;
+  }
 }
 function showNext(delta) {
   const total = visibleIndices.length;
@@ -722,6 +788,22 @@ document.addEventListener('keydown', e => {
     showNext(1);
   } else if (e.key === 'ArrowLeft') {
     showNext(-1);
+  } else if (e.key === 'Tab') {
+    const focusable = viewer.querySelectorAll('button, a[href]');
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first || document.activeElement === viewer) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else {
+      if (document.activeElement === last || document.activeElement === viewer) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
   }
 });
 const viewer = document.getElementById('viewer');
@@ -762,6 +844,23 @@ viewer.addEventListener('touchend', e => {
     e.preventDefault();
   }
 }, { passive: false });
-loadImages().then(filterGallery);
+document.getElementById('searchBox').addEventListener('input', filterGallery);
+document.getElementById('startDate').addEventListener('change', filterGallery);
+document.getElementById('endDate').addEventListener('change', filterGallery);
+document.getElementById('resetFilters').addEventListener('click', resetFilters);
+document.getElementById('sizeSelector').addEventListener('change', changeSize);
+document.querySelector('button.toggle').addEventListener('click', toggleDarkMode);
+document.getElementById('searchHelp').addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    e.target.click();
+  }
+});
+document.getElementById('viewerClose').addEventListener('click', closeViewer);
+loadImages().then(filterGallery).catch(err => {
+  console.error('Failed to load gallery metadata:', err);
+  const gallery = document.getElementById('gallery');
+  gallery.innerHTML = '<p style="padding:20px;text-align:center;color:var(--text);">Unable to load gallery. Make sure <strong>metadata.json</strong> is available and the gallery is served over HTTP.</p>';
+});
 </script>
 </body></html>

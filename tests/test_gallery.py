@@ -270,7 +270,7 @@ def _extract_viewer_script() -> str:
         "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
     )
     start = html.index("let viewerData")
-    end = html.index("loadImages().then(filterGallery);")
+    end = html.index("document.getElementById('searchBox').addEventListener")
     return html[start:end]
 
 
@@ -359,7 +359,11 @@ def test_viewer_keyboard_navigation():
     script = textwrap.dedent(
         """
         const elements = {
-          viewer: { style: { display: 'none' }, addEventListener: () => {} },
+          viewer: {
+            style: { display: 'none' },
+            addEventListener: () => {},
+            focus: () => {},
+          },
           viewerImg: { src: '', alt: '' },
           viewerRaw: { href: '' },
         };
@@ -369,8 +373,12 @@ def test_viewer_keyboard_navigation():
         ];
         const document = {
           getElementById: id => elements[id],
+          querySelector: () => null,
           querySelectorAll: () => cards,
-          addEventListener: (type, handler) => { document._handler = handler; },
+          addEventListener: (type, handler) => {
+            document._handler = handler;
+          },
+          activeElement: null,
         };
         """
     )
@@ -401,7 +409,11 @@ def test_viewer_navigation_respects_filters():
     script = textwrap.dedent(
         """
         const elements = {
-          viewer: { style: { display: 'none' }, addEventListener: () => {} },
+          viewer: {
+            style: { display: 'none' },
+            addEventListener: () => {},
+            focus: () => {},
+          },
           viewerImg: { src: '', alt: '' },
           viewerRaw: { href: '' },
         };
@@ -412,8 +424,12 @@ def test_viewer_navigation_respects_filters():
         ];
         const document = {
           getElementById: id => elements[id],
+          querySelector: () => null,
           querySelectorAll: () => cards,
-          addEventListener: (type, handler) => { document._handler = handler; },
+          addEventListener: (type, handler) => {
+            document._handler = handler;
+          },
+          activeElement: null,
         };
         """
     )
