@@ -527,3 +527,127 @@ def test_call_image_endpoint_output_text_none_with_alternate_usage_naming(
     assert telemetry.total_tokens is None
     assert telemetry.prompt_tokens == 100
     assert telemetry.completion_tokens == 0
+
+
+# ---------------------------------------------------------------------------
+# encode_image — resize / format conversion (13.1)
+# ---------------------------------------------------------------------------
+
+
+def test_encode_image_small_file_passed_through(tmp_path):
+    """13.1 — Files ≤500KB are encoded raw without Pillow processing."""
+    img_path = tmp_path / "small.png"
+    # Create a small (<500KB) valid PNG via Pillow
+    from PIL import Image as PILImage
+
+    img = PILImage.new("RGB", (100, 100), (0, 128, 255))
+    img.save(img_path, format="PNG")
+
+    mime, data_url = ai.encode_image(img_path)
+
+    assert mime == "image/png"
+    assert data_url.startswith("data:image/png;base64,")
+    # Verify the raw bytes match exactly
+    import base64
+
+    encoded = base64.b64encode(img_path.read_bytes()).decode("ascii")
+    assert data_url == f"data:image/png;base64,{encoded}"
+
+
+def test_encode_image_large_file_resized_to_jpeg(tmp_path):
+    """13.1 — Files >500KB are resized to ≤1024px and converted to JPEG."""
+    img_path = tmp_path / "large.png"
+    # Random noise produces an incompressible PNG that exceeds 500KB
+    import os
+
+    from PIL import Image as PILImage
+
+    img = PILImage.frombytes("RGB", (1000, 1000), os.urandom(1000 * 1000 * 3))
+    img.save(img_path, format="PNG")
+    assert img_path.stat().st_size > 500_000, "precondition: file must be >500KB"
+
+    mime, data_url = ai.encode_image(img_path)
+
+    assert mime == "image/jpeg"
+    assert data_url.startswith("data:image/jpeg;base64,")
+
+    # Decode and verify the image was resized
+    import base64
+    import io
+
+    raw = base64.b64decode(data_url.split(",", 1)[1])
+    result = PILImage.open(io.BytesIO(raw))
+    assert max(result.size) <= 1024
+
+
+def test_encode_image_rgba_white_background(tmp_path):
+    """13.1 — RGBA images get white background compositing, not black."""
+    img_path = tmp_path / "rgba.png"
+    # Random noise in RGBA mode produces a large PNG; set alpha to 0
+    # (fully transparent) so the composited result should be white.
+    import os
+
+    from PIL import Image as PILImage
+
+    noise = os.urandom(1000 * 1000 * 3)
+    img = PILImage.frombytes("RGB", (1000, 1000), noise).convert("RGBA")
+    # Make fully transparent
+    alpha = PILImage.new("L", img.size, 0)
+    img.putalpha(alpha)
+    img.save(img_path, format="PNG")
+    assert img_path.stat().st_size > 500_000, "precondition: file must be >500KB"
+
+    mime, data_url = ai.encode_image(img_path)
+
+    assert mime == "image/jpeg"
+
+    # Decode and check that transparent pixels became white, not black
+    import base64
+    import io
+
+    raw = base64.b64decode(data_url.split(",", 1)[1])
+    result = PILImage.open(io.BytesIO(raw))
+    assert result.mode == "RGB"
+    # Sample the centre pixel — should be close to white (255, 255, 255)
+    # JPEG compression may shift values slightly
+    cx, cy = result.size[0] // 2, result.size[1] // 2
+    r, g, b = result.getpixel((cx, cy))
+    assert r > 250 and g > 250 and b > 250, f"Expected white, got ({r}, {g}, {b})"
+
+
+def test_encode_image_bmp_large_converted_to_jpeg(tmp_path):
+    """13.1 — BMP files >500KB are converted to JPEG."""
+    img_path = tmp_path / "image.bmp"
+    from PIL import Image as PILImage
+
+    img = PILImage.new("RGB", (2000, 2000), (50, 100, 150))
+    img.save(img_path, format="BMP")
+    assert img_path.stat().st_size > 500_000, "precondition: file must be >500KB"
+
+    mime, data_url = ai.encode_image(img_path)
+
+    assert mime == "image/jpeg"
+    assert data_url.startswith("data:image/jpeg;base64,")
+
+
+def test_encode_image_tiff_large_converted_to_jpeg(tmp_path):
+    """13.1 — TIFF files >500KB are converted to JPEG."""
+    img_path = tmp_path / "image.tiff"
+    from PIL import Image as PILImage
+
+    img = PILImage.new("RGB", (2000, 2000), (200, 100, 50))
+    img.save(img_path, format="TIFF")
+    assert img_path.stat().st_size > 500_000, "precondition: file must be >500KB"
+
+    mime, data_url = ai.encode_image(img_path)
+
+    assert mime == "image/jpeg"
+    assert data_url.startswith("data:image/jpeg;base64,")
+
+
+def test_encode_image_max_image_pixels_set():
+    """13.1 — Image.MAX_IMAGE_PIXELS must be set in ai.py."""
+    from PIL import Image as PILImage
+
+    # Importing ai.py should have set this
+    assert PILImage.MAX_IMAGE_PIXELS == 200_000_000

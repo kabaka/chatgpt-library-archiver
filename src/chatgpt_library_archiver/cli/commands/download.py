@@ -27,11 +27,20 @@ class DownloadCommand:
             default=None,
             help="Use credentials from Edge or Chrome instead of auth.txt (macOS only)",
         )
+        parser.add_argument(
+            "--max-workers",
+            "-w",
+            type=int,
+            default=6,
+            help="Maximum number of concurrent download threads (default: 6)",
+        )
         parser.set_defaults(command_handler=self.handle, command="download")
         return parser
 
     def handle(self, args: Namespace) -> int | None:
+        max_workers = max(1, int(getattr(args, "max_workers", 6)))
         return self.run_download(
             bool(getattr(args, "tag_new", False)),
             browser=getattr(args, "browser", None),
+            max_workers=max_workers,
         )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import multiprocessing
+import os
 import threading
 from collections.abc import Iterable
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -118,7 +119,11 @@ def _prepare_for_format(
     save_kwargs: dict[str, object] = {}
     fmt = fmt.upper()
     if fmt == "JPEG":
-        if img.mode not in ("RGB", "L"):
+        if img.mode == "RGBA":
+            background = Image.new("RGB", img.size, (255, 255, 255))
+            background.paste(img, mask=img.split()[3])
+            img = background
+        elif img.mode not in ("RGB", "L"):
             img = img.convert("RGB")
         save_kwargs.update(
             {
@@ -173,6 +178,9 @@ def create_thumbnails(
                 fmt = _infer_format(dest, thumb)
                 prepared, save_kwargs = _prepare_for_format(thumb, fmt)
                 prepared.save(dest, fmt, **save_kwargs)
+                if prepared is not thumb:
+                    prepared.close()
+                thumb.close()
         if reporter is not None:
             reporter.log_status("Finished generating thumbnails for", source.name)
     except (FileNotFoundError, UnidentifiedImageError, OSError) as exc:
@@ -287,6 +295,13 @@ def regenerate_thumbnails(
         need_create = force or any(
             not path.exists() for path in thumb_path_map.values()
         )
+        if not need_create:
+            source_mtime = source.stat().st_mtime
+            need_create = any(
+                path.stat().st_mtime < source_mtime
+                for path in thumb_path_map.values()
+                if path.exists()
+            )
         if need_create:
             pending.append((filename, source, thumb_path_map))
 
@@ -316,8 +331,9 @@ def regenerate_thumbnails(
         return processed, updated
 
     executor_kwargs: dict[str, object] = {}
-    if max_workers is not None:
-        executor_kwargs["max_workers"] = max_workers
+    if max_workers is None:
+        max_workers = min(os.cpu_count() or 1, 8)
+    executor_kwargs["max_workers"] = max_workers
 
     status_queue: _StatusQueueProtocol | None = None
     status_thread: threading.Thread | None = None

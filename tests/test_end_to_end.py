@@ -230,6 +230,211 @@ def test_incremental_download_without_browser_calls_ensure_auth(monkeypatch, tmp
 
 
 # -------------------------------------------------------------------
+# max_workers configuration tests
+# -------------------------------------------------------------------
+
+
+def test_main_default_max_workers_is_six(monkeypatch, tmp_path, sample_png_bytes):
+    """main() should default to max_workers=6 and pass it to ThreadPoolExecutor."""
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        incremental_downloader,
+        "ensure_auth_config",
+        lambda path="auth.txt": {
+            "url": "https://api.example.com?limit=1",
+            "authorization": "Bearer token",
+            "cookie": "session=abc",
+            "referer": "https://chat.openai.com/library",
+            "user_agent": "agent",
+            "oai_client_version": "1",
+            "oai_device_id": "dev",
+            "oai_language": "en",
+        },
+    )
+    monkeypatch.setattr(incremental_downloader, "prompt_yes_no", lambda msg: True)
+    monkeypatch.setattr(incremental_downloader.time, "sleep", lambda s: None)
+    monkeypatch.setattr(incremental_downloader.tagger, "tag_images", lambda **kw: 0)
+
+    images_dir = tmp_path / "gallery" / "images"
+    images_dir.mkdir(parents=True)
+    (tmp_path / "gallery" / "metadata.json").write_text("[]")
+
+    recorded_workers: list[int | None] = []
+
+    class FakeHttpClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def close(self):
+            return None
+
+        def get_json(self, url, headers=None):
+            parsed = urlparse(url)
+            if parsed.netloc == "api.example.com":
+                return {
+                    "items": [
+                        {
+                            "id": "w1",
+                            "url": "https://img.local/w1.png",
+                            "created_at": 1,
+                        }
+                    ]
+                }
+            return {"items": []}
+
+        def stream_download(self, url, destination, headers=None, **kwargs):
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(sample_png_bytes)
+            return DownloadResult(
+                path=destination,
+                bytes_downloaded=len(sample_png_bytes),
+                checksum=hashlib.sha256(sample_png_bytes).hexdigest(),
+                content_type="image/png",
+            )
+
+    monkeypatch.setattr(
+        incremental_downloader,
+        "create_http_client",
+        FakeHttpClient,
+    )
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    _OrigTPE = ThreadPoolExecutor
+
+    class RecordingTPE(_OrigTPE):
+        def __init__(self, *args, **kwargs):
+            recorded_workers.append(kwargs.get("max_workers"))
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(incremental_downloader, "ThreadPoolExecutor", RecordingTPE)
+
+    # Call without explicit max_workers → default should be 6
+    incremental_downloader.main()
+
+    assert recorded_workers == [6]
+
+
+def test_main_custom_max_workers(monkeypatch, tmp_path, sample_png_bytes):
+    """main(max_workers=N) should pass N to ThreadPoolExecutor."""
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        incremental_downloader,
+        "ensure_auth_config",
+        lambda path="auth.txt": {
+            "url": "https://api.example.com?limit=1",
+            "authorization": "Bearer token",
+            "cookie": "session=abc",
+            "referer": "https://chat.openai.com/library",
+            "user_agent": "agent",
+            "oai_client_version": "1",
+            "oai_device_id": "dev",
+            "oai_language": "en",
+        },
+    )
+    monkeypatch.setattr(incremental_downloader, "prompt_yes_no", lambda msg: True)
+    monkeypatch.setattr(incremental_downloader.time, "sleep", lambda s: None)
+    monkeypatch.setattr(incremental_downloader.tagger, "tag_images", lambda **kw: 0)
+
+    images_dir = tmp_path / "gallery" / "images"
+    images_dir.mkdir(parents=True)
+    (tmp_path / "gallery" / "metadata.json").write_text("[]")
+
+    recorded_workers: list[int | None] = []
+
+    class FakeHttpClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def close(self):
+            return None
+
+        def get_json(self, url, headers=None):
+            parsed = urlparse(url)
+            if parsed.netloc == "api.example.com":
+                return {
+                    "items": [
+                        {
+                            "id": "w2",
+                            "url": "https://img.local/w2.png",
+                            "created_at": 1,
+                        }
+                    ]
+                }
+            return {"items": []}
+
+        def stream_download(self, url, destination, headers=None, **kwargs):
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(sample_png_bytes)
+            return DownloadResult(
+                path=destination,
+                bytes_downloaded=len(sample_png_bytes),
+                checksum=hashlib.sha256(sample_png_bytes).hexdigest(),
+                content_type="image/png",
+            )
+
+    monkeypatch.setattr(
+        incremental_downloader,
+        "create_http_client",
+        FakeHttpClient,
+    )
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    _OrigTPE = ThreadPoolExecutor
+
+    class RecordingTPE(_OrigTPE):
+        def __init__(self, *args, **kwargs):
+            recorded_workers.append(kwargs.get("max_workers"))
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(incremental_downloader, "ThreadPoolExecutor", RecordingTPE)
+
+    incremental_downloader.main(max_workers=2)
+
+    assert recorded_workers == [2]
+
+
+def test_download_cli_passes_max_workers(monkeypatch):
+    """--max-workers CLI flag is forwarded to run_download."""
+    from chatgpt_library_archiver.cli.commands.download import DownloadCommand
+
+    captured: dict[str, object] = {}
+
+    def fake_runner(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+
+    cmd = DownloadCommand(run_download=fake_runner)
+
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    subs = parser.add_subparsers()
+    cmd.register(subs)
+
+    args = parser.parse_args(["download", "--max-workers", "3"])
+    cmd.handle(args)
+
+    assert captured["kwargs"]["max_workers"] == 3
+
+    # Also test default (no --max-workers flag)
+    captured.clear()
+    args = parser.parse_args(["download"])
+    cmd.handle(args)
+
+    assert captured["kwargs"]["max_workers"] == 6
+
+
+# -------------------------------------------------------------------
 # _sanitize_id tests
 # -------------------------------------------------------------------
 

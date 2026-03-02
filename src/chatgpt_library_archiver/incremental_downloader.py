@@ -134,7 +134,11 @@ def download_image(
         return ("error", item, str(exc), exc)
 
 
-def main(tag_new: bool = False, browser: str | None = None) -> None:
+def main(
+    tag_new: bool = False,
+    browser: str | None = None,
+    max_workers: int = 6,
+) -> None:
     # Load auth from browser (live) or auth.txt (file)
     if browser:
         from .browser_extract import extract_auth_config
@@ -167,7 +171,6 @@ def main(tag_new: bool = False, browser: str | None = None) -> None:
             return
 
         # Step 2: Download new items only
-        max_workers = 14
         cursor: str | None = None
         new_metadata: list[GalleryItem] = []
         consecutive_empty_pages = 0

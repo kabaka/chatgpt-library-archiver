@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import io
 import logging
 import mimetypes
 import os
@@ -21,13 +22,20 @@ from openai import (
     OpenAI,
     RateLimitError,
 )
+from PIL import Image, ImageOps
 
 # Suppress debug logging from the OpenAI SDK and its httpx transport to
 # prevent accidental API-key leakage through HTTP header logs.
 logging.getLogger("openai").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
+# Guard against decompression bombs when opening images with Pillow.
+Image.MAX_IMAGE_PIXELS = 200_000_000
+
 DEFAULT_MODEL = "gpt-4.1-mini"
+
+#: Files larger than this threshold (bytes) are resized before AI encoding.
+_ENCODE_SIZE_THRESHOLD = 500_000
 
 _CLIENT_CACHE: dict[str, OpenAI] = {}
 
@@ -132,14 +140,40 @@ def resolve_config(
     )
 
 
-def encode_image(image_path: Path) -> tuple[str, str]:
-    """Return ``(mime, data_url)`` for ``image_path`` suitable for API calls."""
+def encode_image(image_path: Path, *, max_dimension: int = 1024) -> tuple[str, str]:
+    """Return ``(mime, data_url)`` for ``image_path`` suitable for API calls.
+
+    Images larger than 500 KB are resized so the longest dimension is at
+    most *max_dimension* pixels, EXIF-transposed, and converted to JPEG.
+    Non-web formats (BMP, TIFF, etc.) are also converted to JPEG when
+    resized.  RGBA images are composited onto a white background before
+    JPEG conversion so transparent areas render white instead of black.
+
+    Small files (≤500 KB) are passed through as-is to avoid unnecessary
+    Pillow overhead.
+    """
 
     mime = mimetypes.guess_type(str(image_path))[0] or "image/jpeg"
+    file_size = image_path.stat().st_size
+
+    if file_size > _ENCODE_SIZE_THRESHOLD:
+        with Image.open(image_path) as raw:
+            img = ImageOps.exif_transpose(raw)
+        img.thumbnail((max_dimension, max_dimension), Image.LANCZOS)
+        if img.mode == "RGBA":
+            background = Image.new("RGB", img.size, (255, 255, 255))
+            background.paste(img, mask=img.split()[3])
+            img = background
+        elif img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85, optimize=True)
+        payload = base64.b64encode(buf.getvalue()).decode("ascii")
+        return "image/jpeg", f"data:image/jpeg;base64,{payload}"
+
     with image_path.open("rb") as fh:
         payload = base64.b64encode(fh.read()).decode("ascii")
-    data_url = f"data:{mime};base64,{payload}"
-    return mime, data_url
+    return mime, f"data:{mime};base64,{payload}"
 
 
 def _extract_usage(usage: Any | None) -> tuple[int | None, int | None, int | None]:

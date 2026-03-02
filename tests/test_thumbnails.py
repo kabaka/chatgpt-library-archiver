@@ -1,8 +1,11 @@
 import io
 import multiprocessing
+import os
 import queue
+import time
 from concurrent.futures import Future
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from PIL import Image
@@ -514,3 +517,179 @@ def test_ensure_thumbnail_metadata_no_io(tmp_path):
     # No directories were created
     assert not (tmp_path / "images").exists()
     assert not (tmp_path / "thumbs").exists()
+
+
+# ---------------------------------------------------------------------------
+# 13.2 — max_workers cap
+# ---------------------------------------------------------------------------
+
+
+def test_regenerate_thumbnails_caps_max_workers_at_8(
+    monkeypatch, tmp_path, sample_png_bytes
+):
+    """When max_workers is None, it should default to min(cpu_count, 8)."""
+    gallery_root = tmp_path
+    images_dir = gallery_root / "images"
+    images_dir.mkdir()
+    for name in ("a.png", "b.png"):
+        (images_dir / name).write_bytes(sample_png_bytes)
+
+    metadata = [{"filename": "a.png"}, {"filename": "b.png"}]
+
+    executor_kwargs_log: list[dict[str, object]] = []
+
+    class DummyFuture:
+        def __init__(self, fn, *args):
+            self._fn = fn
+            self._args = args
+
+        def result(self):
+            return self._fn(*self._args)
+
+    class DummyExecutor:
+        def __init__(self, **kwargs):
+            executor_kwargs_log.append(kwargs)
+            self._max_workers = kwargs.get("max_workers", 1)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def submit(self, fn, *args):
+            return DummyFuture(fn, *args)
+
+    def fake_as_completed(futures):
+        yield from list(futures)
+
+    monkeypatch.setattr(thumbnails, "ProcessPoolExecutor", DummyExecutor)
+    monkeypatch.setattr(thumbnails, "as_completed", fake_as_completed)
+
+    # Simulate 64-core machine
+    with patch.object(os, "cpu_count", return_value=64):
+        thumbnails.regenerate_thumbnails(
+            gallery_root,
+            metadata,
+            force=True,
+            max_workers=None,
+        )
+
+    assert executor_kwargs_log[0]["max_workers"] == 8
+
+
+def test_regenerate_thumbnails_caps_max_workers_low_cpu(
+    monkeypatch, tmp_path, sample_png_bytes
+):
+    """When cpu_count is 2, max_workers should be 2 (not capped to 8)."""
+    gallery_root = tmp_path
+    images_dir = gallery_root / "images"
+    images_dir.mkdir()
+    for name in ("a.png", "b.png"):
+        (images_dir / name).write_bytes(sample_png_bytes)
+
+    metadata = [{"filename": "a.png"}, {"filename": "b.png"}]
+
+    executor_kwargs_log: list[dict[str, object]] = []
+
+    class DummyFuture:
+        def __init__(self, fn, *args):
+            self._fn = fn
+            self._args = args
+
+        def result(self):
+            return self._fn(*self._args)
+
+    class DummyExecutor:
+        def __init__(self, **kwargs):
+            executor_kwargs_log.append(kwargs)
+            self._max_workers = kwargs.get("max_workers", 1)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def submit(self, fn, *args):
+            return DummyFuture(fn, *args)
+
+    def fake_as_completed(futures):
+        yield from list(futures)
+
+    monkeypatch.setattr(thumbnails, "ProcessPoolExecutor", DummyExecutor)
+    monkeypatch.setattr(thumbnails, "as_completed", fake_as_completed)
+
+    with patch.object(os, "cpu_count", return_value=2):
+        thumbnails.regenerate_thumbnails(
+            gallery_root,
+            metadata,
+            force=True,
+            max_workers=None,
+        )
+
+    assert executor_kwargs_log[0]["max_workers"] == 2
+
+
+# ---------------------------------------------------------------------------
+# 13.3 — mtime-based freshness check
+# ---------------------------------------------------------------------------
+
+
+def test_regenerate_thumbnails_recreates_stale_thumbnails(
+    gallery_dir, sample_png_bytes
+):
+    """Thumbnails older than their source image are regenerated."""
+    images_dir = gallery_dir / "images"
+    source = images_dir / "img.png"
+    source.write_bytes(sample_png_bytes)
+
+    metadata = [{"filename": "img.png"}]
+
+    # First pass — create thumbnails
+    thumbnails.regenerate_thumbnails(gallery_dir, metadata, force=True, max_workers=1)
+
+    for size in thumbnails.THUMBNAIL_SIZES:
+        assert (gallery_dir / "thumbs" / size / "img.png").is_file()
+
+    # Record original mtime of a thumbnail
+    thumb_path = gallery_dir / "thumbs" / "medium" / "img.png"
+    old_mtime = thumb_path.stat().st_mtime
+
+    # Touch the source so it's newer than thumbnails
+    time.sleep(0.05)
+    source.write_bytes(sample_png_bytes)
+
+    # Second pass — should detect staleness and regenerate
+    thumbnails.regenerate_thumbnails(gallery_dir, metadata, force=False, max_workers=1)
+
+    new_mtime = thumb_path.stat().st_mtime
+    assert new_mtime > old_mtime, "Stale thumbnail should have been regenerated"
+
+
+# ---------------------------------------------------------------------------
+# 13.4 — RGBA → RGB white background compositing
+# ---------------------------------------------------------------------------
+
+
+def test_rgba_to_rgb_jpeg_has_white_background(tmp_path):
+    """RGBA PNG saved as JPEG should composite onto white, not black."""
+    # Create a fully transparent RGBA image
+    rgba_img = Image.new("RGBA", (8, 8), (0, 0, 0, 0))
+    buf = io.BytesIO()
+    rgba_img.save(buf, format="PNG")
+    source = tmp_path / "transparent.png"
+    source.write_bytes(buf.getvalue())
+
+    dest_map = {size: tmp_path / f"{size}.jpg" for size in thumbnails.THUMBNAIL_SIZES}
+    thumbnails.create_thumbnails(source, dest_map)
+
+    for size, dest in dest_map.items():
+        assert dest.is_file()
+        with Image.open(dest) as img:
+            assert img.mode == "RGB"
+            # Transparent regions should be white (255, 255, 255)
+            corner = img.getpixel((0, 0))
+            assert corner == (255, 255, 255), (
+                f"{size} thumbnail corner pixel is {corner}, expected (255, 255, 255)"
+            )
