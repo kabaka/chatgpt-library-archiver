@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Gallery metadata is now embedded directly into `index.html` at generation
+  time. The gallery can be opened by double-clicking the file — no HTTP server
+  is required.
+
 ### Fixed
 
 - Mobile thumbnail sizing: selecting Medium or Large sizes now loads appropriately

@@ -297,18 +297,13 @@ Use the `-y/--yes` flag with any command to bypass confirmation prompts.
 
 6. **View your gallery**
 
-After downloading, serve the gallery over HTTP to view it in your browser:
+Open `gallery/index.html` in your browser to browse your archived images.
 
-```bash
-cd gallery && python -m http.server 8000
-```
-
-Then open [http://localhost:8000/](http://localhost:8000/).
-
-> **Note:** Opening `gallery/index.html` by double-clicking (i.e. via the
-> `file://` protocol) will show a blank page because the gallery uses
-> `fetch()` to load `metadata.json`, and most browsers block `fetch()` over
-> `file://`. Always use an HTTP server.
+> **Tip:** You can also serve the gallery over HTTP if you prefer:
+> ```bash
+> cd gallery && python -m http.server 8000
+> ```
+> Then open [http://localhost:8000/](http://localhost:8000/).
 
 ---
 
@@ -336,8 +331,8 @@ independently while sharing common infrastructure.
   generate tags or AI-assisted filenames. They centralise retry logic and rate
   limit handling so command modules can stay declarative.
 - `chatgpt_library_archiver/gallery.py` and `gallery_index.html` – assemble the
-  static gallery by sorting metadata, copying the bundled HTML shell, and
-  emitting the JSON payload consumed by the browser UI.
+  static gallery by sorting metadata, embedding it into the bundled HTML
+  template, and writing the self-contained gallery page.
 - `chatgpt_library_archiver/thumbnails.py` – resizes images into the
   `thumbs/<size>/` directories and tracks where thumbnails land so metadata can
   reference them.
@@ -364,12 +359,14 @@ inspection stay straightforward:
 gallery/
 ├── images/                # Original assets, named by their ChatGPT ID
 ├── thumbs/{small,medium,large}/
-├── metadata.json          # Array of GalleryItem records
-└── index.html             # Copied from gallery_index.html template
+├── metadata.json          # Array of GalleryItem records (used by CLI tools)
+└── index.html             # Generated from template with embedded metadata
 ```
 
-`metadata.json` is the single source of truth for the gallery. Each object in
-the array mirrors `GalleryItem` and may include:
+`metadata.json` is the authoritative record of the gallery's contents, used by
+CLI tools such as `tag` and `import`. At gallery generation time, its data is
+embedded into `index.html` so the viewer is self-contained. Each object in the
+array mirrors `GalleryItem` and may include:
 
 - `id` – stable identifier from the ChatGPT API or importer.
 - `filename` – basename located under `gallery/images/`.
@@ -390,17 +387,18 @@ the array mirrors `GalleryItem` and may include:
 Avoid editing `metadata.json` manually—use the CLI workflows so helper fields
 such as `thumbnails` and `checksum` stay in sync.
 
-> **⚠️ Do not publicly host `metadata.json`.** It contains signed download
-> URLs and internal file IDs from the ChatGPT API. If the gallery directory
-> is served on a public web server, exclude `metadata.json` from the publicly
-> accessible files or strip the `url` field from each entry first.
+> **⚠️ Do not publicly host `metadata.json` or `index.html` without review.**
+> They contain signed download URLs and internal file IDs from the ChatGPT API.
+> If the gallery directory is served on a public web server, exclude
+> `metadata.json` and strip or redact the `url` field from any published copy
+> of `index.html`.
 
 ## 💡 Notes
 
 - No old data is overwritten. All images are saved with unique filenames and metadata is appended.
 - The gallery is fully static and self-contained.
 - The `index.html` viewer is bundled with the tool and reused on each run.
-- `gallery/index.html` loads `metadata.json` via JavaScript and displays all images on one page.
+- `gallery/index.html` is a self-contained viewer — metadata is embedded at generation time, so it works by double-clicking the file with no server required.
 - Images are lazy-loaded using the Intersection Observer API so they're fetched only when they enter the viewport.
 - Downloads use a resilient HTTP client with retry/backoff, stream images directly to disk, store SHA-256 checksums and content types in `metadata.json`, and surface actionable error summaries via the progress reporter.
 - A sticky header keeps the page title, search filters, and settings visible while you browse.
@@ -437,15 +435,6 @@ General estimate:
 - During downloads, if a `401/403` occurs, the downloader now offers to
   re-enter credentials interactively.
 - If no new images are found, the downloader simply exits without changes.
-- **Gallery shows a blank page when opened by double-clicking** —
-  `gallery/index.html` loads `metadata.json` via `fetch()`, which most
-  browsers block under the `file://` protocol. Serve the gallery over HTTP
-  instead:
-
-  ```bash
-  cd gallery && python -m http.server 8000
-  # Open http://localhost:8000/
-  ```
 
 ---
 

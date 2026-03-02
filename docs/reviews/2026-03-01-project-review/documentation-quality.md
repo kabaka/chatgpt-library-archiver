@@ -358,6 +358,8 @@ cd gallery && python -m http.server 8000
 # Then open http://localhost:8000/
 ```
 
+> **[Resolved]** The gallery now embeds metadata directly into `index.html` at generation time — there is no runtime `fetch('metadata.json')`. Users can open the gallery by double-clicking `index.html`; the `file://` protocol limitation no longer applies.
+
 ### Browser Credential Extraction — Highest-Impact Documentation Change
 
 The `extract-auth` command would dramatically simplify the getting-started experience, but it is **completely undocumented** in the README.
@@ -441,7 +443,7 @@ These sections serve as models for the project's documentation standards:
 
 5. **Document `--browser` flag** on the `download` command in README.
 
-6. **Add explicit "View your gallery" step** to the README workflow, including HTTP serving instructions (`python -m http.server 8000`). *(Elevated from P2 per UX review: this is the payoff moment of the entire tool, and it's undocumented. The `file://` protocol issue makes the serving instructions non-optional.)*
+6. **Add explicit "View your gallery" step** to the README workflow, including HTTP serving instructions (`python -m http.server 8000`). *(Elevated from P2 per UX review: this is the payoff moment of the entire tool, and it's undocumented. The `file://` protocol issue makes the serving instructions non-optional.)* **[Resolved]** The gallery now embeds metadata at generation time, so `file://` works fine. The README has been updated to instruct users to open `gallery/index.html` directly.
 
 7. **Update `openai-vision-api` skill**: Replace `chat.completions.create` examples with `responses.create` and update content type keys.
 

@@ -119,7 +119,7 @@ The modern `index.html` is significantly better but has **critical accessibility
 | # | Severity | Issue | Location |
 |---|---|---|---|
 | P-1 | 🟠 High | **All 1 169 DOM nodes created on load with no pagination.** Every image card is appended to the DOM at startup. For 1 169 items, this creates ~4 700+ DOM elements (card + link + img + meta div each). On low-end devices, initial render will be slow and scrolling may jank. The skill mentions "client-side pagination" but none is implemented. | `gallery_index.html:416–458` |
-| P-2 | 🟠 High | **2.3 MB `metadata.json` loaded in one fetch.** Each item has ~30–40 tags with long descriptions. For 1 169 items, this is a significant initial payload. No streaming, no pagination, no progressive loading. | `gallery_index.html:405` |
+| P-2 | 🟠 High | **2.3 MB `metadata.json` loaded in one fetch.** Each item has ~30–40 tags with long descriptions. For 1 169 items, this is a significant initial payload. No streaming, no pagination, no progressive loading. **[Resolved]** Metadata is now embedded directly into `index.html` at generation time — there is no runtime `fetch()`. | `gallery_index.html:405` |
 | P-3 | 🟡 Medium | **`filterGallery()` is not debounced.** The search input uses `oninput="filterGallery()"` which fires on every keystroke. The function iterates all 1 169 cards and runs a boolean parser. On slower devices this could cause input lag. Skill guidelines recommend 200–300ms debounce. | `gallery_index.html:340, 522–549` |
 | P-4 | 🟡 Medium | **Cards built one-by-one with `gallery.appendChild(card)` in a loop** instead of batching via `DocumentFragment`. Each append triggers a potential reflow. | `gallery_index.html:458` |
 | P-5 | 🟢 Low | **`sessionStorage` checked with `typeof` guard but called synchronously on every filter/size change.** Minor but could be wrapped in a try/catch for private browsing safety. | `gallery_index.html:527–530` |
@@ -222,7 +222,7 @@ The modern `index.html` is significantly better but has **critical accessibility
 
 | # | Severity | Issue | Location |
 |---|---|---|---|
-| E-1 | 🟠 High | **No error handling on `fetch('metadata.json')`.** If the file is missing, corrupted, or the gallery is opened via `file://` protocol (where fetch fails), the gallery shows a blank page with no error message. | `gallery_index.html:405–406` |
+| E-1 | 🟠 High | **No error handling on `fetch('metadata.json')`.** If the file is missing, corrupted, or the gallery is opened via `file://` protocol (where fetch fails), the gallery shows a blank page with no error message. **[Resolved]** The runtime `fetch()` has been removed; metadata is embedded at generation time. The JS now includes a graceful check (`typeof GALLERY_DATA === 'undefined'`) and displays an error message if the data is missing. | `gallery_index.html:405–406` |
 | E-2 | 🟡 Medium | **No broken image fallback.** If a thumbnail or full-size image fails to load (404, corrupt file), the browser shows a broken image icon. No `onerror` handler provides a placeholder or removes the card. | `gallery_index.html:443` |
 | E-3 | 🟡 Medium | **Empty gallery shows nothing.** When metadata is an empty array, the gallery container is simply empty — no "No images found" message. | — |
 | E-4 | 🟡 Medium | **Filtered-to-zero shows nothing.** When search/date filters exclude all results, there's no "No matching images" message. | `filterGallery()` |
@@ -409,7 +409,7 @@ Evaluating the current implementation against the patterns defined in `.github/s
 | Skill Requirement | Status | Notes |
 |---|---|---|
 | Single bundled HTML file | ✅ | Correctly implemented |
-| Reads `metadata.json` at runtime | ✅ | Via `fetch()` |
+| Reads `metadata.json` at runtime | ✅ | ~~Via `fetch()`~~ **Update:** Metadata is now embedded directly into `index.html` at generation time; no runtime fetch needed. |
 | CSS custom properties for theming | ✅ | `--bg`, `--text`, `--meta-color`, `--control-bg` |
 | Responsive grid with `auto-fill`/`minmax` | ✅ | Exactly as prescribed |
 | Size classes (small/medium/large/full) | ✅ | All four implemented |
