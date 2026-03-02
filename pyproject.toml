@@ -67,7 +67,7 @@ line-length = 88
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "SIM", "PL", "RUF", "FURB"]
+select = ["E", "F", "I", "B", "UP", "SIM", "PL", "RUF", "FURB", "S"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/chatgpt_library_archiver/ai.py" = ["PLR0913"]
@@ -77,10 +77,11 @@ select = ["E", "F", "I", "B", "UP", "SIM", "PL", "RUF", "FURB"]
 "src/chatgpt_library_archiver/incremental_downloader.py" = ["PLC0415", "PLR0912", "PLR0915"]
 "src/chatgpt_library_archiver/tagger.py" = ["PLR0912", "PLR0913", "PLR0915"]
 "src/chatgpt_library_archiver/thumbnails.py" = ["PLR0912", "PLR0915"]
+"src/chatgpt_library_archiver/bootstrap.py" = ["S603", "S607"]
 "src/chatgpt_library_archiver/browser_extract.py" = ["PLC0415", "PLR0913", "S603", "S607", "SLF001"]
 "src/chatgpt_library_archiver/cli/commands/extract_auth.py" = ["PLC0415"]
 
-"tests/*.py" = ["PLC0415", "PLR2004"]
+"tests/*.py" = ["PLC0415", "PLR2004", "S101", "S105", "S603", "S607"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["chatgpt_library_archiver"]
