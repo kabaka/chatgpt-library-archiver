@@ -90,7 +90,7 @@ python-discovery==1.1.0
     # via virtualenv
 pyyaml==6.0.3
     # via pre-commit
-requests==2.32.5
+requests==2.33.0
     # via chatgpt-library-archiver (pyproject.toml)
 ruff==0.15.4
     # via chatgpt-library-archiver (pyproject.toml)
