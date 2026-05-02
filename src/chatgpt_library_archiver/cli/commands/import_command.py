@@ -79,6 +79,14 @@ class ImportCommand:
             help="Worker count when tagging imports",
         )
         parser.add_argument(
+            "--thumb-workers",
+            type=int,
+            default=None,
+            help=(
+                "Worker processes for thumbnail generation (default: min(cpu_count, 8))"
+            ),
+        )
+        parser.add_argument(
             "--no-config-prompt",
             action="store_true",
             help="Fail instead of prompting to create tagging config",
@@ -103,6 +111,10 @@ class ImportCommand:
 
     def handle(self, args: Namespace) -> int | None:
         gallery_root = getattr(args, "gallery", "gallery")
+        thumb_workers_raw = getattr(args, "thumb_workers", None)
+        thumb_workers = (
+            max(1, int(thumb_workers_raw)) if thumb_workers_raw is not None else None
+        )
         if not getattr(args, "inputs", []):
             if getattr(args, "regenerate_thumbnails", False):
                 regenerated = list(
@@ -110,6 +122,7 @@ class ImportCommand:
                         gallery_root=gallery_root,
                         force=bool(getattr(args, "force_thumbnails", False)),
                         webp=bool(getattr(args, "webp_thumbnails", False)),
+                        max_workers=thumb_workers,
                     )
                 )
                 if regenerated:
@@ -141,6 +154,7 @@ class ImportCommand:
                 tag_model=getattr(args, "tag_model", None),
                 tag_workers=int(getattr(args, "tag_workers", 4)),
                 allow_interactive=not bool(getattr(args, "no_config_prompt", False)),
+                thumbnail_workers=thumb_workers,
             )
             imported = list(
                 self.import_images(
@@ -158,6 +172,7 @@ class ImportCommand:
                     gallery_root=gallery_root,
                     force=bool(getattr(args, "force_thumbnails", False)),
                     webp=bool(getattr(args, "webp_thumbnails", False)),
+                    max_workers=thumb_workers,
                 )
             )
             if regenerated:

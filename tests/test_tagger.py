@@ -59,7 +59,8 @@ def test_retag_all(monkeypatch, tmp_path, write_metadata):
     count = tagger.tag_images(gallery_root=str(gallery), re_tag=True)
     assert count == EXPECTED_TAGGED_ITEMS
     data = json.loads((gallery / "metadata.json").read_text())
-    assert data[0]["tags"] == ["new"]
+    # Re-tagging merges existing tags with AI tags; existing first.
+    assert data[0]["tags"] == ["old", "new"]
     assert data[1]["tags"] == ["new"]
 
 
@@ -332,3 +333,94 @@ def test_tag_images_single_failure_does_not_abort_batch(
     assert items_by_id["1"]["tags"] == ["new-tag"]
     assert items_by_id["2"]["tags"] == ["original"]  # unchanged — error skipped
     assert items_by_id["3"]["tags"] == ["new-tag"]
+
+
+def _patch_tagger(monkeypatch, ai_tags: list[str]) -> None:
+    """Stub out config + generate_tags so tag_images runs in unit tests."""
+    monkeypatch.setattr(
+        tagger,
+        "ensure_tagging_config",
+        Mock(return_value=TaggingConfig(api_key="k", model="m", prompt="p")),
+    )
+    telemetry = AIRequestTelemetry("tag", "file", 0.1, 1, 1, 0, 0)
+    monkeypatch.setattr(
+        tagger,
+        "generate_tags",
+        Mock(spec=tagger.generate_tags, return_value=(ai_tags, telemetry)),
+    )
+
+
+def test_merge_preserves_existing_user_tags_when_ai_returns_empty(
+    monkeypatch, tmp_path, write_metadata
+):
+    """(a) User tags retained when AI returns no tags."""
+    gallery = write_metadata(
+        tmp_path / "gallery",
+        [{"id": "1", "filename": "a.jpg", "tags": ["manual"]}],
+        create_images=True,
+    )
+    _patch_tagger(monkeypatch, ai_tags=[])
+
+    tagger.tag_images(gallery_root=str(gallery), re_tag=True)
+    data = json.loads((gallery / "metadata.json").read_text())
+    assert data[0]["tags"] == ["manual"]
+
+
+def test_merge_uses_ai_tags_when_no_existing(monkeypatch, tmp_path, write_metadata):
+    """(b) AI tags used as-is when item has no prior tags."""
+    gallery = write_metadata(
+        tmp_path / "gallery",
+        [{"id": "1", "filename": "a.jpg", "tags": []}],
+        create_images=True,
+    )
+    _patch_tagger(monkeypatch, ai_tags=["sunset", "beach"])
+
+    tagger.tag_images(gallery_root=str(gallery))
+    data = json.loads((gallery / "metadata.json").read_text())
+    assert data[0]["tags"] == ["sunset", "beach"]
+
+
+def test_merge_combines_existing_and_ai_tags_in_order(
+    monkeypatch, tmp_path, write_metadata
+):
+    """(c) Existing tags preserved first, then new AI tags appended."""
+    gallery = write_metadata(
+        tmp_path / "gallery",
+        [{"id": "1", "filename": "a.jpg", "tags": ["manual", "favorite"]}],
+        create_images=True,
+    )
+    _patch_tagger(monkeypatch, ai_tags=["ai-one", "ai-two"])
+
+    tagger.tag_images(gallery_root=str(gallery), re_tag=True)
+    data = json.loads((gallery / "metadata.json").read_text())
+    assert data[0]["tags"] == ["manual", "favorite", "ai-one", "ai-two"]
+
+
+def test_merge_deduplicates_case_and_whitespace(monkeypatch, tmp_path, write_metadata):
+    """(d) Case- and whitespace-only differences dedupe via normalize_tag."""
+    gallery = write_metadata(
+        tmp_path / "gallery",
+        [{"id": "1", "filename": "a.jpg", "tags": ["Sunset", "  Beach  "]}],
+        create_images=True,
+    )
+    # AI returns normalized forms (already lowercased by generate_tags).
+    _patch_tagger(monkeypatch, ai_tags=["sunset", "beach", "ocean"])
+
+    tagger.tag_images(gallery_root=str(gallery), re_tag=True)
+    data = json.loads((gallery / "metadata.json").read_text())
+    # Existing tags retained verbatim; duplicates from AI dropped; new tag added.
+    assert data[0]["tags"] == ["Sunset", "  Beach  ", "ocean"]
+
+
+def test_merge_with_empty_existing_tags_list(monkeypatch, tmp_path, write_metadata):
+    """(e) Empty existing list yields AI tags only."""
+    gallery = write_metadata(
+        tmp_path / "gallery",
+        [{"id": "1", "filename": "a.jpg", "tags": []}],
+        create_images=True,
+    )
+    _patch_tagger(monkeypatch, ai_tags=["one", "two"])
+
+    tagger.tag_images(gallery_root=str(gallery), re_tag=True)
+    data = json.loads((gallery / "metadata.json").read_text())
+    assert data[0]["tags"] == ["one", "two"]

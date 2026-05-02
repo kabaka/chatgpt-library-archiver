@@ -151,3 +151,38 @@ def test_load_gallery_items_missing_id_and_filename_default_to_empty(
     assert items[0].id == ""
     assert items[0].filename == ""
     assert items[0].tags == ["a"]
+
+
+# -- Task 7: affinity_index round-trip + extra preservation --
+
+
+def test_affinity_index_roundtrip_with_unknown_field(tmp_path: Path) -> None:
+    """affinity_index round-trips via the typed field; unknown keys via extra."""
+    raw = {
+        "id": "x1",
+        "filename": "x.png",
+        "tags": ["a"],
+        "affinity_index": 7,
+        "future_field": {"hello": "world"},
+    }
+    item = metadata.GalleryItem.from_dict(raw)
+    assert item.affinity_index == 7
+    assert "affinity_index" not in item.extra
+    assert item.extra == {"future_field": {"hello": "world"}}
+
+    metadata.save_gallery_items(tmp_path, [item])
+    [reloaded] = metadata.load_gallery_items(tmp_path)
+    assert reloaded.affinity_index == 7
+    assert reloaded.extra == {"future_field": {"hello": "world"}}
+
+    on_disk = json.loads((tmp_path / "metadata.json").read_text())
+    assert on_disk[0]["affinity_index"] == 7
+    assert on_disk[0]["future_field"] == {"hello": "world"}
+
+
+def test_affinity_index_defaults_to_none(tmp_path: Path) -> None:
+    item = metadata.GalleryItem(id="n", filename="n.png")
+    assert item.affinity_index is None
+    metadata.save_gallery_items(tmp_path, [item])
+    [reloaded] = metadata.load_gallery_items(tmp_path)
+    assert reloaded.affinity_index is None

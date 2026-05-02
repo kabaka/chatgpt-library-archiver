@@ -27,12 +27,14 @@ def test_main_sets_assume_yes(monkeypatch):
         def __init__(self) -> None:
             self.parsed = SimpleNamespace(yes=True)
             self.run_called_with: SimpleNamespace | None = None
+            self.env_during_run: str | None = None
 
         def parse_args(self, argv=None):
             return self.parsed
 
         def run(self, args):
             self.run_called_with = args
+            self.env_during_run = os.environ.get("ARCHIVER_ASSUME_YES")
             return 42
 
     dummy_cli = DummyCLI()
@@ -43,7 +45,10 @@ def test_main_sets_assume_yes(monkeypatch):
 
     assert result == expected_exit_code
     assert dummy_cli.run_called_with is dummy_cli.parsed
-    assert os.environ["ARCHIVER_ASSUME_YES"] == "1"
+    # ``--yes`` propagates to subprocesses via the env var while ``run`` is
+    # executing, but is restored afterwards so callers do not leak state.
+    assert dummy_cli.env_during_run == "1"
+    assert "ARCHIVER_ASSUME_YES" not in os.environ
 
 
 def test_gallery_subcommand(monkeypatch, tmp_path):
@@ -152,7 +157,9 @@ def test_download_tag_new_flag(monkeypatch, tmp_path):
 
     called = {}
 
-    def fake_main(tag_new=False, browser=None, max_workers=6, webp=False):
+    def fake_main(
+        tag_new=False, browser=None, max_workers=6, webp=False, thumbnail_workers=None
+    ):
         called["tag_new"] = tag_new
         called["browser"] = browser
 
@@ -174,7 +181,9 @@ def test_download_browser_flag_edge(monkeypatch, tmp_path):
 
     called = {}
 
-    def fake_main(tag_new=False, browser=None, max_workers=6, webp=False):
+    def fake_main(
+        tag_new=False, browser=None, max_workers=6, webp=False, thumbnail_workers=None
+    ):
         called["tag_new"] = tag_new
         called["browser"] = browser
 
@@ -196,7 +205,9 @@ def test_download_browser_flag_chrome(monkeypatch, tmp_path):
 
     called = {}
 
-    def fake_main(tag_new=False, browser=None, max_workers=6, webp=False):
+    def fake_main(
+        tag_new=False, browser=None, max_workers=6, webp=False, thumbnail_workers=None
+    ):
         called["tag_new"] = tag_new
         called["browser"] = browser
 

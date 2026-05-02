@@ -70,6 +70,9 @@ body.dark {
   background: var(--bg);
   height: 100%;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08);
+  /* Suppress iOS Safari's long-press context menu / image preview so our
+     custom long-press metadata modal can fire instead. */
+  -webkit-touch-callout: none;
 }
 .image-card a.thumb {
   display: flex;
@@ -103,6 +106,16 @@ body.dark {
 }
 .image-card:hover .meta,
 .image-card:focus-within .meta { display: block; }
+/*
+ * On touch-only devices, browsers synthesize :hover on first tap, so any
+ * scroll-touch that grazes a card pops the overlay. Disable the hover
+ * overlay there entirely; the long-press metadata modal is the touch
+ * affordance instead. (See Task 5 of docs/reviews/2026-05-01-feature-batch.)
+ */
+@media (hover: none) and (pointer: coarse) {
+  .image-card:hover .meta,
+  .image-card:focus-within .meta { display: none; }
+}
 .meta a { color: #fff; text-decoration: underline; }
 .meta .tags {
   font-size: 0.7em;
@@ -351,6 +364,13 @@ header.top-bar .search-bar {
   width: auto;
   height: auto;
   transition: opacity 0.2s;
+  /*
+   * `manipulation` keeps native pinch-zoom and pan-after-zoom enabled while
+   * suppressing double-tap zoom and the synthetic 300ms click delay. The
+   * literal `pinch-zoom` value would disable pan-x/pan-y, so the user could
+   * not pan around a zoomed image — strictly worse for a media viewer.
+   */
+  touch-action: manipulation;
 }
 #viewer .viewer-meta { position: absolute; bottom: 20px; }
 #viewer a {
@@ -363,6 +383,82 @@ header.top-bar .search-bar {
   position: absolute;
   top: 15px;
   right: 15px;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  border: none;
+  font-size: 1.5em;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 4px;
+  z-index: 1;
+}
+#metaModal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.85);
+  display: none;
+  align-items: stretch;
+  justify-content: center;
+  z-index: 200;
+  overflow-y: auto;
+  padding: 40px 16px;
+}
+#metaModal[data-open="true"] {
+  display: flex;
+}
+.meta-modal-body {
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 8px;
+  max-width: 640px;
+  width: 100%;
+  margin: auto;
+  padding: 20px 22px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+.meta-modal-body h2 {
+  margin: 0 0 8px 0;
+  font-size: 1.25em;
+}
+.meta-modal-body p {
+  margin: 6px 0;
+  font-size: 0.95em;
+  color: var(--meta-color);
+}
+.meta-modal-body .meta-modal-prompt {
+  white-space: pre-wrap;
+  color: var(--text);
+}
+.meta-modal-body .tag-pill-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.meta-modal-body .tag-pill-list li {
+  display: inline-block;
+}
+.meta-modal-body .tag-pill-list .tag-pill {
+  background: var(--control-bg);
+  color: var(--text);
+}
+.meta-modal-body a {
+  color: inherit;
+  display: inline-block;
+  margin-right: 12px;
+  margin-top: 6px;
+}
+.meta-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
   background: rgba(0, 0, 0, 0.6);
   color: white;
   border: none;
@@ -493,6 +589,7 @@ button.toggle {
             <option value="date-asc">Date (oldest)</option>
             <option value="title-asc">Title (A–Z)</option>
             <option value="title-desc">Title (Z–A)</option>
+            <option value="affinity">Tag similarity</option>
           </select>
         </div>
         <div class="size-select">
@@ -524,6 +621,21 @@ button.toggle {
   <div id="viewerSpinner" class="viewer-spinner" aria-label="Loading image"></div>
   <div class="viewer-meta"><a id="viewerRaw" href="" target="_blank">Raw file</a></div>
 </div>
+<div id="metaModal" role="dialog" aria-modal="true" aria-label="Image metadata" tabindex="-1" data-open="false">
+  <button id="metaModalClose" class="meta-modal-close" type="button" aria-label="Close metadata">&times;</button>
+  <div class="meta-modal-body">
+    <h2 id="metaModalTitle"></h2>
+    <p id="metaModalCreated"></p>
+    <p id="metaModalDimensions"></p>
+    <p id="metaModalFilename"></p>
+    <p id="metaModalModel"></p>
+    <p id="metaModalPrompt" class="meta-modal-prompt"></p>
+    <ul id="metaModalTags" class="tag-pill-list"></ul>
+    <div id="metaModalExtras"></div>
+    <a id="metaModalConv" href="#" target="_blank" rel="noopener">View conversation</a>
+    <a id="metaModalRaw" href="#" target="_blank" rel="noopener">Open image</a>
+  </div>
+</div>
 <script>
 (function() {
 'use strict';
@@ -536,10 +648,24 @@ const sizeClassToKey = {
   'gallery-large': 'large',
   'gallery-full': 'full',
 };
-const sizeKeyToWidth = { small: 150, medium: 250, large: 400, full: 400 };
+const sizeKeyToWidth = { small: 150, medium: 250, large: 400, full: 2400 };
 function sizesAttrForKey(sizeKey) {
   var px = sizeKeyToWidth[sizeKey] || 250;
   return px + 'px';
+}
+function srcsetForKey(thumbPaths, fullSrc, sizeKey) {
+  var parts = [
+    thumbPaths.small + ' 150w',
+    thumbPaths.medium + ' 250w',
+    thumbPaths.large + ' 400w',
+  ];
+  // In gallery-full mode, advertise the original image so the browser
+  // picks it on high-DPI displays. Smaller modes keep the thumbnail tiers
+  // only, to avoid wasting bandwidth.
+  if (sizeKey === 'full' && fullSrc) {
+    parts.push(fullSrc + ' 2400w');
+  }
+  return parts.join(', ');
 }
 
 /* === State === */
@@ -550,8 +676,6 @@ let viewerData = [];
 let visibleIndices = [];
 let currentIndex = 0;
 let justSwiped = false;
-let touchStartX = 0;
-let touchStartY = 0;
 let viewerTrigger = null;
 
 /* === Utilities === */
@@ -665,6 +789,15 @@ function sortItems(items, sortKey) {
     case 'title-desc':
       sorted.sort(function(a, b) { return (b.title || '').localeCompare(a.title || ''); });
       break;
+    case 'affinity':
+      sorted.sort(function(a, b) {
+        var ai = a.affinity_index, bi = b.affinity_index;
+        if (ai == null && bi == null) return 0;
+        if (ai == null) return 1;
+        if (bi == null) return -1;
+        return ai - bi;
+      });
+      break;
   }
   return sorted;
 }
@@ -717,7 +850,7 @@ function createCard(item, filteredIndex) {
   img.setAttribute('data-thumb-large', thumbPaths.large);
   img.setAttribute('data-thumb-full', thumbPaths.full);
   img.setAttribute('data-full', imgPath);
-  img.setAttribute('srcset', thumbPaths.small + ' 150w, ' + thumbPaths.medium + ' 250w, ' + thumbPaths.large + ' 400w');
+  img.setAttribute('srcset', srcsetForKey(thumbPaths, imgPath, thumbKey));
   img.setAttribute('sizes', sizesAttrForKey(thumbKey));
   img.alt = title || filenameStem(item.filename) || item.id;
   img.loading = 'lazy';
@@ -942,14 +1075,25 @@ function updateThumbnailsForSize(sizeKey) {
   var images = document.querySelectorAll('.image-card img');
   images.forEach(function(img) {
     var nextSrc = img.dataset['thumb' + sizeKey.charAt(0).toUpperCase() + sizeKey.slice(1)];
+    if (sizeKey === 'full' && img.dataset.full) {
+      // Always serve the original in gallery-full, regardless of any
+      // (legacy) data-thumb-full value populated from metadata.
+      nextSrc = img.dataset.full;
+    }
     if (!nextSrc) nextSrc = img.dataset.src;
     if (!nextSrc) return;
     img.dataset.src = nextSrc;
-    // Update srcset + sizes so the browser picks the correct source
-    img.setAttribute('srcset',
-      (img.dataset.thumbSmall || '') + ' 150w, ' +
-      (img.dataset.thumbMedium || '') + ' 250w, ' +
-      (img.dataset.thumbLarge || '') + ' 400w');
+    // Update srcset + sizes so the browser picks the correct source.
+    // Full mode appends the original at 2400w; other modes stay on thumbs.
+    var parts = [
+      (img.dataset.thumbSmall || '') + ' 150w',
+      (img.dataset.thumbMedium || '') + ' 250w',
+      (img.dataset.thumbLarge || '') + ' 400w',
+    ];
+    if (sizeKey === 'full' && img.dataset.full) {
+      parts.push(img.dataset.full + ' 2400w');
+    }
+    img.setAttribute('srcset', parts.join(', '));
     img.setAttribute('sizes', newSizes);
     if (img.hasAttribute('src')) {
       img.src = nextSrc;
@@ -1107,36 +1251,388 @@ document.addEventListener('keydown', function(e) {
   }
 });
 
-// Viewer click/touch handlers
+// Viewer pointer/click handlers
+//
+// Bug history: previous versions used touchstart/touchend listeners that
+// returned early when more than one finger was active on touchstart, but
+// the matching touchend only checked changedTouches.length, so the second
+// finger of a pinch produced its own touchend with one changedTouch, no
+// recorded start coords, and the swipe-distance branch fell through to
+// closeViewer(). Result: pinching the image closed the lightbox.
+//
+// Fix: use Pointer Events with explicit tracking so that close fires
+// only on a single-pointer tap (no movement, never multi-touch). Multi-
+// touch gestures (pinch-zoom) are handed off to the browser via the
+// `touch-action: manipulation` CSS rule on #viewer img.
 var viewerEl = document.getElementById('viewer');
-viewerEl.addEventListener('click', function(e) {
-  if (justSwiped) { justSwiped = false; return; }
+var activePointers = new Map();
+var wasMultiTouch = false;
+var pointerMoved = false;
+var pointerStartX = 0;
+var pointerStartY = 0;
+var TAP_MOVE_THRESHOLD = 10;
+var SWIPE_THRESHOLD = 50;
+
+function resetPointerGesture() {
+  activePointers.clear();
+  wasMultiTouch = false;
+  pointerMoved = false;
+}
+
+viewerEl.addEventListener('pointerdown', function(e) {
+  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (activePointers.size > 1) {
+    wasMultiTouch = true;
+    return;
+  }
+  pointerStartX = e.clientX;
+  pointerStartY = e.clientY;
+  pointerMoved = false;
+  justSwiped = false;
+});
+
+viewerEl.addEventListener('pointermove', function(e) {
+  if (!activePointers.has(e.pointerId)) return;
+  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (activePointers.size > 1) {
+    wasMultiTouch = true;
+    return;
+  }
+  var dx = e.clientX - pointerStartX;
+  var dy = e.clientY - pointerStartY;
+  if (Math.abs(dx) > TAP_MOVE_THRESHOLD || Math.abs(dy) > TAP_MOVE_THRESHOLD) {
+    pointerMoved = true;
+  }
+});
+
+viewerEl.addEventListener('pointerup', function(e) {
+  var hadPointer = activePointers.has(e.pointerId);
+  activePointers.delete(e.pointerId);
+  if (!hadPointer) return;
+
+  // Wait until every pointer in the gesture has released before deciding.
+  if (activePointers.size > 0) return;
+
+  var multi = wasMultiTouch;
+  var moved = pointerMoved;
+  var startX = pointerStartX;
+  var startY = pointerStartY;
+  resetPointerGesture();
+
   if (e.target.closest('button, a[href]')) return;
+
+  if (multi) {
+    // Pinch / multi-touch — never close.
+    return;
+  }
+
+  var dx = e.clientX - startX;
+  var dy = e.clientY - startY;
+  var absDx = Math.abs(dx);
+  var absDy = Math.abs(dy);
+
+  if (e.pointerType !== 'mouse' && absDx > SWIPE_THRESHOLD && absDx > absDy) {
+    showNext(dx < 0 ? 1 : -1);
+    justSwiped = true;
+    e.preventDefault();
+    return;
+  }
+
+  if (moved) return;
+
+  // Single-pointer tap (touch / pen) or single mouse click → close.
   e.preventDefault();
   e.stopPropagation();
   closeViewer();
+}, { passive: false });
+
+viewerEl.addEventListener('pointercancel', function(e) {
+  activePointers.delete(e.pointerId);
+  // Treat any cancel as a multi-touch latch so a stray trailing pointerup
+  // cannot fire close.
+  wasMultiTouch = true;
+  if (activePointers.size === 0) resetPointerGesture();
 });
-viewerEl.addEventListener('touchstart', function(e) {
-  if (e.touches.length !== 1) return;
-  touchStartX = e.touches[0].clientX;
-  touchStartY = e.touches[0].clientY;
-  justSwiped = false;
-});
-viewerEl.addEventListener('touchend', function(e) {
-  if (e.changedTouches.length !== 1) return;
-  var touch = e.changedTouches[0];
-  var dx = touch.clientX - touchStartX;
-  var dy = touch.clientY - touchStartY;
-  var absDx = Math.abs(dx);
-  var absDy = Math.abs(dy);
-  if (absDx > 50 && absDx > absDy) {
-    showNext(dx < 0 ? 1 : -1);
-    justSwiped = true;
-  } else if (!e.target.closest('#viewer .viewer-meta a')) {
+
+// Suppress the synthetic click that iOS Safari fires after touchend so a
+// pinch or swipe never produces a stray close. Mouse clicks still close
+// because they arrive without a preceding tracked pointer gesture and the
+// pointerup branch above handles them; this listener only swallows the
+// touch-synthesized cascade.
+viewerEl.addEventListener('click', function(e) {
+  if (justSwiped) { justSwiped = false; e.preventDefault(); e.stopPropagation(); return; }
+  if (e.target.closest('button, a[href]')) return;
+  // If a PointerEvent already handled close (touch/pen), suppress the
+  // duplicate synthetic click.
+  if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+  // Fallback for environments without PointerEvent support: behave like
+  // the legacy click-to-close handler.
+  if (typeof window.PointerEvent === 'undefined') {
+    e.preventDefault();
+    e.stopPropagation();
     closeViewer();
   }
-  if (!e.target.closest('#viewer .viewer-meta a')) e.preventDefault();
-}, { passive: false });
+});
+
+/* === Touch metadata modal (Task 5: long-press on coarse pointers) ===
+ *
+ * On (hover: none) and (pointer: coarse), the :hover overlay is disabled
+ * via CSS. Instead, a long-press (>=500ms, no movement >10px, single
+ * pointer) opens a full-screen modal showing the item's metadata. A
+ * regular tap continues to open the lightbox via the normal click path.
+ * Scroll gestures cancel the timer; multi-touch cancels too. The
+ * synthetic click after the timer fires is suppressed so the lightbox
+ * does not also open.
+ */
+var metaModal = document.getElementById('metaModal');
+var metaModalCloseBtn = document.getElementById('metaModalClose');
+var coarsePointerMQ = window.matchMedia('(hover: none) and (pointer: coarse)');
+var LONG_PRESS_MS = 500;
+var LONG_PRESS_MOVE = 10;
+var longPressTimer = null;
+var longPressFired = false;
+var longPressStartX = 0;
+var longPressStartY = 0;
+var longPressPointerId = null;
+var longPressCard = null;
+var modalTrigger = null;
+
+function isCoarsePointer() {
+  return coarsePointerMQ && coarsePointerMQ.matches;
+}
+
+function clearLongPress() {
+  if (longPressTimer !== null) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+  longPressPointerId = null;
+  longPressCard = null;
+}
+
+function formatCreated(seconds) {
+  if (!seconds) return '';
+  return new Date(seconds * 1000)
+    .toISOString()
+    .replace('T', ' ')
+    .split('.')[0];
+}
+
+function openMetaModal(item, triggerEl) {
+  if (!metaModal || !item) return;
+  modalTrigger = triggerEl || document.activeElement;
+  var titleEl = document.getElementById('metaModalTitle');
+  var createdEl = document.getElementById('metaModalCreated');
+  var dimsEl = document.getElementById('metaModalDimensions');
+  var fileEl = document.getElementById('metaModalFilename');
+  var modelEl = document.getElementById('metaModalModel');
+  var promptEl = document.getElementById('metaModalPrompt');
+  var tagsEl = document.getElementById('metaModalTags');
+  var extrasEl = document.getElementById('metaModalExtras');
+  var convEl = document.getElementById('metaModalConv');
+  var rawEl = document.getElementById('metaModalRaw');
+
+  titleEl.textContent = item.title || filenameStem(item.filename) || item.id || '';
+  createdEl.textContent = item.created_at ? 'Created: ' + formatCreated(item.created_at) : '';
+  createdEl.style.display = createdEl.textContent ? '' : 'none';
+
+  var width = item.width || (item.dimensions && item.dimensions.width);
+  var height = item.height || (item.dimensions && item.dimensions.height);
+  if (width && height) {
+    dimsEl.textContent = 'Dimensions: ' + width + ' \u00d7 ' + height;
+    dimsEl.style.display = '';
+  } else {
+    dimsEl.textContent = '';
+    dimsEl.style.display = 'none';
+  }
+
+  if (item.filename) {
+    fileEl.textContent = 'File: ' + item.filename;
+    fileEl.style.display = '';
+  } else {
+    fileEl.textContent = '';
+    fileEl.style.display = 'none';
+  }
+
+  if (item.model) {
+    modelEl.textContent = 'Model: ' + item.model;
+    modelEl.style.display = '';
+  } else {
+    modelEl.textContent = '';
+    modelEl.style.display = 'none';
+  }
+
+  if (item.prompt) {
+    promptEl.textContent = item.prompt;
+    promptEl.style.display = '';
+  } else {
+    promptEl.textContent = '';
+    promptEl.style.display = 'none';
+  }
+
+  tagsEl.innerHTML = '';
+  var tagsArr = item.tags || [];
+  if (tagsArr.length > 0) {
+    tagsEl.style.display = '';
+    for (var ti = 0; ti < tagsArr.length; ti++) {
+      (function(tag) {
+        var li = document.createElement('li');
+        var pill = document.createElement('button');
+        pill.type = 'button';
+        pill.className = 'tag-pill';
+        pill.textContent = tag;
+        pill.title = 'Filter by: ' + tag;
+        pill.addEventListener('click', function(e) {
+          e.stopPropagation();
+          e.preventDefault();
+          closeMetaModal();
+          document.getElementById('searchBox').value = tag;
+          applyFiltersAndSort();
+        });
+        li.appendChild(pill);
+        tagsEl.appendChild(li);
+      })(tagsArr[ti]);
+    }
+  } else {
+    tagsEl.style.display = 'none';
+  }
+
+  // Extras: any other primitive fields not already shown.
+  extrasEl.innerHTML = '';
+  var shown = {
+    id: 1, title: 1, filename: 1, created_at: 1, prompt: 1, tags: 1,
+    thumbnail: 1, thumbnails: 1, conversation_link: 1, model: 1,
+    width: 1, height: 1, dimensions: 1,
+    _searchTitle: 1, _searchTags: 1,
+  };
+  for (var key in item) {
+    if (!Object.prototype.hasOwnProperty.call(item, key)) continue;
+    if (shown[key]) continue;
+    var val = item[key];
+    if (val === null || val === undefined || val === '') continue;
+    if (typeof val === 'object') continue;
+    var p = document.createElement('p');
+    p.textContent = key + ': ' + String(val);
+    extrasEl.appendChild(p);
+  }
+
+  if (item.conversation_link) {
+    convEl.href = safeHref(item.conversation_link);
+    convEl.style.display = '';
+  } else {
+    convEl.removeAttribute('href');
+    convEl.style.display = 'none';
+  }
+  if (item.filename) {
+    rawEl.href = 'images/' + item.filename;
+    rawEl.style.display = '';
+  } else {
+    rawEl.removeAttribute('href');
+    rawEl.style.display = 'none';
+  }
+
+  metaModal.dataset.open = 'true';
+  metaModal.focus();
+}
+
+function closeMetaModal() {
+  if (!metaModal) return;
+  metaModal.dataset.open = 'false';
+  if (modalTrigger && typeof modalTrigger.focus === 'function') {
+    modalTrigger.focus();
+  }
+  modalTrigger = null;
+}
+
+function isMetaModalOpen() {
+  return metaModal && metaModal.dataset.open === 'true';
+}
+
+if (metaModalCloseBtn) {
+  metaModalCloseBtn.addEventListener('click', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    closeMetaModal();
+  });
+}
+if (metaModal) {
+  // Backdrop tap (clicks landing on the modal root itself, not inner content).
+  metaModal.addEventListener('click', function(e) {
+    if (e.target === metaModal) {
+      e.preventDefault();
+      closeMetaModal();
+    }
+  });
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && isMetaModalOpen()) {
+    closeMetaModal();
+  }
+});
+
+// Long-press detection delegated at the gallery container.
+var galleryEl = document.getElementById('gallery');
+if (galleryEl) {
+  galleryEl.addEventListener('pointerdown', function(e) {
+    if (!isCoarsePointer()) return;
+    if (longPressPointerId !== null) {
+      // A second pointer arrived — cancel the in-flight gesture.
+      clearLongPress();
+      return;
+    }
+    var card = e.target.closest('.image-card');
+    if (!card) return;
+    var idxStr = card.dataset.index;
+    if (idxStr === undefined) return;
+    var idx = parseInt(idxStr, 10);
+    if (isNaN(idx)) return;
+    longPressPointerId = e.pointerId;
+    longPressStartX = e.clientX;
+    longPressStartY = e.clientY;
+    longPressFired = false;
+    longPressCard = card;
+    longPressTimer = setTimeout(function() {
+      longPressTimer = null;
+      longPressFired = true;
+      var item = filteredItems[idx];
+      if (item) openMetaModal(item, card);
+    }, LONG_PRESS_MS);
+  });
+
+  galleryEl.addEventListener('pointermove', function(e) {
+    if (longPressPointerId === null || e.pointerId !== longPressPointerId) return;
+    var dx = e.clientX - longPressStartX;
+    var dy = e.clientY - longPressStartY;
+    if (Math.abs(dx) > LONG_PRESS_MOVE || Math.abs(dy) > LONG_PRESS_MOVE) {
+      clearLongPress();
+    }
+  });
+
+  galleryEl.addEventListener('pointerup', function(e) {
+    if (longPressPointerId === null || e.pointerId !== longPressPointerId) return;
+    clearLongPress();
+  });
+
+  galleryEl.addEventListener('pointercancel', function(e) {
+    if (longPressPointerId === null || e.pointerId !== longPressPointerId) return;
+    clearLongPress();
+  });
+
+  // Suppress the synthetic click that would otherwise open the lightbox
+  // immediately after the long-press timer fired.
+  galleryEl.addEventListener('click', function(e) {
+    if (longPressFired) {
+      longPressFired = false;
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, true);
+}
 
 // Load gallery
 try {

@@ -84,6 +84,7 @@ def download_image(
     client: HttpClient,
     progress: StatusReporter,
     webp: bool = False,
+    thumbnail_pool: thumbnails.ThumbnailPool | None = None,
 ) -> tuple[str, GalleryItem, DownloadImageResult | str, Exception | None]:
     """Download a single image and generate thumbnails.
 
@@ -91,6 +92,11 @@ def download_image(
     On success *status* is ``"ok"`` and the third element is a
     :class:`DownloadImageResult`.  On failure *status* is ``"error"``
     and the third element is a human-readable reason string.
+
+    When ``thumbnail_pool`` is provided, thumbnail generation is
+    submitted to the shared :class:`~thumbnails.ThumbnailPool` instead
+    of running inline.  Callers are responsible for draining the pool
+    before assuming the thumbnail files exist on disk.
     """
 
     try:
@@ -121,9 +127,12 @@ def download_image(
 
         thumb_rels = thumbnails.thumbnail_relative_paths(filename, webp=webp)
         thumb_paths = {size: gallery_root / rel for size, rel in thumb_rels.items()}
-        thumbnails.create_thumbnails(
-            filepath, thumb_paths, reporter=progress, webp=webp
-        )
+        if thumbnail_pool is not None:
+            thumbnail_pool.submit(filename, filepath, thumb_paths)
+        else:
+            thumbnails.create_thumbnails(
+                filepath, thumb_paths, reporter=progress, webp=webp
+            )
 
         dto = DownloadImageResult(
             filename=filename,
@@ -144,6 +153,7 @@ def main(
     browser: str | None = None,
     max_workers: int = 6,
     webp: bool = False,
+    thumbnail_workers: int | None = None,
 ) -> None:
     # Load auth from browser (live) or auth.txt (file)
     if browser:
@@ -169,6 +179,11 @@ def main(
             total=0, description="Overall progress", unit="img", position=1
         ) as progress,
         create_http_client() as client,
+        thumbnails.create_thumbnails_pool(
+            max_workers=thumbnail_workers,
+            reporter=progress,
+            webp=webp,
+        ) as thumb_pool,
     ):
         progress.log(f"Found {len(existing_ids)} previously downloaded image IDs.")
 
@@ -189,6 +204,7 @@ def main(
             client=client,
             progress=progress,
             webp=webp,
+            thumbnail_pool=thumb_pool,
         )
 
         progress.log("Fetching metadata from API...")

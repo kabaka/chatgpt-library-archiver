@@ -4,6 +4,7 @@ import json
 from importlib import resources
 from pathlib import Path
 
+from .affinity import compute_affinity_indices
 from .metadata import (
     GalleryItem,
     created_at_sort_key,
@@ -52,6 +53,7 @@ def generate_gallery(gallery_root: str = "gallery") -> int:
         key=lambda item: (_created_at_key(item), item.id),
         reverse=True,
     )
+    compute_affinity_indices(items)
     save_gallery_items(gallery_root, items)
 
     template = resources.read_text(

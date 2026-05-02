@@ -114,8 +114,205 @@ def test_gallery_has_full_size_mode_with_preload_and_swipe():
     assert ".gallery-full {" in html
     assert "setAttribute('data-thumb-full'" in html
     assert "rootMargin: '200px 0px'" in html
-    assert "viewerEl.addEventListener('touchend'" in html
+    # Swipe handling now lives in the pointerup branch.
+    assert "viewerEl.addEventListener('pointerup'" in html
     assert "viewerEl.addEventListener('click'" in html
+
+
+def test_gallery_full_mode_serves_original_image():
+    """Task 3 regression: in `gallery-full` list mode, the rendered <img>
+    must resolve to the ORIGINAL image (`images/<filename>`), not a 400px
+    `large` thumbnail. See docs/reviews/2026-05-01-feature-batch/PLAN.md.
+    """
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+
+    # The size-key → width hint must advertise a high-DPI width for `full`
+    # so the browser picks the original from `srcset`. The legacy 400px
+    # mapping was the bug.
+    assert re.search(
+        r"sizeKeyToWidth\s*=\s*\{\s*small:\s*150,\s*medium:\s*250,"
+        r"\s*large:\s*400,\s*full:\s*2400\s*\}",
+        html,
+    ), "sizeKeyToWidth.full must be 2400 (originals tier), not 400"
+    # Hard regression sentinel: the old `full: 400` mapping must be gone.
+    assert "full: 400" not in html, (
+        "Legacy low-res `full: 400` mapping resurfaced — "
+        "Task 3 (full-resolution gallery-full) regressed."
+    )
+
+    # `srcset` for full mode appends the original at 2400w. The two call
+    # sites are `createCard` (initial render) and `updateThumbnailsForSize`
+    # (size selector change). Both must include the `2400w` descriptor and
+    # gate it on `sizeKey === 'full'`.
+    assert "srcsetForKey" in html, (
+        "srcsetForKey helper missing — full-mode srcset will not include "
+        "the original image."
+    )
+    assert "' 2400w'" in html or "+ ' 2400w'" in html, (
+        "Original-image descriptor `2400w` not found in srcset assembly."
+    )
+    assert "sizeKey === 'full'" in html, (
+        "Full-mode srcset gating missing; smaller modes would also pull "
+        "the original and waste bandwidth."
+    )
+
+    # In `updateThumbnailsForSize`, full mode must explicitly point
+    # `nextSrc` at `data-full` (the original) rather than relying on the
+    # `data-thumb-full` cascade.
+    assert "img.dataset.full" in html
+    update_block = re.search(
+        r"function updateThumbnailsForSize\(sizeKey\) \{.*?\n\}",
+        html,
+        re.DOTALL,
+    )
+    assert update_block, "updateThumbnailsForSize body not found"
+    body = update_block.group(0)
+    assert "sizeKey === 'full'" in body, (
+        "updateThumbnailsForSize must branch on full mode to swap to the "
+        "original image."
+    )
+    assert "img.dataset.full" in body
+
+
+def test_gallery_small_modes_use_thumbnail_tiers():
+    """Smaller list modes (small/medium/large) must keep using the
+    existing 150/250/400 thumbnail tiers and must NOT eagerly download
+    the original image via `srcset`.
+    """
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    # Width hints for the small tiers are unchanged.
+    assert "small: 150" in html
+    assert "medium: 250" in html
+    assert "large: 400" in html
+    # The 2400w descriptor must be guarded by a `full` check; a global
+    # (unconditional) inclusion would push originals into grid mode too.
+    assert re.search(
+        r"sizeKey === 'full'[^\n]*\n[^\n]*' 2400w'|"
+        r"sizeKey === 'full'\)\s*\{[^}]*' 2400w'",
+        html,
+        re.DOTALL,
+    ), "2400w original-image descriptor must be gated on full mode"
+
+
+def test_viewer_uses_pointer_events_for_close():
+    """Pinch-to-close regression: viewer must close via pointer events,
+    not raw touchstart/touchend, and pinch (multi-touch) must not close.
+    """
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    # New pointer-event handlers exist on the viewer.
+    assert "viewerEl.addEventListener('pointerdown'" in html
+    assert "viewerEl.addEventListener('pointerup'" in html
+    assert "viewerEl.addEventListener('pointercancel'" in html
+    # Pointer-count tracking sentinel (used to suppress close on pinch).
+    assert "activePointers" in html
+    assert "wasMultiTouch" in html
+    # Regression check: the legacy touchstart/touchend viewer listeners
+    # are gone. Pinch's second-finger touchend used to fall through to
+    # closeViewer() — see Task 4 of docs/reviews/2026-05-01-feature-batch.
+    assert "viewerEl.addEventListener('touchstart'" not in html
+    assert "viewerEl.addEventListener('touchend'" not in html
+
+
+def test_viewer_image_has_touch_action_manipulation():
+    """`touch-action: manipulation` keeps native pinch-zoom + pan-after-zoom
+    enabled while suppressing the synthetic 300ms click delay. The literal
+    `pinch-zoom` value would disable pan-x/pan-y and is intentionally not used.
+    """
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    viewer_img_block = re.search(r"#viewer img \{[^}]*\}", html)
+    assert viewer_img_block, "#viewer img CSS block not found"
+    assert "touch-action: manipulation" in viewer_img_block.group(0)
+
+
+def test_gallery_disables_hover_overlay_on_touch_devices():
+    """Task 5: on (hover: none) and (pointer: coarse) the :hover/:focus-within
+    overlay must be disabled — browsers synthesize :hover on first tap, so any
+    scroll-touch that grazes a card pops the panel.
+    """
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    block = re.search(
+        r"@media \(hover: none\) and \(pointer: coarse\)\s*\{[^{}]*"
+        r"\.image-card:hover \.meta[^{}]*\.image-card:focus-within \.meta[^{}]*"
+        r"\{[^{}]*display:\s*none[^{}]*\}\s*\}",
+        html,
+        re.DOTALL,
+    )
+    assert block, (
+        "expected an @media (hover: none) and (pointer: coarse) block that "
+        "disables .image-card:hover/.focus-within .meta"
+    )
+
+
+def test_gallery_long_press_handler_registered():
+    """Task 5: long-press detection (~500ms hold without movement) on cards
+    must be wired up via pointerdown on the gallery container.
+    """
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    assert "longPressTimer" in html
+    assert "LONG_PRESS_MS" in html
+    assert "500" in html  # the long-press threshold
+    assert "galleryEl.addEventListener('pointerdown'" in html
+    # Movement threshold cancels the timer (scroll-as-long-press guard).
+    assert "LONG_PRESS_MOVE" in html
+    assert "clearLongPress" in html
+    # Coarse-pointer gating: handler is a no-op on hover-capable devices.
+    assert "(hover: none) and (pointer: coarse)" in html
+    assert "matchMedia" in html
+
+
+def test_gallery_metadata_modal_markup_exists():
+    """Task 5: the long-press modal must exist in the template with the
+    expected accessibility attributes and is hidden by default.
+    """
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    modal = re.search(r'<div id="metaModal"[^>]*>', html)
+    assert modal, "metaModal element missing"
+    attrs = modal.group(0)
+    assert 'role="dialog"' in attrs
+    assert 'aria-modal="true"' in attrs
+    assert 'tabindex="-1"' in attrs
+    # Hidden by default.
+    assert 'data-open="false"' in attrs
+    # Required inner fields.
+    assert 'id="metaModalTitle"' in html
+    assert 'id="metaModalPrompt"' in html
+    assert 'id="metaModalTags"' in html
+    assert 'id="metaModalClose"' in html
+
+
+def test_gallery_metadata_modal_dismisses_on_escape_and_backdrop():
+    """Task 5: the metadata modal must close on Escape and on backdrop click."""
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    # Escape closes when modal is open.
+    escape_block = re.search(
+        r"e\.key === 'Escape'[^\n]*isMetaModalOpen\(\)[^\n]*",
+        html,
+    )
+    assert escape_block, "Escape-to-close handler for metaModal not found"
+    # Backdrop click (target === metaModal) closes.
+    backdrop_block = re.search(
+        r"metaModal\.addEventListener\('click'[^}]*?e\.target === metaModal"
+        r"[^}]*?closeMetaModal\(\)",
+        html,
+        re.DOTALL,
+    )
+    assert backdrop_block, "Backdrop-tap close handler for metaModal not found"
 
 
 def test_gallery_grid_centers_images_and_is_full_width():
@@ -354,7 +551,7 @@ def _extract_viewer_script() -> str:
     fn_start = html.index("function showViewerAt(pos)")
     fn_end = html.index("/* === Initialization === */")
     kb_start = html.index("// Keyboard navigation")
-    kb_end = html.index("// Viewer click/touch handlers")
+    kb_end = html.index("// Viewer pointer/click handlers")
     return html[fn_start:fn_end] + html[kb_start:kb_end]
 
 
@@ -557,3 +754,48 @@ def test_ctrl_meta_click_opens_raw():
         "normalPrevented": True,
         "opened": 42,
     }
+
+
+# -- Task 7: tag affinity sort tests --
+
+
+def test_affinity_index_present_in_sort_dropdown():
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    assert '<option value="affinity">Tag similarity</option>' in html
+
+
+def test_affinity_index_referenced_in_js_comparator():
+    html = resources.read_text(
+        "chatgpt_library_archiver", "gallery_index.html", encoding="utf-8"
+    )
+    assert "case 'affinity':" in html
+    assert "a.affinity_index" in html
+    assert "b.affinity_index" in html
+
+
+def test_generate_gallery_writes_affinity_index(tmp_path, write_metadata):
+    gallery_root = tmp_path / "gallery"
+    gallery_root.mkdir()
+    write_metadata(
+        gallery_root,
+        [
+            {"id": "1", "filename": "a.jpg", "created_at": 1, "tags": ["x", "y"]},
+            {"id": "2", "filename": "b.jpg", "created_at": 2, "tags": ["x", "y"]},
+            {"id": "3", "filename": "c.jpg", "created_at": 3, "tags": []},
+            {"id": "4", "filename": "d.jpg", "created_at": 4, "tags": ["x"]},
+        ],
+        create_images=True,
+    )
+    generate_gallery(str(gallery_root))
+    with open(gallery_root / "metadata.json", encoding="utf-8") as f:
+        data = json.load(f)
+    by_id = {row["id"]: row for row in data}
+    assert by_id["3"]["affinity_index"] is None
+    assert by_id["1"]["affinity_index"] is not None
+    assert by_id["2"]["affinity_index"] is not None
+    assert by_id["4"]["affinity_index"] is not None
+    # Items 1 and 2 share both tags; they should be adjacent in the sequence.
+    indices = sorted((by_id[i]["affinity_index"], i) for i in ("1", "2", "4"))
+    assert {indices[0][1], indices[1][1]} == {"1", "2"}

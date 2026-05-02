@@ -23,6 +23,7 @@ from .ai import (
 )
 from .metadata import GalleryItem, load_gallery_items, save_gallery_items
 from .status import StatusReporter
+from .tagger import normalize_tag
 from .utils import prompt_yes_no
 
 IMAGE_EXTENSIONS = {
@@ -61,13 +62,21 @@ class ImportConfig:
     tag_workers: int = 4
     allow_interactive: bool | None = None
     telemetry_sink: Callable[[AIRequestTelemetry], None] | None = None
+    thumbnail_workers: int | None = None
 
     def __post_init__(self) -> None:
-        """Normalize tags by splitting comma-separated values."""
+        """Normalize tags by splitting comma-separated values and canonicalizing."""
         normalized: list[str] = []
+        seen: set[str] = set()
         for tag in self.tags:
-            parts = [p.strip() for p in tag.split(",")]
-            normalized.extend(p for p in parts if p)
+            for part in (p.strip() for p in tag.split(",")):
+                if not part:
+                    continue
+                canonical = normalize_tag(part)
+                if not canonical or canonical in seen:
+                    continue
+                seen.add(canonical)
+                normalized.append(canonical)
         self.tags = normalized
 
 
@@ -97,6 +106,7 @@ class _ImportContext:
     images_dir: Path
     existing_files: set[str]
     ai_ctx: _AIContext | None
+    thumbnail_pool: thumbnails.ThumbnailPool | None = None
 
 
 def _is_image_file(path: Path) -> bool:
@@ -273,7 +283,10 @@ def _import_one_image(
     created_at = datetime.now(timezone.utc).timestamp()
     thumb_rels = thumbnails.thumbnail_relative_paths(filename)
     thumb_paths = {size: ctx.gallery_path / rel for size, rel in thumb_rels.items()}
-    thumbnails.create_thumbnails(dest, thumb_paths, reporter=reporter)
+    if ctx.thumbnail_pool is not None:
+        ctx.thumbnail_pool.submit(filename, dest, thumb_paths)
+    else:
+        thumbnails.create_thumbnails(dest, thumb_paths, reporter=reporter)
 
     return GalleryItem(
         id=uuid.uuid4().hex,
@@ -374,9 +387,16 @@ def import_images(
     )
     imported: list[GalleryItem] = []
 
-    with StatusReporter(
-        total=len(items), description="Importing images", unit="img"
-    ) as reporter:
+    with (
+        StatusReporter(
+            total=len(items), description="Importing images", unit="img"
+        ) as reporter,
+        thumbnails.create_thumbnails_pool(
+            max_workers=config.thumbnail_workers,
+            reporter=reporter,
+        ) as thumb_pool,
+    ):
+        ctx.thumbnail_pool = thumb_pool
         for item in items:
             if not _is_image_file(item.source):
                 reporter.advance()
@@ -401,7 +421,11 @@ def import_images(
 
 
 def regenerate_thumbnails(
-    *, gallery_root: str, force: bool = False, webp: bool = False
+    *,
+    gallery_root: str,
+    force: bool = False,
+    webp: bool = False,
+    max_workers: int | None = None,
 ) -> list[str]:
     gallery_path = Path(gallery_root)
     data = load_gallery_items(gallery_path)
@@ -411,7 +435,12 @@ def regenerate_thumbnails(
         description="Regenerating thumbnails", unit="thumb"
     ) as reporter:
         processed, updated = thumbnails.regenerate_thumbnails(
-            gallery_path, data, force=force, reporter=reporter, webp=webp
+            gallery_path,
+            data,
+            force=force,
+            reporter=reporter,
+            webp=webp,
+            max_workers=max_workers,
         )
     if updated:
         save_gallery_items(gallery_path, data)

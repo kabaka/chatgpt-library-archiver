@@ -238,3 +238,31 @@ def test_unique_filename_multiple_collisions():
     result = importer._unique_filename("shot", ".jpg", existing)
     assert result == "shot-4.jpg"
     assert "shot-4.jpg" in existing
+
+
+# ---------------------------------------------------------------------------
+# ImportConfig tag normalization
+# ---------------------------------------------------------------------------
+
+
+def test_import_config_normalizes_case_and_whitespace_duplicates():
+    """User-supplied --tag values are canonicalized via normalize_tag,
+    so case-only and whitespace-only duplicates collapse to one entry."""
+    config = ImportConfig(
+        tags=["Sunset", "sunset", "  SUNSET  ", "Beach!", "beach", "Sun_Rise"]
+    )
+    # normalize_tag lowercases, collapses whitespace, replaces underscores
+    # with spaces, and strips trailing punctuation.
+    assert config.tags == ["sunset", "beach", "sun rise"]
+
+
+def test_import_config_splits_comma_separated_and_normalizes():
+    """Comma-separated values are split and each part is normalized."""
+    config = ImportConfig(tags=["Sunset, Beach", "Sunset"])
+    assert config.tags == ["sunset", "beach"]
+
+
+def test_import_config_drops_empty_after_normalization():
+    """Empty strings, whitespace-only entries, and HTML-only tags drop out."""
+    config = ImportConfig(tags=["", "  ", "<b></b>", "valid"])
+    assert config.tags == ["valid"]

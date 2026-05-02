@@ -37,7 +37,7 @@ sequential value when creating a new record.
 
 <!-- Add new ADRs here in ascending order -->
 
-*No ADRs have been recorded yet.*
+- [ADR-0001 — Tag Affinity Sort Algorithm](0001-affinity-sort-algorithm.md)
 
 ## References
 

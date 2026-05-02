@@ -216,7 +216,21 @@ def tag_images(
                     use_prompt,
                     reporter=reporter,
                 )
-                item.tags = tags
+                # Merge existing (possibly user-supplied) tags with AI-generated
+                # tags, preserving order and deduplicating by normalized form.
+                # AI tags from generate_tags() are already normalized.
+                seen: set[str] = set()
+                merged: list[str] = []
+                for existing_tag in item.tags or []:
+                    key = normalize_tag(existing_tag)
+                    if key and key not in seen:
+                        seen.add(key)
+                        merged.append(existing_tag)
+                for new_tag in tags:
+                    if new_tag and new_tag not in seen:
+                        seen.add(new_tag)
+                        merged.append(new_tag)
+                item.tags = merged
                 tokens = telemetry.total_tokens
                 if telemetry_sink is not None:
                     telemetry_sink(telemetry)

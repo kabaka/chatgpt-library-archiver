@@ -243,6 +243,27 @@ python -m chatgpt_library_archiver [--tag-new] [--browser edge|chrome]
  - Add `--regenerate-thumbnails` to (re)create entries in `gallery/thumbs/<size>/` for every
   image; combine with `--force-thumbnails` to overwrite existing thumbnails.
 
+   The bare `gallery` invocation above is an alias for `gallery build`. The
+   command also exposes a verb-based management surface:
+
+   | Verb           | Purpose                                                       |
+   | -------------- | ------------------------------------------------------------- |
+   | `build`        | Regenerate `index.html` (default; same as bare `gallery`).    |
+   | `query`        | List items matching filters (`--tag`, `--no-tag`, `--title-contains`, `--prompt-contains`, `--id`, `--created-after`, `--created-before`, `--filename-contains`, `--has-thumbnail`, `--missing-thumbnail`, `--extra KEY=VALUE`, `--limit`, `--format=plain|json`). |
+   | `show ID`      | Pretty-print a single item; add `--json` for machine output.  |
+   | `tag ID T...`  | Add tags to an item.                                          |
+   | `untag ID T...`| Remove tags from an item.                                     |
+   | `set ID`       | Update typed fields (`--title`, `--prompt`, `--url`, `--checksum`, `--created-at`, etc.). |
+   | `unset ID K`   | Clear a typed or extra field (or `tags` / `thumbnails`).      |
+   | `rm ID...`     | Delete entries (metadata + image + thumbnails). Requires `--yes` or `ARCHIVER_ASSUME_YES=1`. |
+   | `mv ID NAME`   | Atomically rename an image plus all its thumbnails.           |
+   | `stats`        | Print gallery aggregates (counts, top tags, date range, bytes). |
+   | `export`       | Emit metadata to stdout as JSON or CSV (`--format=json|csv`). |
+   | `affinity`     | Recompute `affinity_index` only and persist.                  |
+   | `dedupe`       | Report duplicate filenames and matching checksums.            |
+   | `verify`       | Report missing image / thumbnail files.                       |
+   | `prune-thumbs` | Delete orphaned thumbnail files.                              |
+
 4. **Generate or manage image tags**
 
 ```bash

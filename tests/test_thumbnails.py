@@ -5,6 +5,7 @@ import queue
 import time
 from concurrent.futures import Future
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import patch
 
 import pytest
@@ -916,3 +917,218 @@ def test_create_thumbnails_strips_icc_profile(tmp_path):
             assert not thumb.info.get("icc_profile"), (
                 f"{size} thumbnail should not have an ICC profile"
             )
+
+
+# ---------------------------------------------------------------------------
+# Task 6 — ThumbnailPool tests
+# ---------------------------------------------------------------------------
+
+
+class _RecordingExecutor:
+    """In-process stand-in for ProcessPoolExecutor used in unit tests."""
+
+    instances: ClassVar[list["_RecordingExecutor"]] = []
+
+    def __init__(self, **kwargs):
+        self._max_workers = kwargs.get("max_workers", 1)
+        self.shutdown_calls: list[dict[str, object]] = []
+        self.submitted: list[tuple] = []
+        _RecordingExecutor.instances.append(self)
+
+    def submit(self, fn, *args):
+        self.submitted.append((fn, args))
+        future: Future = Future()
+        try:
+            result = fn(*args)
+        except Exception as exc:
+            future.set_exception(exc)
+        else:
+            future.set_result(result)
+        return future
+
+    def shutdown(self, wait=True, cancel_futures=False):
+        self.shutdown_calls.append({"wait": wait, "cancel_futures": cancel_futures})
+
+
+def _patch_recording_pool(monkeypatch):
+    """Patch thumbnails to use ``_RecordingExecutor`` and a no-op manager."""
+    _RecordingExecutor.instances = []
+    monkeypatch.setattr(thumbnails, "ProcessPoolExecutor", _RecordingExecutor)
+
+    class _NullQueue:
+        def put(self, *_a, **_kw):
+            pass
+
+        def get(self):
+            return None
+
+    class _NullManager:
+        def Queue(self):
+            return _NullQueue()
+
+        def shutdown(self):
+            pass
+
+    class _NullContext:
+        def Manager(self):
+            return _NullManager()
+
+    monkeypatch.setattr(
+        thumbnails.multiprocessing,
+        "get_context",
+        lambda: _NullContext(),  # noqa: PLW0108
+    )
+
+
+def test_create_thumbnails_pool_parallel(tmp_path, sample_png_bytes):
+    """All submitted items produce all thumbnail files when the pool runs."""
+
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    filenames = [f"img_{i}.png" for i in range(5)]
+    for name in filenames:
+        (images_dir / name).write_bytes(sample_png_bytes)
+
+    reporter = RecordingReporter()
+    with thumbnails.create_thumbnails_pool(max_workers=2, reporter=reporter) as pool:
+        for name in filenames:
+            source = images_dir / name
+            rel = thumbnails.thumbnail_relative_paths(name)
+            dest_map = {size: tmp_path / r for size, r in rel.items()}
+            future = pool.submit(name, source, dest_map)
+            assert future is not None
+
+    for name in filenames:
+        for size in thumbnails.THUMBNAIL_SIZES:
+            assert (tmp_path / f"thumbs/{size}/{name}").is_file()
+    assert reporter.advanced == len(filenames)
+    assert reporter.errors == []
+
+
+def test_create_thumbnails_pool_per_item_error(monkeypatch, tmp_path):
+    """One failing item is reported; siblings still complete."""
+
+    _patch_recording_pool(monkeypatch)
+
+    def fake_worker(source, dest_map, status_queue=None, webp=False):
+        if "bad" in source.name:
+            raise ValueError("boom")
+        for dest in dest_map.values():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(b"thumb")
+        return source.name
+
+    monkeypatch.setattr(thumbnails, "_create_thumbnails_worker", fake_worker)
+
+    reporter = RecordingReporter()
+    with thumbnails.create_thumbnails_pool(max_workers=2, reporter=reporter) as pool:
+        for name in ("good_a.png", "bad.png", "good_b.png"):
+            rel = thumbnails.thumbnail_relative_paths(name)
+            dest_map = {size: tmp_path / r for size, r in rel.items()}
+            pool.submit(name, tmp_path / "src" / name, dest_map)
+
+    for name in ("good_a.png", "good_b.png"):
+        for size in thumbnails.THUMBNAIL_SIZES:
+            assert (tmp_path / f"thumbs/{size}/{name}").is_file()
+    assert len(reporter.errors) == 1
+    _action, detail, reason = reporter.errors[0]
+    assert detail == "bad.png"
+    assert "boom" in reason
+    assert reporter.advanced == 3
+
+
+def test_create_thumbnails_pool_skip_if_exists(monkeypatch, tmp_path):
+    """Submissions whose destinations already exist are short-circuited."""
+
+    _patch_recording_pool(monkeypatch)
+    submitted: list[str] = []
+
+    def fake_worker(source, dest_map, status_queue=None, webp=False):
+        submitted.append(source.name)
+        for dest in dest_map.values():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(b"x")
+        return source.name
+
+    monkeypatch.setattr(thumbnails, "_create_thumbnails_worker", fake_worker)
+
+    name = "already.png"
+    rel = thumbnails.thumbnail_relative_paths(name)
+    dest_map = {size: tmp_path / r for size, r in rel.items()}
+    for dest in dest_map.values():
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"existing-thumb")
+    original_mtimes = {size: dest.stat().st_mtime for size, dest in dest_map.items()}
+
+    reporter = RecordingReporter()
+    with thumbnails.create_thumbnails_pool(max_workers=2, reporter=reporter) as pool:
+        future = pool.submit(name, tmp_path / "src" / name, dest_map)
+        assert future is None
+
+    assert submitted == []
+    assert reporter.advanced == 0
+    assert reporter.total == 0
+    for size, dest in dest_map.items():
+        assert dest.stat().st_mtime == original_mtimes[size]
+
+
+def test_create_thumbnails_pool_shutdown_on_interrupt(monkeypatch, tmp_path):
+    """KeyboardInterrupt triggers shutdown(wait=False, cancel_futures=True)."""
+
+    _patch_recording_pool(monkeypatch)
+
+    def fake_worker(source, dest_map, status_queue=None, webp=False):
+        for dest in dest_map.values():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(b"thumb")
+        return source.name
+
+    monkeypatch.setattr(thumbnails, "_create_thumbnails_worker", fake_worker)
+
+    reporter = RecordingReporter()
+    pool = thumbnails.create_thumbnails_pool(max_workers=2, reporter=reporter)
+    completed_name = "early.png"
+    rel = thumbnails.thumbnail_relative_paths(completed_name)
+    dest_map = {size: tmp_path / r for size, r in rel.items()}
+
+    with pytest.raises(KeyboardInterrupt), pool:
+        pool.submit(completed_name, tmp_path / "src" / completed_name, dest_map)
+        raise KeyboardInterrupt
+
+    assert _RecordingExecutor.instances, "executor should have been started"
+    executor = _RecordingExecutor.instances[-1]
+    assert executor.shutdown_calls, "shutdown must be called on interrupt"
+    assert executor.shutdown_calls[-1] == {"wait": False, "cancel_futures": True}
+
+    for size in thumbnails.THUMBNAIL_SIZES:
+        assert (tmp_path / f"thumbs/{size}/{completed_name}").is_file(), (
+            "completed thumbnails should remain on disk"
+        )
+
+
+def test_create_thumbnails_pool_lazy_start(monkeypatch):
+    """Pool defers executor creation until the first non-skipped submit."""
+
+    _patch_recording_pool(monkeypatch)
+
+    with thumbnails.create_thumbnails_pool(max_workers=2):
+        pass
+
+    assert _RecordingExecutor.instances == []
+
+
+def test_create_thumbnails_pool_default_workers(monkeypatch):
+    """Default worker count is min(cpu_count, 8)."""
+
+    monkeypatch.setattr(thumbnails.os, "cpu_count", lambda: 16)
+    pool = thumbnails.create_thumbnails_pool()
+    assert pool.max_workers == 8
+
+    monkeypatch.setattr(thumbnails.os, "cpu_count", lambda: 2)
+    pool = thumbnails.create_thumbnails_pool()
+    assert pool.max_workers == 2
+
+
+def test_create_thumbnails_pool_rejects_invalid_workers():
+    with pytest.raises(ValueError):
+        thumbnails.create_thumbnails_pool(max_workers=0)

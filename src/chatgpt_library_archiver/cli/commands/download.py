@@ -35,6 +35,14 @@ class DownloadCommand:
             help="Maximum number of concurrent download threads (default: 6)",
         )
         parser.add_argument(
+            "--thumb-workers",
+            type=int,
+            default=None,
+            help=(
+                "Worker processes for thumbnail generation (default: min(cpu_count, 8))"
+            ),
+        )
+        parser.add_argument(
             "--webp-thumbnails",
             action="store_true",
             help="Generate thumbnails in WebP format for smaller file sizes",
@@ -44,9 +52,14 @@ class DownloadCommand:
 
     def handle(self, args: Namespace) -> int | None:
         max_workers = max(1, int(getattr(args, "max_workers", 6)))
+        thumb_workers_raw = getattr(args, "thumb_workers", None)
+        thumb_workers = (
+            max(1, int(thumb_workers_raw)) if thumb_workers_raw is not None else None
+        )
         return self.run_download(
             bool(getattr(args, "tag_new", False)),
             browser=getattr(args, "browser", None),
             max_workers=max_workers,
             webp=bool(getattr(args, "webp_thumbnails", False)),
+            thumbnail_workers=thumb_workers,
         )

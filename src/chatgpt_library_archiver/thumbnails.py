@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import io
 import multiprocessing
 import os
@@ -502,3 +503,209 @@ def regenerate_thumbnails(
             status_manager.shutdown()
 
     return processed, updated
+
+
+def default_thumbnail_workers() -> int:
+    """Return the default worker count for the thumbnail pool."""
+
+    return min(os.cpu_count() or 1, 8)
+
+
+def _all_thumbnails_exist(dest_map: dict[str, Path], *, webp: bool) -> bool:
+    """Return ``True`` when every destination thumbnail already exists."""
+
+    for dest in dest_map.values():
+        path = dest.with_suffix(".webp") if webp else dest
+        if not path.exists():
+            return False
+    return True
+
+
+class ThumbnailPool:
+    """Long-lived ``ProcessPoolExecutor`` wrapper for per-image thumbnails.
+
+    The pool is created lazily on first :meth:`submit` so that runs which
+    never produce a new thumbnail (everything skipped) pay no startup
+    cost.  Status updates flow through a :class:`multiprocessing.Manager`
+    queue and are forwarded to the supplied :class:`StatusReporter` from
+    a daemon thread, mirroring the design used by
+    :func:`regenerate_thumbnails`.
+
+    The pool is thread-safe: callers running inside a
+    :class:`concurrent.futures.ThreadPoolExecutor` (e.g. the downloader)
+    may invoke :meth:`submit` concurrently.
+
+    Use as a context manager.  On normal exit the pool drains pending
+    work and shuts down gracefully.  On :class:`KeyboardInterrupt` the
+    pool is torn down via ``shutdown(wait=False, cancel_futures=True)``
+    so pending jobs are dropped quickly while in-flight workers are
+    allowed to finish their current image (preventing partial-write
+    corruption).  Thumbnails already written to disk are preserved and
+    will be picked up by the next ``gallery build`` skip-if-exists
+    check.
+    """
+
+    def __init__(
+        self,
+        *,
+        max_workers: int | None = None,
+        reporter: StatusReporter | None = None,
+        webp: bool = False,
+    ) -> None:
+        if max_workers is not None and max_workers < 1:
+            raise ValueError("max_workers must be at least 1")
+        self._max_workers = max_workers or default_thumbnail_workers()
+        self._reporter = reporter
+        self._webp = webp
+        self._lock = threading.Lock()
+        self._executor: ProcessPoolExecutor | None = None
+        self._mp_context: BaseContext | None = None
+        self._status_manager: SyncManager | None = None
+        self._status_queue: _StatusQueueProtocol | None = None
+        self._status_thread: threading.Thread | None = None
+        self._futures: dict[concurrent.futures.Future[str], str] = {}
+        self._closed = False
+
+    @property
+    def max_workers(self) -> int:
+        """Return the configured worker count."""
+
+        return self._max_workers
+
+    def _ensure_started(self) -> None:
+        if self._executor is not None:
+            return
+        if self._closed:
+            raise RuntimeError("ThumbnailPool is closed")
+        self._mp_context = multiprocessing.get_context()
+        if self._reporter is not None:
+            self._status_manager = self._mp_context.Manager()
+            self._status_queue = self._status_manager.Queue()
+            self._status_thread = threading.Thread(
+                target=_consume_status_messages,
+                args=(self._status_queue, self._reporter),
+                daemon=True,
+            )
+            self._status_thread.start()
+        self._executor = ProcessPoolExecutor(
+            max_workers=self._max_workers,
+            mp_context=self._mp_context,
+        )
+
+    def submit(
+        self,
+        filename: str,
+        source: Path,
+        dest_map: dict[str, Path],
+    ) -> concurrent.futures.Future[str] | None:
+        """Submit thumbnail generation for ``source``.
+
+        Returns ``None`` when every destination thumbnail already exists
+        (skip-if-exists semantics).  Otherwise returns the
+        :class:`~concurrent.futures.Future` representing the work.
+        """
+
+        if _all_thumbnails_exist(dest_map, webp=self._webp):
+            return None
+        with self._lock:
+            self._ensure_started()
+            executor = self._executor
+            if executor is None:  # pragma: no cover - defensive
+                raise RuntimeError("ThumbnailPool failed to start")
+            if self._reporter is not None:
+                self._reporter.add_total(1)
+            future = executor.submit(
+                _create_thumbnails_worker,
+                source,
+                dest_map,
+                self._status_queue,
+                self._webp,
+            )
+            self._futures[future] = filename
+        return future
+
+    def drain(self) -> None:
+        """Wait for all submitted thumbnail jobs to finish.
+
+        Per-future exceptions are reported through the configured
+        :class:`StatusReporter` (if any) so a single corrupt image does
+        not abort the run.
+        """
+
+        while True:
+            with self._lock:
+                if not self._futures:
+                    return
+                pending = list(self._futures)
+            done = next(as_completed(pending))
+            with self._lock:
+                fname = self._futures.pop(done, "unknown")
+            try:
+                done.result()
+            except Exception as exc:
+                if self._reporter is not None:
+                    self._reporter.report_error(
+                        "Thumbnail generation failed",
+                        fname,
+                        reason=str(exc),
+                        exception=exc,
+                    )
+            if self._reporter is not None:
+                self._reporter.advance()
+
+    def shutdown(self, *, wait: bool = True, cancel_futures: bool = False) -> None:
+        """Tear down the pool and the status forwarding thread."""
+
+        if self._closed:
+            return
+        self._closed = True
+        executor = self._executor
+        self._executor = None
+        if executor is not None:
+            executor.shutdown(wait=wait, cancel_futures=cancel_futures)
+        if self._status_queue is not None and self._status_thread is not None:
+            try:
+                self._status_queue.put(None)
+            finally:
+                self._status_thread.join(timeout=5)
+            self._status_thread = None
+            self._status_queue = None
+        if self._status_manager is not None:
+            with contextlib.suppress(Exception):
+                self._status_manager.shutdown()
+            self._status_manager = None
+
+    def __enter__(self) -> ThumbnailPool:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: object,
+    ) -> bool:
+        if exc_type is None:
+            try:
+                self.drain()
+            finally:
+                self.shutdown(wait=True)
+        elif issubclass(exc_type, KeyboardInterrupt):
+            self.shutdown(wait=False, cancel_futures=True)
+        else:
+            self.shutdown(wait=False, cancel_futures=True)
+        return False
+
+
+def create_thumbnails_pool(
+    *,
+    max_workers: int | None = None,
+    reporter: StatusReporter | None = None,
+    webp: bool = False,
+) -> ThumbnailPool:
+    """Construct a :class:`ThumbnailPool`.
+
+    Convenience factory matching the module's lower-snake-case helpers.
+    The pool is started lazily on the first :meth:`ThumbnailPool.submit`.
+    """
+
+    return ThumbnailPool(max_workers=max_workers, reporter=reporter, webp=webp)

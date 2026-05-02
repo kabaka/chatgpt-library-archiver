@@ -98,6 +98,7 @@ class GalleryItem:
     thumbnail: str | None = None
     checksum: str | None = None
     content_type: str | None = None
+    affinity_index: int | None = None
     extra: dict[str, Any] = field(default_factory=_default_extra, repr=False)
 
     @classmethod
@@ -126,6 +127,7 @@ class GalleryItem:
                 "thumbnail",
                 "checksum",
                 "content_type",
+                "affinity_index",
             }
         }
         thumbnail_entries: dict[str, str] = {}
@@ -160,6 +162,7 @@ class GalleryItem:
             thumbnail=_coerce_optional_str(data.get("thumbnail")),
             checksum=_coerce_optional_str(data.get("checksum")),
             content_type=_coerce_optional_str(data.get("content_type")),
+            affinity_index=_coerce_optional_int(data.get("affinity_index")),
             extra=extras,
         )
 
@@ -183,6 +186,7 @@ class GalleryItem:
             "thumbnail": self.thumbnail,
             "checksum": self.checksum,
             "content_type": self.content_type,
+            "affinity_index": self.affinity_index,
         }
         payload.update(self.extra)
         return payload

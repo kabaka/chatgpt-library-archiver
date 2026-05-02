@@ -11,16 +11,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Gallery management subcommands** — the `gallery` command is now a
+  verb-based router exposing `build`, `query`, `show`, `tag`, `untag`, `set`,
+  `unset`, `rm`, `mv`, `stats`, `export`, `affinity`, `dedupe`, `verify`, and
+  `prune-thumbs`. Bare `gallery` continues to alias `gallery build` for
+  backwards compatibility. `rm` deletes are gated behind `--yes` or
+  `ARCHIVER_ASSUME_YES=1`; `mv` validates the target before renaming and rolls
+  back on failure.
+- `--thumb-workers N` flag on `download` and `import` controlling the
+  thumbnail `ProcessPoolExecutor` size (default `min(cpu_count, 8)`).
+  Thumbnail generation now runs in parallel across the download, import, and
+  regenerate pipelines.
+- Tag affinity sort mode in the gallery viewer. A precomputed
+  `affinity_index` field is written to `metadata.json` during `gallery build`
+  / `gallery affinity`; the viewer exposes it as the new "Tag similarity"
+  sort option, and `gallery query --sort=affinity` consumes it from the CLI.
+
 ### Changed
 
 - Gallery metadata is now embedded directly into `index.html` at generation
   time. The gallery can be opened by double-clicking the file — no HTTP server
   is required.
+- On touch devices, the hover-overlay metadata strip is suppressed under
+  `(hover: none) and (pointer: coarse)` and replaced by a long-press metadata
+  modal. A normal tap continues to open the lightbox.
 
 ### Fixed
 
+- `chatgpt-archiver --yes` no longer leaks `ARCHIVER_ASSUME_YES=1` into the
+  caller's environment after the command returns; the variable is restored to
+  its previous value once `main()` exits.
 - Mobile thumbnail sizing: selecting Medium or Large sizes now loads appropriately
   sized images instead of always showing small thumbnails.
+- `tag --tag-new` no longer overwrites user-supplied tags. Existing tags are
+  merged with AI-generated tags, deduplicated by normalized form, and order
+  is preserved (existing tags first, new AI tags appended).
+- `gallery-full` size in the gallery viewer now serves the original image at
+  high DPI via `srcset` instead of the 400 px `large` thumbnail.
+- Pinch-to-zoom in the lightbox no longer closes it on mobile. The viewer
+  was rewritten on Pointer Events with multi-touch latching so only a
+  single-pointer tap dismisses it.
 
 ## [0.1.0] — 2026-03-01
 

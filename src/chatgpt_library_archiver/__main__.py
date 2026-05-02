@@ -36,10 +36,21 @@ def main(
     app = build_app(printer=printer)
     args = app.parse_args(argv)
 
+    previous_assume_yes: str | None = None
+    assume_yes_was_set = False
     if getattr(args, "yes", False):
+        previous_assume_yes = os.environ.get("ARCHIVER_ASSUME_YES")
         os.environ["ARCHIVER_ASSUME_YES"] = "1"
+        assume_yes_was_set = True
 
-    return app.run(args)
+    try:
+        return app.run(args)
+    finally:
+        if assume_yes_was_set:
+            if previous_assume_yes is None:
+                os.environ.pop("ARCHIVER_ASSUME_YES", None)
+            else:
+                os.environ["ARCHIVER_ASSUME_YES"] = previous_assume_yes
 
 
 if __name__ == "__main__":
