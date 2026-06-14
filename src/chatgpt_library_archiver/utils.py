@@ -67,17 +67,6 @@ def prompt_yes_no(message: str, default: bool = True) -> bool:
         print("Please enter 'y' or 'n'.")
 
 
-def mask_sensitive(value: str, visible: int = 8) -> str:
-    """Return a masked version of *value* showing only the first *visible* chars.
-
-    Used to provide a confirmation hint after accepting sensitive input
-    without exposing the full secret.
-    """
-    if len(value) <= visible:
-        return value
-    return value[:visible] + "..."
-
-
 def write_secure_file(path: str | Path, content: str, mode: int = 0o600) -> None:
     """Write *content* to *path* with restricted file permissions.
 
@@ -120,17 +109,21 @@ def prompt_and_write_auth(path: str = "auth.txt") -> AuthConfig:
     print("find a request to 'image_gen', and copy these exact header values.\n")
 
     cfg: dict[str, str] = {}
-    for key in REQUIRED_AUTH_KEYS:
-        sensitive = key in _SENSITIVE_AUTH_KEYS
+    for field_name in REQUIRED_AUTH_KEYS:
+        sensitive = field_name in _SENSITIVE_AUTH_KEYS
         while True:
             if sensitive:
-                val = getpass.getpass(f"{key} = ").strip()
+                val = getpass.getpass(f"{field_name} = ").strip()
             else:
-                val = input(f"{key} = ").strip()
+                val = input(f"{field_name} = ").strip()
             if val:
-                cfg[key] = val
+                cfg[field_name] = val
                 if sensitive:
-                    print(f"  \u2713 {key} set: {mask_sensitive(val)}")
+                    # Print a constant confirmation only. Interpolating the
+                    # field name here trips CodeQL's clear-text-logging query
+                    # (the field name is echoed in the prompt just above), and
+                    # the value itself must never be logged.
+                    print("  \u2713 saved")
                 break
             else:
                 print("This field is required. Please enter a value.")

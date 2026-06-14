@@ -8,6 +8,7 @@ import io
 import logging
 import mimetypes
 import os
+import secrets
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -51,6 +52,12 @@ _ENCODE_SIZE_THRESHOLD = 500_000
 
 _CLIENT_CACHE: dict[str, OpenAI] = {}
 
+#: Random per-process salt for deriving cache keys from API keys. Regenerated
+#: on each process start so derived keys cannot be correlated across runs or
+#: used to recover the secret. The in-memory cache only needs keys to be stable
+#: for the lifetime of the process.
+_CACHE_KEY_SALT = secrets.token_bytes(16)
+
 
 @dataclass(slots=True)
 class AIRequestTelemetry:
@@ -82,11 +89,15 @@ def get_cached_client(api_key: str) -> OpenAI:
     perform its own retries on top of the application-level retry loop in
     :func:`call_image_endpoint`.
 
-    The cache key is a blake2b hash of the API key to avoid holding the
-    raw secret as a dictionary key in memory (M-1).
+    The cache key is derived from the API key with PBKDF2 and a random
+    per-process salt, so the raw secret is never held as a dictionary key in
+    memory and the derivation cannot be reversed or correlated across runs
+    (M-1).
     """
 
-    cache_key = hashlib.blake2b(api_key.encode(), digest_size=16).hexdigest()
+    cache_key = hashlib.pbkdf2_hmac(
+        "sha256", api_key.encode(), _CACHE_KEY_SALT, 100_000
+    ).hex()
     client = _CLIENT_CACHE.get(cache_key)
     if client is None:
         client = OpenAI(api_key=api_key, max_retries=0)

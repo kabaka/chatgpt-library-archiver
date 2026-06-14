@@ -21,7 +21,7 @@ from .ai import (
 )
 from .metadata import GalleryItem, load_gallery_items, save_gallery_items
 from .status import StatusReporter
-from .utils import mask_sensitive, prompt_yes_no, write_secure_file
+from .utils import prompt_yes_no, write_secure_file
 
 DEFAULT_PROMPT = (
     "Generate concise, comma-separated descriptive tags for this image in the style of"
@@ -40,7 +40,7 @@ def _write_config(path: str) -> dict:
     print("\nTagging configuration not found. Let's create it.\n")
     api_key = getpass.getpass("api_key = ").strip()
     if api_key:
-        print(f"  \u2713 API key set: {mask_sensitive(api_key)}")
+        print("  \u2713 API key set")
     model = input(f"model [{DEFAULT_MODEL}] = ").strip() or DEFAULT_MODEL
     prompt = input("prompt [leave blank for default] = ").strip() or DEFAULT_PROMPT
     cfg = {"api_key": api_key, "model": model, "prompt": prompt}
