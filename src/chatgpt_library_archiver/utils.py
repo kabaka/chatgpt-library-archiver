@@ -109,17 +109,17 @@ def prompt_and_write_auth(path: str = "auth.txt") -> AuthConfig:
     print("find a request to 'image_gen', and copy these exact header values.\n")
 
     cfg: dict[str, str] = {}
-    for key in REQUIRED_AUTH_KEYS:
-        sensitive = key in _SENSITIVE_AUTH_KEYS
+    for field_name in REQUIRED_AUTH_KEYS:
+        sensitive = field_name in _SENSITIVE_AUTH_KEYS
         while True:
             if sensitive:
-                val = getpass.getpass(f"{key} = ").strip()
+                val = getpass.getpass(f"{field_name} = ").strip()
             else:
-                val = input(f"{key} = ").strip()
+                val = input(f"{field_name} = ").strip()
             if val:
-                cfg[key] = val
+                cfg[field_name] = val
                 if sensitive:
-                    print(f"  \u2713 {key} set")
+                    print(f"  \u2713 {field_name} set")
                 break
             else:
                 print("This field is required. Please enter a value.")
