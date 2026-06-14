@@ -274,9 +274,10 @@ def test_write_config_uses_getpass_for_api_key(monkeypatch, capsys, tmp_path):
     assert len(getpass_calls) == 1
     assert "api_key" in getpass_calls[0]
 
-    # Masked confirmation was printed
+    # Confirmation was printed without leaking the secret
     out = capsys.readouterr().out
-    assert "\u2713 API key set: sk-test1..." in out
+    assert "\u2713 API key set (23 characters)" in out
+    assert "sk-test" not in out
 
     # Config was written correctly
     assert cfg["api_key"] == "sk-test1234567890abcdef"

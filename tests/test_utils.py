@@ -9,7 +9,6 @@ from chatgpt_library_archiver.utils import (
     REQUIRED_AUTH_KEYS,
     ensure_auth_config,
     load_auth_config,
-    mask_sensitive,
     prompt_and_write_auth,
     prompt_yes_no,
     write_secure_file,
@@ -137,22 +136,6 @@ def test_write_secure_file_custom_mode(tmp_path):
     assert mode == 0o640
 
 
-# --- mask_sensitive tests ---
-
-
-def test_mask_sensitive_truncates_long_value():
-    assert mask_sensitive("sk-Zpp16abcdef1234567890") == "sk-Zpp16..."
-
-
-def test_mask_sensitive_returns_short_value_unchanged():
-    assert mask_sensitive("short") == "short"
-    assert mask_sensitive("exactly8") == "exactly8"
-
-
-def test_mask_sensitive_custom_visible():
-    assert mask_sensitive("abcdefghij", visible=4) == "abcd..."
-
-
 # --- getpass usage for sensitive auth keys ---
 
 
@@ -179,10 +162,11 @@ def test_prompt_and_write_auth_uses_getpass_for_sensitive_keys(monkeypatch, caps
     for key in _SENSITIVE_AUTH_KEYS:
         assert any(key in call for call in getpass_calls)
 
-    # Verify masked confirmation was printed
+    # Verify confirmation was printed without leaking the secret
     out = capsys.readouterr().out
     for key in _SENSITIVE_AUTH_KEYS:
-        assert f"\u2713 {key} set:" in out
+        assert f"\u2713 {key} set (" in out
+    assert "secret-for-" not in out
 
     # Verify sensitive values were stored
     assert cfg["authorization"].startswith("secret-for-")

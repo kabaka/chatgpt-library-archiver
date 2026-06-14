@@ -67,17 +67,6 @@ def prompt_yes_no(message: str, default: bool = True) -> bool:
         print("Please enter 'y' or 'n'.")
 
 
-def mask_sensitive(value: str, visible: int = 8) -> str:
-    """Return a masked version of *value* showing only the first *visible* chars.
-
-    Used to provide a confirmation hint after accepting sensitive input
-    without exposing the full secret.
-    """
-    if len(value) <= visible:
-        return value
-    return value[:visible] + "..."
-
-
 def write_secure_file(path: str | Path, content: str, mode: int = 0o600) -> None:
     """Write *content* to *path* with restricted file permissions.
 
@@ -130,7 +119,7 @@ def prompt_and_write_auth(path: str = "auth.txt") -> AuthConfig:
             if val:
                 cfg[key] = val
                 if sensitive:
-                    print(f"  \u2713 {key} set: {mask_sensitive(val)}")
+                    print(f"  \u2713 {key} set ({len(val)} characters)")
                 break
             else:
                 print("This field is required. Please enter a value.")
