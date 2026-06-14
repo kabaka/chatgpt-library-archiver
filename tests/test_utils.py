@@ -162,10 +162,10 @@ def test_prompt_and_write_auth_uses_getpass_for_sensitive_keys(monkeypatch, caps
     for key in _SENSITIVE_AUTH_KEYS:
         assert any(key in call for call in getpass_calls)
 
-    # Verify confirmation was printed without leaking the secret
+    # Verify a confirmation was printed for each sensitive key without
+    # leaking the secret (or anything derived from it).
     out = capsys.readouterr().out
-    for key in _SENSITIVE_AUTH_KEYS:
-        assert f"\u2713 {key} set" in out
+    assert out.count("\u2713 saved") == len(_SENSITIVE_AUTH_KEYS)
     assert "secret-for-" not in out
 
     # Verify sensitive values were stored

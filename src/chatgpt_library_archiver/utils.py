@@ -119,7 +119,11 @@ def prompt_and_write_auth(path: str = "auth.txt") -> AuthConfig:
             if val:
                 cfg[field_name] = val
                 if sensitive:
-                    print(f"  \u2713 {field_name} set")
+                    # Print a constant confirmation only. Interpolating the
+                    # field name here trips CodeQL's clear-text-logging query
+                    # (the field name is echoed in the prompt just above), and
+                    # the value itself must never be logged.
+                    print("  \u2713 saved")
                 break
             else:
                 print("This field is required. Please enter a value.")
