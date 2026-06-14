@@ -119,7 +119,7 @@ def prompt_and_write_auth(path: str = "auth.txt") -> AuthConfig:
             if val:
                 cfg[key] = val
                 if sensitive:
-                    print(f"  \u2713 {key} set ({len(val)} characters)")
+                    print(f"  \u2713 {key} set")
                 break
             else:
                 print("This field is required. Please enter a value.")

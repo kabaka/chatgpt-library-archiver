@@ -276,7 +276,7 @@ def test_write_config_uses_getpass_for_api_key(monkeypatch, capsys, tmp_path):
 
     # Confirmation was printed without leaking the secret
     out = capsys.readouterr().out
-    assert "\u2713 API key set (23 characters)" in out
+    assert "\u2713 API key set" in out
     assert "sk-test" not in out
 
     # Config was written correctly
